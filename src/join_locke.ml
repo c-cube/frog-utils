@@ -267,14 +267,24 @@ let run_command params =
       let start = Unix.gettimeofday () in
       Lwt_process.with_process cmd
         (fun process ->
-          (* launch command, read its output *)
-          Lwt_io.read process#stdout >>= fun out ->
+          (* launch command, read its output line by line and
+            display it at the same time *)
+          let lines_stream = Lwt_io.read_lines process#stdout in
+          let buf = Buffer.create 256 in
+          Lwt_stream.iter_s
+            (fun line ->
+              Buffer.add_string buf line;
+              Buffer.add_char buf '\n';
+              Lwt_io.printl line
+            ) lines_stream
+          >>= fun () ->
           process#status >>= fun status ->
           (* measure time elapsed since we started the process *)
           let stop = Unix.gettimeofday () in
           let time = stop -. start in
           Lwt_log.ign_debug_f "command finished after %.2fs" time;
-          let res = {res_cmd=cmd_string; out; time; status; pid=process#pid; } in
+          let res = {res_cmd=cmd_string; out=Buffer.contents buf;
+                     time; status; pid=process#pid; } in
           Lwt.return res
         )
     )
