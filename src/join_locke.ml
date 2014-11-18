@@ -65,10 +65,21 @@ module Daemon = struct
     id : int;
   }
 
+  type msg =
+    [ `Register of task
+    | `Done of task
+    ]
+
+  type state = {
+    mutable num_clients : int;
+    mutable cur_id : int;
+    scheduler : msg Lwt_mvar.t;
+  }
+
   (* scheduler: receives requests from several clients, and pings them back *)
-  let start_scheduler () =
+  let start_scheduler ~state () =
     let q = Queue.create () in
-    let inbox = Lwt_mvar.create_empty () in
+    let inbox = state.scheduler in
     (* listen for new messages. [task] is the current running task, if any *)
     let rec listen cur_task =
       Lwt_mvar.take inbox >>= function
@@ -90,7 +101,16 @@ module Daemon = struct
     (* run task *)
     and run_next () =
       if Queue.is_empty q
-      then listen None
+      then if state.num_clients = 0
+        then (
+          (* only exit if no clients are connected, to avoid the
+              race condition:
+                - client connects
+                - queue is empty --> scheduler stops
+                - client sends "acquire" and never gets an answer *)
+          Lwt_log.ign_info "no more tasks nor clients, exit";
+          Lwt.return_unit
+        ) else listen None
       else (
         (* start the given process *)
         let task = Queue.take q in
@@ -99,23 +119,24 @@ module Daemon = struct
         listen (Some task)
       )
     in
-    let thread = listen None in
-    inbox, thread
+    listen None
 
   (* handle one client.
     [cond_stop] condition to stop the server
     [ic,oc] connection to client *)
-  let handle_client scheduler_inbox id (ic, oc) =
+  let handle_client ~state id (ic, oc) =
+    state.num_clients <- state.num_clients + 1;
     Lwt_log.ign_debug_f "task %d: wait for acquire..." id;
     expect_str ic "acquire" >>= fun _ ->
     let task = {box=Lwt_mvar.create_empty (); id} in
     (* acquire lock *)
-    Lwt_mvar.put scheduler_inbox (`Register task) >>= fun () ->
+    Lwt_mvar.put state.scheduler (`Register task) >>= fun () ->
     Lwt_mvar.take task.box >>= fun () ->
     let release_ () =
       (* release lock *)
       Lwt_log.ign_debug_f "task %d: released" id;
-      Lwt_mvar.put scheduler_inbox (`Done task)
+      state.num_clients <- state.num_clients - 1;
+      Lwt_mvar.put state.scheduler (`Done task)
     in
     Lwt.catch
       (fun () ->
@@ -130,18 +151,19 @@ module Daemon = struct
   let spawn port =
     Lwt_log.ign_info_f "starting daemon on port %d" port;
     let addr = Unix.ADDR_INET (Unix.inet_addr_loopback, port) in
-    let id = ref 0 in
+    let scheduler = Lwt_mvar.create_empty () in
+    let state = {num_clients=0; cur_id=0; scheduler; } in
     (* scheduler *)
     Lwt_log.ign_info "start scheduler";
-    let scheduler, run_scheduler = start_scheduler () in
+    let run_scheduler = start_scheduler ~state () in
     Lwt_log.ign_info "scheduler started";
     (* server that listens for incoming clients *)
     let server = Lwt_io.establish_server addr
       (fun (ic,oc) ->
-        let i = !id in
-        incr id;
-        Lwt_log.ign_info_f "received new query (id %d)" i;
-        Lwt.async (fun () -> handle_client scheduler i (ic,oc))
+        let id = state.cur_id in
+        state.cur_id <- state.cur_id + 1;
+        Lwt_log.ign_info_f "received new query (id %d)" id;
+        Lwt.async (fun () -> handle_client ~state id (ic,oc))
       )
     in
     (* stop *)
