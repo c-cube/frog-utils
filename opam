@@ -17,5 +17,8 @@ depends: [
     "lwt"
     "base-unix"
     "smtp"
+    "yojson"
+    "ppx_deriving"
+    "ppx_deriving_yojson"
 ]
 tags: ["lock" "batch"]
