@@ -260,6 +260,7 @@ let cmd_ = ref []
 let debug_ = ref false
 let push_cmd_ s = cmd_ := s :: !cmd_
 
+let usage = "locke [options] <cmd> <args>"
 let options = Arg.align
   [ "-port", Arg.Set_int port_, " local port for the daemon"
   ; "-debug", Arg.Set debug_, " enable debug"
@@ -269,9 +270,9 @@ let options = Arg.align
 (* TODO: option to specify estimated completion time *)
 
 let () =
-  Arg.parse options push_cmd_ "locke [options] <cmd> <args>";
+  Arg.parse options push_cmd_ usage;
   let cmd = List.rev !cmd_ in
   match cmd with
-  | [] -> print_endline "no command"
+  | [] -> Arg.usage options usage
   | head::args ->
     main ~debug:!debug_ ~port:!port_ head args
