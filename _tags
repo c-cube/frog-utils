@@ -1,4 +1,4 @@
 true: warn_A, warn(-4), warn(-44)
 <src>: include
-<src/**/*>: package(unix), package(lwt), package(lwt.unix)
+<src/**/*>: package(unix), package(lwt), package(lwt.unix), package(smtp), package(smtp.lwt)
 

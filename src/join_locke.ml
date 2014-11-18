@@ -211,8 +211,20 @@ module Client = struct
       )
 end
 
+type cmd =
+  | Shell of string
+  | Exec of string * string list
+
+type parameters = {
+  mails : string list;
+  port : int;
+  cmd : cmd;
+  debug : bool;
+}
+
 (* result of running a command *)
 type result = {
+  res_cmd : string;
   out : string;
   time : float;  (* running time *)
   status : Unix.process_status;
@@ -220,11 +232,16 @@ type result = {
 }
 
 (* main task: acquire lock file, execute command [cmd], release lock *)
-let run_command port prog args =
-  Client.acquire_or_spawn port
+let run_command params =
+  Client.acquire_or_spawn params.port
     (fun () ->
-      let cmd = prog, Array.of_list (prog::args) in
-      Lwt_log.ign_debug_f "start command %s" (String.concat " " (prog::args));
+      let cmd, cmd_string = match params.cmd with
+        | Shell c -> Lwt_process.shell c, c
+        | Exec (prog, args) ->
+            let cmd = prog, Array.of_list (prog::args) in
+            cmd, (String.concat " " (prog::args))
+      in
+      Lwt_log.ign_debug_f "start command %s" cmd_string;
       let start = Unix.gettimeofday () in
       Lwt_process.with_process cmd
         (fun process ->
@@ -235,21 +252,57 @@ let run_command port prog args =
           let stop = Unix.gettimeofday () in
           let time = stop -. start in
           Lwt_log.ign_debug_f "command finished after %.2fs" time;
-          let res = {out; time; status; pid=process#pid; } in
+          let res = {res_cmd=cmd_string; out; time; status; pid=process#pid; } in
           Lwt.return res
         )
     )
 
-let main ?(debug=false) ~port prog args =
+(* send a recap mail to the given address *)
+let send_mail addr res =
+  let real_addr = Smtp_lwt.Addr.of_string addr in
+  let i = String.index addr '@' in
+  let domain = String.sub addr (i+1) (String.length addr-i-1) in
+  Lwt_log.ign_debug_f "try to send a mail to %s..." addr;
+  (* connect to SMTP server *)
+  Smtp_lwt.connect ~host:domain ~name:"join-locke" () >>= fun c ->
+  let body = Printf.sprintf
+    "Subject: job '%s' (%.2fs)\n\
+    From: join-locke \n\
+    To: %s \n\
+    \n\
+    %s" (String.escaped res.res_cmd) res.time addr res.out in
+  let from = Smtp_lwt.Addr.of_string "join_locke@dev.null" in
+  Smtp_lwt.send c ~from:from ~to_:[real_addr] ~body >>= function
+  | `Ok (_,_) ->
+      Lwt_log.ign_debug_f "succeeded in sending the mail to %s" addr;
+      Lwt.return_unit
+  | `Failure (c,msg) ->
+      let msg = Printf.sprintf "could not send mail to %s: %s (code %d)" addr msg c in
+      failwith msg
+
+
+(* send mail to addresses *)
+let send_mails params res =
+  Lwt_list.iter_p
+    (fun addr ->
+      Lwt.catch
+        (fun () -> send_mail addr res)
+        (fun e ->
+          let msg = Printexc.to_string e in
+          Lwt_log.error_f "could not send mail to %s: %s" addr msg)
+    ) params.mails
+
+let main params =
   Lwt_main.run
     (
       Lwt_log.default := Lwt_log.channel ~close_mode:`Keep ~channel:Lwt_io.stdout ();
-      if debug then (
+      if params.debug then (
         Lwt_log.add_rule "*" Lwt_log.Debug
       );
-      run_command port prog args >>= fun res ->
+      run_command params >>= fun res ->
       (* TODO: print more details, like return code *)
-      Lwt_log.ign_info_f "# process ran in %.2fs (pid: %d)\n" res.time res.pid;
+      Lwt_log.ign_info_f "process ran in %.2fs (pid: %d)\n" res.time res.pid;
+      send_mails params res >>= fun () ->
       Lwt_io.print res.out
     )
 
@@ -258,21 +311,35 @@ let main ?(debug=false) ~port prog args =
 let port_ = ref 12000
 let cmd_ = ref []
 let debug_ = ref false
+let shell_ = ref None
+let mails_ = ref []
+
 let push_cmd_ s = cmd_ := s :: !cmd_
+let set_shell_ s = shell_ := Some s
+let add_mail_ s = mails_ := s :: !mails_
 
 let usage = "locke [options] <cmd> <args>"
 let options = Arg.align
   [ "-port", Arg.Set_int port_, " local port for the daemon"
   ; "-debug", Arg.Set debug_, " enable debug"
-  ; "--", Arg.Rest push_cmd_, " start parsing command"
+  ; "-mail", Arg.String add_mail_, " add mail address"
+  ; "-c", Arg.String set_shell_, " use a shell command"
+  ; "--", Arg.Rest push_cmd_, "start parsing command"
   ]
-(* TODO: option to send a mail when the job finishes *)
+
+let usage_ = "locke [options] <cmd> <args>"
+
 (* TODO: option to specify estimated completion time *)
 
 let () =
-  Arg.parse options push_cmd_ usage;
-  let cmd = List.rev !cmd_ in
-  match cmd with
-  | [] -> Arg.usage options usage
-  | head::args ->
-    main ~debug:!debug_ ~port:!port_ head args
+  Arg.parse options push_cmd_ usage_;
+  let params = match !shell_, List.rev !cmd_ with
+    | None, [] ->
+        Arg.usage options usage_;
+        exit 0
+    | Some c, _ ->
+        { debug= !debug_; port= !port_; mails= !mails_; cmd=Shell c }
+    | None, head::args ->
+        { debug= !debug_; port= !port_; mails= !mails_; cmd=Exec (head,args) }
+  in
+  main params
