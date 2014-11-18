@@ -16,5 +16,6 @@ depends: [
     "ocamlfind" {build}
     "lwt"
     "base-unix"
+    "smtp"
 ]
 tags: ["lock" "batch"]
