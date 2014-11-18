@@ -338,8 +338,7 @@ let main params =
       run_command params >>= fun res ->
       (* TODO: print more details, like return code *)
       Lwt_log.ign_info_f "process ran in %.2fs (pid: %d)\n" res.time res.pid;
-      send_mails params res >>= fun () ->
-      Lwt_io.print res.out
+      send_mails params res
     )
 
 (** {2 Main} *)
