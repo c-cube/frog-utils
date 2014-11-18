@@ -63,6 +63,8 @@ module Message = struct
     | Go (* acquisition succeeded *)
     | Status
     | StatusAnswer of status_answer
+    | StopAccepting (* from now on, no more accepts *)
+    | Reject  (* request not accepted *)
     [@@deriving yojson, show]
 
   let is_go = function Go -> true | _ -> false
@@ -111,8 +113,17 @@ module Daemon = struct
   type state = {
     mutable num_clients : int;
     mutable cur_id : int;
+    mutable accept : bool;
     queue : acquire_task Queue.t;
     scheduler : msg Lwt_mvar.t;
+  }
+
+  let make_state () = {
+    num_clients=0;
+    cur_id=0;
+    accept=true;
+    queue=Queue.create ();
+    scheduler = Lwt_mvar.create_empty ();
   }
 
   (* scheduler: receives requests from several clients, and pings them back *)
@@ -180,6 +191,11 @@ module Daemon = struct
         release_ ()
       ) (fun _ -> release_ ())
 
+  let stop_accepting ~state =
+    Lwt_log.ign_info "stop accepting jobs...";
+    state.accept <- false;
+    Lwt.return_unit
+
   let handle_status ~state oc =
     let module M = Message in
     let jobs = Queue.fold
@@ -195,14 +211,23 @@ module Daemon = struct
     [cond_stop] condition to stop the server
     [ic,oc] connection to client *)
   let handle_client ~state id (ic, oc) =
-    state.num_clients <- state.num_clients + 1;
     Lwt_log.ign_debug_f "task %d: wait for acquire..." id;
     Message.parse ic >>= function
+    | Message.Acquire _ when not state.accept ->
+        Lwt_log.ign_info "ignore query (not accepting)";
+        Message.print oc Message.Reject
     | Message.Acquire q ->
+        state.num_clients <- state.num_clients + 1;
         handle_acquire ~state id (ic,oc) q
     | Message.Status ->
         handle_status ~state oc
-    | msg ->
+    | Message.StopAccepting ->
+        stop_accepting ~state
+    | ( Message.StatusAnswer _ 
+      | Message.Release
+      | Message.Go
+      | Message.Reject
+      ) as msg ->
         Lwt.fail (Message.Unexpected msg)
 
   (* spawn a daemon, to listen on the given port *)
@@ -210,7 +235,7 @@ module Daemon = struct
     Lwt_log.ign_info_f "starting daemon on port %d" port;
     let addr = Unix.ADDR_INET (Unix.inet_addr_loopback, port) in
     let scheduler = Lwt_mvar.create_empty () in
-    let state = {num_clients=0; cur_id=0; scheduler; queue=Queue.create(); } in
+    let state = make_state () in
     (* scheduler *)
     Lwt_log.ign_info "start scheduler";
     let run_scheduler = start_scheduler ~state () in
@@ -242,7 +267,14 @@ module Daemon = struct
       >>= fun logger ->
       Lwt_log.default := logger;
       Lwt_log.add_rule "*" Lwt_log.Info;
-      Lwt.return (`child (spawn port))
+      let thread = Lwt.catch
+        (fun () -> spawn port)
+        (fun e ->
+          Lwt_log.ign_error_f "daemon: error: %s" (Printexc.to_string e);
+          Lwt.return_unit
+        )
+      in
+      Lwt.return (`child thread)
     | _ -> Lwt.return `parent
 end
 
@@ -257,15 +289,20 @@ module Client = struct
     let msg = Message.(Acquire {info; pid}) in
     Message.print oc msg >>= fun () ->
     (* expect "go" *)
-    Message.expect ic Message.is_go >>= fun _ ->
-    Lwt_log.ign_debug "acquired lock";
-    Lwt.finalize
-      f
-      (fun () ->
-        (* eventually, release *)
-        Lwt_log.ign_debug "release lock";
-        write_line oc "release"
-      )
+    Message.parse ic >>= function
+    | Message.Reject ->
+      Lwt_log.ign_error "lock: rejected (daemon too busy?)";
+      Lwt.fail (Failure "lock demand rejected")
+    | Message.Go ->
+      Lwt_log.ign_debug "acquired lock";
+      Lwt.finalize
+        f
+        (fun () ->
+          (* eventually, release *)
+          Lwt_log.ign_debug "release lock";
+          write_line oc "release"
+        )
+    | msg -> Lwt.fail (Message.Unexpected msg)
 
   let connect port f =
     Lwt_log.ign_debug_f "trying to connect to daemon on port %d..." port;
@@ -306,6 +343,7 @@ type cmd =
   | Shell of string
   | Exec of string * string list
   | PrintStatus
+  | StopAccepting
   [@@deriving show]
 
 type parameters = {
@@ -330,7 +368,8 @@ let run_command params =
   Client.acquire_or_spawn params.port ~info
     (fun () ->
       let cmd, cmd_string = match params.cmd with
-        | PrintStatus -> assert false
+        | PrintStatus
+        | StopAccepting -> assert false
         | Shell c -> Lwt_process.shell c, c
         | Exec (prog, args) ->
             let cmd = prog, Array.of_list (prog::args) in
@@ -400,7 +439,7 @@ let send_mails params res =
           Lwt_log.error_f "could not send mail to %s: %s" addr msg)
     ) params.mails
 
-(* connect to daemon (if any) and ask status) *)
+(* connect to daemon (if any) and ask status *)
 let print_status params =
   let module M = Message in
   Lwt.catch
@@ -424,6 +463,17 @@ let print_status params =
       Lwt.return_unit
     )
 
+(* connect to daemon (if any) and tell it to stop *)
+let stop_accepting params =
+  Lwt.catch
+    (fun () -> Client.connect params.port
+      (fun _ic oc -> Message.print oc Message.StopAccepting)
+    )
+    (fun e ->
+      Lwt_log.ign_error_f "error: %s" (Printexc.to_string e);
+      Lwt.return_unit
+    )
+
 let main params =
   Lwt_main.run
     (
@@ -432,8 +482,8 @@ let main params =
         Lwt_log.add_rule "*" Lwt_log.Debug
       );
       match params.cmd with
-      | PrintStatus ->
-          print_status params
+      | PrintStatus -> print_status params
+      | StopAccepting -> stop_accepting params
       | Exec _
       | Shell _ ->
           run_command params >>= fun res ->
@@ -450,6 +500,7 @@ let debug_ = ref false
 let shell_ = ref None
 let mails_ = ref []
 let status_ = ref false
+let stop_accepting_ = ref false
 
 let push_cmd_ s = cmd_ := s :: !cmd_
 let set_shell_ s = shell_ := Some s
@@ -462,6 +513,8 @@ let options = Arg.align
   ; "-mail", Arg.String add_mail_, " add mail address"
   ; "-c", Arg.String set_shell_, " use a shell command"
   ; "-status", Arg.Set status_, " report status of the daemon (if any)"
+  ; "-stop", Arg.Set stop_accepting_,
+      " tell the daemon (if any) to stop accepting new jobs"
   ; "--", Arg.Rest push_cmd_, "start parsing command"
   ]
 
@@ -474,6 +527,8 @@ let () =
   let params = match !shell_, List.rev !cmd_ with
     | _ when !status_ ->
         { debug= !debug_; port= !port_; mails= !mails_; cmd=PrintStatus; }
+    | _ when !stop_accepting_ ->
+        { debug= !debug_; port= !port_; mails= !mails_; cmd=StopAccepting }
     | None, [] ->
         Arg.usage options usage_;
         exit 0
