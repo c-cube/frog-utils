@@ -1,0 +1,20 @@
+opam-version: "1.2"
+name: "join-locke"
+version: "0.1"
+maintainer: "Simon Cruanes <simon.cruanes.2007@m4x.org>"
+authors: "Simon Cruanes <simon.cruanes.2007@m4x.org>"
+homepage: "https://github.com/c-cube/join-locke/"
+dev-repo: "https://github.com/c-cube/join-locke.git"
+bug-reports: "https://github.com/c-cube/join-locke/issues"
+license: "BSD-2-clause"
+build: [
+  [make]
+]
+install: [make "BINDIR=%{bin}%" "install"]
+remove: ["ocamlfind" "remove" "join-locke"]
+depends: [
+    "ocamlfind" {build}
+    "lwt"
+    "base-unix"
+]
+tags: ["lock" "batch"]
