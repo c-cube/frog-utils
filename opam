@@ -21,4 +21,5 @@ depends: [
     "ppx_deriving"
     "ppx_deriving_yojson"
 ]
+available: ["ocaml-version" >= "4.02.1"]
 tags: ["lock" "batch"]
