@@ -152,7 +152,8 @@ module Daemon = struct
       else (
         (* start the given process *)
         let task = Queue.take state.queue in
-        Lwt_log.ign_info_f "start task %d" task.id;
+        Lwt_log.ign_info_f "start task %d (pid %d): %s"
+          task.id task.query.Message.pid task.query.Message.info;
         Lwt_mvar.put task.box () >>= fun () ->
         listen (Some task)
       )
@@ -179,7 +180,7 @@ module Daemon = struct
         release_ ()
       ) (fun _ -> release_ ())
 
-  let handle_status ~state id (ic,oc) =
+  let handle_status ~state oc =
     let module M = Message in
     let jobs = Queue.fold
       (fun acc job ->
@@ -200,7 +201,7 @@ module Daemon = struct
     | Message.Acquire q ->
         handle_acquire ~state id (ic,oc) q
     | Message.Status ->
-        handle_status ~state id (ic,oc)
+        handle_status ~state oc
     | msg ->
         Lwt.fail (Message.Unexpected msg)
 
