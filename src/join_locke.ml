@@ -33,7 +33,12 @@ let () =
   Printexc.register_printer
     (function
       | (InvalidMessage s) -> Some ("invalid message: " ^ s)
-      | _ -> None)
+      | _ -> None);
+  Lwt.async_exception_hook :=
+    (fun e ->
+      Lwt_log.ign_error_f "async error: %s" (Printexc.to_string e);
+      exit 1)
+
 
 (* read line from [ic], filter it with f *)
 let expect ic f =
@@ -50,6 +55,9 @@ let expect_str ic line =
 let write_line oc line = Lwt_io.write_line oc line
 
 (** {2 Daemon Code} *)
+
+(* TODO: a second server, on a second port, for monitoring
+   TODO: change log level through connection *)
 
 module Daemon = struct
   type task = {
@@ -104,13 +112,19 @@ module Daemon = struct
     (* acquire lock *)
     Lwt_mvar.put scheduler_inbox (`Register task) >>= fun () ->
     Lwt_mvar.take task.box >>= fun () ->
-    (* start task *)
-    Lwt_log.ign_info_f "task %d: send 'go'" id;
-    write_line oc "go" >>= fun () ->
-    expect_str ic "release" >>= fun () ->
-    (* release lock *)
-    Lwt_log.ign_info_f "task %d: released" id;
-    Lwt_mvar.put scheduler_inbox (`Done task)
+    let release_ () =
+      (* release lock *)
+      Lwt_log.ign_debug_f "task %d: released" id;
+      Lwt_mvar.put scheduler_inbox (`Done task)
+    in
+    Lwt.catch
+      (fun () ->
+        (* start task *)
+        Lwt_log.ign_debug_f "task %d: send 'go'" id;
+        write_line oc "go" >>= fun () ->
+        expect_str ic "release" >>= fun () ->
+        release_ ()
+      ) (fun _ -> release_ ())
 
   (* spawn a daemon, to listen on the given port *)
   let spawn port =
@@ -147,7 +161,7 @@ module Daemon = struct
       Lwt_log.file ~mode:`Append ~file_name:"/tmp/join_lock.log" ()
       >>= fun logger ->
       Lwt_log.default := logger;
-      Lwt_log.add_rule "*" Lwt_log.Debug;
+      Lwt_log.add_rule "*" Lwt_log.Info;
       Lwt.return (`child (spawn port))
     | _ -> Lwt.return `parent
 end
@@ -235,7 +249,7 @@ let main ?(debug=false) ~port prog args =
       );
       run_command port prog args >>= fun res ->
       (* TODO: print more details, like return code *)
-      Lwt_io.printf "# process ran in %.2fs (pid: %d)\n" res.time res.pid >>= fun () ->
+      Lwt_log.ign_info_f "# process ran in %.2fs (pid: %d)\n" res.time res.pid;
       Lwt_io.print res.out
     )
 
