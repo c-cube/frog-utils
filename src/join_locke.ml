@@ -262,17 +262,21 @@ let send_mail addr res =
   let real_addr = Smtp_lwt.Addr.of_string addr in
   let i = String.index addr '@' in
   let domain = String.sub addr (i+1) (String.length addr-i-1) in
+  let from = "\"join-locke\" <joinlocke@example.com>" in
   Lwt_log.ign_debug_f "try to send a mail to %s..." addr;
   (* connect to SMTP server *)
-  Smtp_lwt.connect ~host:domain ~name:"join-locke" () >>= fun c ->
+  Smtp_lwt.connect ~host:domain ~name:"<joinlocke@example.com>" () >>= fun c ->
   let body = Printf.sprintf
     "Subject: job '%s' (%.2fs)\n\
-    From: join-locke \n\
+    From: %s\n\
     To: %s \n\
     \n\
-    %s" (String.escaped res.res_cmd) res.time addr res.out in
-  let from = Smtp_lwt.Addr.of_string "join_locke@dev.null" in
-  Smtp_lwt.send c ~from:from ~to_:[real_addr] ~body >>= function
+    %s" (String.escaped res.res_cmd) res.time from addr res.out in
+  Smtp_lwt.send c
+    ~from:(Smtp_lwt.Addr.of_string from)
+    ~to_:[real_addr]
+    ~body
+  >>= function
   | `Ok (_,_) ->
       Lwt_log.ign_debug_f "succeeded in sending the mail to %s" addr;
       Lwt.return_unit
