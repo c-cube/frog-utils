@@ -1,3 +1,4 @@
-true: use_ocamlfind, warn_A, warn(-4), warn(-44)
-<src/>: include, package(unix), package(ppx_deriving), package(ppx_deriving_yojson), package(yojson)
+true: warn_A, warn(-4), warn(-44)
+<src>: include
+<src/**/*>: package(unix), package(lwt), package(lwt.unix)
 
