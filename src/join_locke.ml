@@ -263,7 +263,7 @@ let push_cmd_ s = cmd_ := s :: !cmd_
 let options = Arg.align
   [ "-port", Arg.Set_int port_, " local port for the daemon"
   ; "-debug", Arg.Set debug_, " enable debug"
-  ; "--", Arg.Rest push_cmd_, "start parsing command"
+  ; "--", Arg.Rest push_cmd_, " start parsing command"
   ]
 (* TODO: option to send a mail when the job finishes *)
 (* TODO: option to specify estimated completion time *)
