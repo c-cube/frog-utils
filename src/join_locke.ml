@@ -48,12 +48,20 @@ module Message = struct
     pid : int;
   } [@@deriving yojson,show]
 
+  type current_job = {
+    current_id : int;  (* job ID *)
+    current_pid : int;
+    current_info : string;
+    current_start : float;  (* start time *)
+  } [@@deriving yojson,show]
+
   type waiting_job = {
     waiting_pid : int;
     waiting_info : string;
   } [@@deriving yojson,show]
 
   type status_answer = {
+    current : current_job option;
     waiting : waiting_job list;
   } [@@deriving yojson,show]
 
@@ -114,6 +122,7 @@ module Daemon = struct
     mutable num_clients : int;
     mutable cur_id : int;
     mutable accept : bool;
+    mutable current : Message.current_job option;
     queue : acquire_task Queue.t;
     scheduler : msg Lwt_mvar.t;
   }
@@ -122,6 +131,7 @@ module Daemon = struct
     num_clients=0;
     cur_id=0;
     accept=true;
+    current= None;
     queue=Queue.create ();
     scheduler = Lwt_mvar.create_empty ();
   }
@@ -130,22 +140,26 @@ module Daemon = struct
   let start_scheduler ~state () =
     let inbox = state.scheduler in
     (* listen for new messages. [task] is the current running task, if any *)
-    let rec listen cur_task =
+    let rec listen () =
       Lwt_mvar.take inbox >>= function
       | `Register task' ->
           Queue.push task' state.queue;
-          if cur_task=None
-            then run_next ()
-            else listen cur_task
+          begin match state.current with
+          | None -> run_next ()
+          | Some _ -> listen ()
+          end
       | `Done task' ->
-          begin match cur_task with
-          | Some t when t.id = task'.id ->
+          begin match state.current with
+          | Some t when t.Message.current_id = task'.id ->
               (* task if finished, run the next one *)
-              Lwt_log.ign_info_f "task %d finished" t.id;
+              Lwt_log.ign_info_f "task %d finished (pid %d) after %.2fs"
+                task'.id t.Message.current_pid
+                (Unix.gettimeofday() -. t.Message.current_start);
+              state.current <- None;
               run_next ()
           | _ ->
             Lwt_log.ign_error_f "scheduler: unexpected 'Done' for task %d" task'.id;
-            listen cur_task
+            listen ()
           end
     (* run task *)
     and run_next () =
@@ -159,17 +173,25 @@ module Daemon = struct
                 - client sends "acquire" and never gets an answer *)
           Lwt_log.ign_info "no more tasks nor clients, exit";
           Lwt.return_unit
-        ) else listen None
+        ) else listen ()
       else (
         (* start the given process *)
+        assert (state.current = None);
         let task = Queue.take state.queue in
         Lwt_log.ign_info_f "start task %d (pid %d): %s"
           task.id task.query.Message.pid task.query.Message.info;
+        let cur = {
+          Message.current_id=task.id;
+          current_pid=task.query.Message.pid;
+          current_info=task.query.Message.info;
+          current_start=Unix.gettimeofday();
+        } in
+        state.current <- Some cur;
         Lwt_mvar.put task.box () >>= fun () ->
-        listen (Some task)
+        listen ()
       )
     in
-    listen None
+    listen ()
 
   let handle_acquire ~state id (ic,oc) query =
     let task = {box=Lwt_mvar.create_empty (); id; query} in
@@ -198,13 +220,14 @@ module Daemon = struct
 
   let handle_status ~state oc =
     let module M = Message in
-    let jobs = Queue.fold
+    let waiting = Queue.fold
       (fun acc job ->
         {M.waiting_pid=job.query.M.pid; waiting_info=job.query.M.info} :: acc
       ) [] state.queue
     in
-    let jobs = List.rev jobs in
-    let ans = M.StatusAnswer {M.waiting=jobs} in
+    let waiting = List.rev waiting in
+    let current = state.current in
+    let ans = M.StatusAnswer {M.waiting; current} in
     M.print oc ans
 
   (* handle one client.
@@ -223,7 +246,7 @@ module Daemon = struct
         handle_status ~state oc
     | Message.StopAccepting ->
         stop_accepting ~state
-    | ( Message.StatusAnswer _ 
+    | ( Message.StatusAnswer _
       | Message.Release
       | Message.Go
       | Message.Reject
@@ -446,20 +469,34 @@ let print_status params =
     (fun () ->
       Client.connect params.port
         (fun ic oc ->
-          M.print oc M.Status >>= fun () ->
-          M.parse ic >>= function
-          | M.StatusAnswer l ->
-              Lwt_list.iter_s
-                (fun job ->
-                  Lwt_io.printlf "waiting job (pid %d): %s"
-                    job.M.waiting_pid job.M.waiting_info
-                ) l.M.waiting
-          | m ->
-              Lwt.fail (M.Unexpected m)
+          Lwt.catch
+            (fun () ->
+              M.print oc M.Status >>= fun () ->
+              M.parse ic >>= function
+              | M.StatusAnswer {M.current=c; waiting} ->
+                  begin match c with
+                    | None -> Lwt.return_unit
+                    | Some c ->
+                        let time = Unix.gettimeofday() -. c.M.current_start in
+                        Lwt_io.printlf "current job (pid %d, running for %.2fs): %s"
+                          c.M.current_pid time c.M.current_info
+                  end >>= fun () ->
+                  Lwt_list.iter_s
+                    (fun job ->
+                      Lwt_io.printlf "waiting job (pid %d): %s"
+                        job.M.waiting_pid job.M.waiting_info
+                    ) waiting
+              | m ->
+                  Lwt.fail (M.Unexpected m)
+            )
+            (fun e ->
+              Lwt_log.ign_error_f "error: %s" (Printexc.to_string e);
+              Lwt.return_unit
+            )
         )
     )
-    (fun e ->
-      Lwt_log.ign_error_f "error: %s" (Printexc.to_string e);
+    (fun _ ->
+      Lwt_log.ign_info_f "daemon not running";
       Lwt.return_unit
     )
 
