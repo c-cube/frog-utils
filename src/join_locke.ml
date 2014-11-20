@@ -288,7 +288,7 @@ module Daemon = struct
       Lwt_daemon.daemonize ~syslog:false ~directory:"/tmp"
         ~stdin:`Close ~stdout:`Close ~stderr:`Close ();
       (* change logger *)
-      Lwt_log.file ~mode:`Append ~file_name:"/tmp/join_lock.log" ()
+      Lwt_log.file ~mode:`Append ~perm:0o666 ~file_name:"/tmp/join_lock.log" ()
       >>= fun logger ->
       Lwt_log.default := logger;
       Lwt_log.add_rule "*" Lwt_log.Info;
