@@ -56,6 +56,7 @@ module Message = struct
   } [@@deriving yojson,show]
 
   type waiting_job = {
+    waiting_id : int;
     waiting_pid : int;
     waiting_info : string;
   } [@@deriving yojson,show]
@@ -222,7 +223,9 @@ module Daemon = struct
     let module M = Message in
     let waiting = Queue.fold
       (fun acc job ->
-        {M.waiting_pid=job.query.M.pid; waiting_info=job.query.M.info} :: acc
+        {M.waiting_pid=job.query.M.pid;
+         waiting_id=job.id;
+         waiting_info=job.query.M.info} :: acc
       ) [] state.queue
     in
     let waiting = List.rev waiting in
@@ -483,8 +486,8 @@ let print_status params =
                   end >>= fun () ->
                   Lwt_list.iter_s
                     (fun job ->
-                      Lwt_io.printlf "waiting job (pid %d): %s"
-                        job.M.waiting_pid job.M.waiting_info
+                      Lwt_io.printlf "waiting job n°%d (pid %d): %s"
+                        job.M.waiting_id job.M.waiting_pid job.M.waiting_info
                     ) waiting
               | m ->
                   Lwt.fail (M.Unexpected m)
