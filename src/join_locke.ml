@@ -236,13 +236,15 @@ module Daemon = struct
   (* handle one client.
     [cond_stop] condition to stop the server
     [ic,oc] connection to client *)
-  let handle_client ~state id (ic, oc) =
-    Lwt_log.ign_debug_f "task %d: wait for acquire..." id;
+  let handle_client ~state ic oc =
     Message.parse ic >>= function
     | Message.Acquire _ when not state.accept ->
         Lwt_log.ign_info "ignore query (not accepting)";
         Message.print oc Message.Reject
     | Message.Acquire q ->
+        let id = state.cur_id in
+        state.cur_id <- state.cur_id + 1;
+        Lwt_log.ign_info_f "received new query (id %d)" id;
         state.num_clients <- state.num_clients + 1;
         handle_acquire ~state id (ic,oc) q
     | Message.Status ->
@@ -269,10 +271,7 @@ module Daemon = struct
     (* server that listens for incoming clients *)
     let server = Lwt_io.establish_server addr
       (fun (ic,oc) ->
-        let id = state.cur_id in
-        state.cur_id <- state.cur_id + 1;
-        Lwt_log.ign_info_f "received new query (id %d)" id;
-        Lwt.async (fun () -> handle_client ~state id (ic,oc))
+        Lwt.async (fun () -> handle_client ~state ic oc)
       )
     in
     (* stop *)
