@@ -33,7 +33,7 @@ type remote_daemon
 val connect : int -> (remote_daemon -> 'a Lwt.t) -> 'a Lwt.t
 (** Connect the the remote daemon *)
 
-val acquire : ?user:string -> ?info:string ->
+val acquire : ?user:string -> ?info:string -> ?tags:string list ->
               remote_daemon -> (bool -> 'a Lwt.t) -> 'a Lwt.t
 (** [acquire daemon f] acquires the lock on the remote [daemon], then
     calls [f true] and returns the result of [f true].

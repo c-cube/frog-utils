@@ -115,8 +115,10 @@ let start_scheduler ~state () =
       let cur = {
         M.current_id=task.id;
         current_user=task.query.M.user;
+        current_tags=task.query.M.tags;
         current_pid=task.query.M.pid;
         current_info=task.query.M.info;
+        current_query_time=task.query.M.query_time;
         current_start=Unix.gettimeofday();
       } in
       state.current <- Some cur;
@@ -162,6 +164,8 @@ let handle_status ~state oc =
       {M.waiting_pid=job.query.M.pid;
        waiting_user=job.query.M.user;
        waiting_id=job.id;
+       waiting_query_time=job.query.M.query_time;
+       waiting_tags=job.query.M.tags;
        waiting_info=job.query.M.info} :: acc
     ) [] state.queue
   in

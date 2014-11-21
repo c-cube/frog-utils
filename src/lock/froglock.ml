@@ -51,6 +51,7 @@ type parameters = {
   port : int;
   cmd : cmd;
   debug : bool;
+  tags : string list; (* user-defined tags *)
 }
 
 (* result of running a command *)
@@ -68,7 +69,7 @@ let run_command params =
   let user = try Some(Sys.getenv "USER") with _ -> None in
   FrogLockClient.connect_or_spawn ~log_file:"/tmp/froglock.log" params.port
     (fun daemon ->
-      FrogLockClient.acquire ?user ~info daemon
+      FrogLockClient.acquire ?user ~info ~tags:params.tags daemon
         (function
         | true ->
           let cmd, cmd_string = match params.cmd with
@@ -155,6 +156,12 @@ let maybe_str = function
 
 (* connect to daemon (if any) and ask status *)
 let print_status params =
+  let tags2str tags = match tags with
+    | [] -> ""
+    | [t] -> ", tag " ^ t
+    | l -> ", tags {" ^ String.concat ", " l ^ "}"
+  in
+  let now = Unix.gettimeofday() in
   Lwt.catch
     (fun () ->
       FrogLockClient.get_status params.port >>= function
@@ -165,18 +172,22 @@ let print_status params =
             | None -> Lwt.return_unit
             | Some c ->
                 let time = Unix.gettimeofday() -. c.M.current_start in
-                Lwt_io.printlf "current job (user %s, pid %d, running for %.2fs): %s"
+                Lwt_io.printlf "current job (user %s, pid %d, issued %.2fs ago, %s running for %.2fs): %s"
                   (maybe_str c.M.current_user)
-                  c.M.current_pid time
-                  (maybe_str c.M.current_info)
+                  c.M.current_pid
+                  (now -. c.M.current_query_time)
+                  (tags2str c.M.current_tags)
+                  time (maybe_str c.M.current_info)
           end >>= fun () ->
           Lwt_list.iter_s
             (fun job ->
-              Lwt_io.printlf "waiting job n°%d (user %s, pid %d): %s"
+              Lwt_io.printlf "waiting job n°%d (user %s, pid %d, issued %.2fs ago%s): %s"
                 job.M.waiting_id
-                  (maybe_str job.M.waiting_user)
-                  job.M.waiting_pid
-                  (maybe_str job.M.waiting_info)
+                (maybe_str job.M.waiting_user)
+                job.M.waiting_pid
+                (now -. job.M.waiting_query_time)
+                (tags2str job.M.waiting_tags)
+                (maybe_str job.M.waiting_info)
             ) waiting
     )
     (fun e ->
@@ -214,10 +225,12 @@ let shell_ = ref None
 let mails_ = ref []
 let status_ = ref false
 let stop_accepting_ = ref false
+let tags_ = ref []
 
 let push_cmd_ s = cmd_ := s :: !cmd_
 let set_shell_ s = shell_ := Some s
 let add_mail_ s = mails_ := s :: !mails_
+let add_tag_ s = tags_ := s :: !tags_
 
 let usage = "locke [options] <cmd> <args>"
 let options = Arg.align
@@ -225,6 +238,7 @@ let options = Arg.align
   ; "-debug", Arg.Set debug_, " enable debug"
   ; "-mail", Arg.String add_mail_, " add mail address"
   ; "-c", Arg.String set_shell_, " use a shell command"
+  ; "-tag", Arg.String add_tag_, " add a user-defined tag to a job"
   ; "-status", Arg.Set status_, " report status of the daemon (if any)"
   ; "-stop", Arg.Set stop_accepting_,
       " tell the daemon (if any) to stop accepting new jobs"
@@ -237,17 +251,16 @@ let usage_ = "locke [options] <cmd> <args>"
 
 let () =
   Arg.parse options push_cmd_ usage_;
+  let mk_params cmd =
+    { debug= !debug_; port= !port_; mails= !mails_; tags= !tags_; cmd; }
+  in
   let params = match !shell_, List.rev !cmd_ with
-    | _ when !status_ ->
-        { debug= !debug_; port= !port_; mails= !mails_; cmd=PrintStatus; }
-    | _ when !stop_accepting_ ->
-        { debug= !debug_; port= !port_; mails= !mails_; cmd=StopAccepting }
+    | _ when !status_ -> mk_params PrintStatus
+    | _ when !stop_accepting_ -> mk_params StopAccepting
     | None, [] ->
         Arg.usage options usage_;
         exit 0
-    | Some c, _ ->
-        { debug= !debug_; port= !port_; mails= !mails_; cmd=Shell c }
-    | None, head::args ->
-        { debug= !debug_; port= !port_; mails= !mails_; cmd=Exec (head,args) }
+    | Some c, _ -> mk_params (Shell c)
+    | None, head::args -> mk_params (Exec (head,args))
   in
   main params

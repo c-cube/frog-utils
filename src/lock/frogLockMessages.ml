@@ -33,6 +33,8 @@ let (>|=) = Lwt.(>|=)
 type acquire_query = {
   info : string option;
   user : string option;
+  query_time : float; (* time at which the query was issued *)
+  tags : string list;
   pid : int;
 } [@@deriving yojson,show]
 
@@ -41,6 +43,8 @@ type current_job = {
   current_pid : int;
   current_info : string option;
   current_user : string option;
+  current_tags : string list;
+  current_query_time : float; (* query time *)
   current_start : float;  (* start time *)
 } [@@deriving yojson,show]
 
@@ -48,6 +52,8 @@ type waiting_job = {
   waiting_id : int;
   waiting_pid : int;
   waiting_info : string option;
+  waiting_tags : string list;
+  waiting_query_time : float;
   waiting_user : string option;
 } [@@deriving yojson,show]
 
