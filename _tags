@@ -7,4 +7,4 @@ true: warn_A, warn(-4), warn(-44)
             package(lwt.unix), package(ppx_deriving.std), \
             package(ppx_deriving_yojson)
 <src/lock/*>: package(smtp), package(smtp.lwt)
-
+<src/lock/frogLockMessage*>: warn(-39)

@@ -28,341 +28,16 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 let (>>=) = Lwt.(>>=)
 let (>|=) = Lwt.(>|=)
 
-exception InvalidMessage of string
+let section = Lwt_log.Section.make "FrogLock"
 
 let () =
-  Printexc.register_printer
-    (function
-      | (InvalidMessage s) -> Some ("invalid message: " ^ s)
-      | _ -> None);
+  FrogLockMessages.register_exn_printers();
   Lwt.async_exception_hook :=
     (fun e ->
       Lwt_log.ign_error_f "async error: %s" (Printexc.to_string e);
       exit 1)
 
 let write_line oc line = Lwt_io.write_line oc line
-module Message = struct
-  (* a message "acquire" *)
-  type acquire_query = {
-    info : string;
-    pid : int;
-  } [@@deriving yojson,show]
-
-  type current_job = {
-    current_id : int;  (* job ID *)
-    current_pid : int;
-    current_info : string;
-    current_start : float;  (* start time *)
-  } [@@deriving yojson,show]
-
-  type waiting_job = {
-    waiting_id : int;
-    waiting_pid : int;
-    waiting_info : string;
-  } [@@deriving yojson,show]
-
-  type status_answer = {
-    current : current_job option;
-    waiting : waiting_job list;
-  } [@@deriving yojson,show]
-
-  type t =
-    | Acquire of acquire_query
-    | Release
-    | Go (* acquisition succeeded *)
-    | Status
-    | StatusAnswer of status_answer
-    | StopAccepting (* from now on, no more accepts *)
-    | Reject  (* request not accepted *)
-    [@@deriving yojson, show]
-
-  let is_go = function Go -> true | _ -> false
-  let is_release = function Release -> true | _ -> false
-
-  exception Unexpected of t
-
-  let () =
-    Printexc.register_printer
-     (function
-      | Unexpected t -> Some ("unexpected message " ^ show t)
-      | _ -> None)
-
-  let expect ic p =
-    Lwt_io.read_line ic >>= fun s ->
-    Lwt.wrap (fun () -> Yojson.Safe.from_string s)
-    >|= of_yojson
-    >>= function
-    | `Ok m when p m -> Lwt.return m
-    | `Ok _ -> Lwt.fail (InvalidMessage ("unexpected " ^ s))
-    | `Error msg -> Lwt.fail (InvalidMessage (msg ^ ": " ^ s))
-
-  let parse ic = expect ic (fun _ -> true)
-
-  let print oc m =
-    let s = Yojson.Safe.to_string (to_yojson m) in
-    Lwt_io.write_line oc s
-end
-
-(** {2 Daemon Code} *)
-
-(* TODO: change log level through connection *)
-
-module Daemon = struct
-  type acquire_task = {
-    box : unit Lwt_mvar.t;
-    id : int;
-    query : Message.acquire_query;
-  }
-
-  type msg =
-    [ `Register of acquire_task
-    | `Done of acquire_task
-    ]
-
-  type state = {
-    mutable num_clients : int;
-    mutable cur_id : int;
-    mutable accept : bool;
-    mutable current : Message.current_job option;
-    queue : acquire_task Queue.t;
-    scheduler : msg Lwt_mvar.t;
-  }
-
-  let make_state () = {
-    num_clients=0;
-    cur_id=0;
-    accept=true;
-    current= None;
-    queue=Queue.create ();
-    scheduler = Lwt_mvar.create_empty ();
-  }
-
-  (* scheduler: receives requests from several clients, and pings them back *)
-  let start_scheduler ~state () =
-    let inbox = state.scheduler in
-    (* listen for new messages. [task] is the current running task, if any *)
-    let rec listen () =
-      Lwt_mvar.take inbox >>= function
-      | `Register task' ->
-          Queue.push task' state.queue;
-          begin match state.current with
-          | None -> run_next ()
-          | Some _ -> listen ()
-          end
-      | `Done task' ->
-          begin match state.current with
-          | Some t when t.Message.current_id = task'.id ->
-              (* task if finished, run the next one *)
-              Lwt_log.ign_info_f "task %d finished (pid %d) after %.2fs"
-                task'.id t.Message.current_pid
-                (Unix.gettimeofday() -. t.Message.current_start);
-              state.current <- None;
-              run_next ()
-          | _ ->
-            Lwt_log.ign_error_f "scheduler: unexpected 'Done' for task %d" task'.id;
-            listen ()
-          end
-    (* run task *)
-    and run_next () =
-      if Queue.is_empty state.queue
-      then if state.num_clients = 0
-        then (
-          (* only exit if no clients are connected, to avoid the
-              race condition:
-                - client connects
-                - queue is empty --> scheduler stops
-                - client sends "acquire" and never gets an answer *)
-          Lwt_log.ign_info "no more tasks nor clients, exit";
-          Lwt.return_unit
-        ) else listen ()
-      else (
-        (* start the given process *)
-        assert (state.current = None);
-        let task = Queue.take state.queue in
-        Lwt_log.ign_info_f "start task %d (pid %d): %s"
-          task.id task.query.Message.pid task.query.Message.info;
-        let cur = {
-          Message.current_id=task.id;
-          current_pid=task.query.Message.pid;
-          current_info=task.query.Message.info;
-          current_start=Unix.gettimeofday();
-        } in
-        state.current <- Some cur;
-        Lwt_mvar.put task.box () >>= fun () ->
-        listen ()
-      )
-    in
-    listen ()
-
-  let handle_acquire ~state id (ic,oc) query =
-    let task = {box=Lwt_mvar.create_empty (); id; query} in
-    (* acquire lock *)
-    Lwt_mvar.put state.scheduler (`Register task) >>= fun () ->
-    Lwt_mvar.take task.box >>= fun () ->
-    let release_ () =
-      (* release lock *)
-      Lwt_log.ign_debug_f "task %d: released" id;
-      state.num_clients <- state.num_clients - 1;
-      Lwt_mvar.put state.scheduler (`Done task)
-    in
-    Lwt.catch
-      (fun () ->
-        (* start task *)
-        Lwt_log.ign_debug_f "task %d: send 'go'" id;
-        Message.print oc Message.Go >>= fun () ->
-        Message.expect ic Message.is_release >>= fun _ ->
-        release_ ()
-      ) (fun _ -> release_ ())
-
-  let stop_accepting ~state =
-    Lwt_log.ign_info "stop accepting jobs...";
-    state.accept <- false;
-    Lwt.return_unit
-
-  let handle_status ~state oc =
-    let module M = Message in
-    let waiting = Queue.fold
-      (fun acc job ->
-        {M.waiting_pid=job.query.M.pid;
-         waiting_id=job.id;
-         waiting_info=job.query.M.info} :: acc
-      ) [] state.queue
-    in
-    let waiting = List.rev waiting in
-    let current = state.current in
-    let ans = M.StatusAnswer {M.waiting; current} in
-    M.print oc ans
-
-  (* handle one client.
-    [cond_stop] condition to stop the server
-    [ic,oc] connection to client *)
-  let handle_client ~state ic oc =
-    Message.parse ic >>= function
-    | Message.Acquire _ when not state.accept ->
-        Lwt_log.ign_info "ignore query (not accepting)";
-        Message.print oc Message.Reject
-    | Message.Acquire q ->
-        let id = state.cur_id in
-        state.cur_id <- state.cur_id + 1;
-        Lwt_log.ign_info_f "received new query (id %d)" id;
-        state.num_clients <- state.num_clients + 1;
-        handle_acquire ~state id (ic,oc) q
-    | Message.Status ->
-        handle_status ~state oc
-    | Message.StopAccepting ->
-        stop_accepting ~state
-    | ( Message.StatusAnswer _
-      | Message.Release
-      | Message.Go
-      | Message.Reject
-      ) as msg ->
-        Lwt.fail (Message.Unexpected msg)
-
-  (* spawn a daemon, to listen on the given port *)
-  let spawn port =
-    Lwt_log.ign_info_f "starting daemon on port %d" port;
-    let addr = Unix.ADDR_INET (Unix.inet_addr_loopback, port) in
-    let scheduler = Lwt_mvar.create_empty () in
-    let state = make_state () in
-    (* scheduler *)
-    Lwt_log.ign_info "start scheduler";
-    let run_scheduler = start_scheduler ~state () in
-    Lwt_log.ign_info "scheduler started";
-    (* server that listens for incoming clients *)
-    let server = Lwt_io.establish_server addr
-      (fun (ic,oc) ->
-        Lwt.async (fun () -> handle_client ~state ic oc)
-      )
-    in
-    (* stop *)
-    Lwt_log.ign_debug "daemon started";
-    run_scheduler >>= fun () ->
-    Lwt_log.ign_debug "daemon's server is stopping";
-    Lwt_io.shutdown_server server;
-    Lwt.return_unit
-
-  (* fork and spawn a daemon on the given port *)
-  let fork_and_spawn port =
-    match Lwt_unix.fork () with
-    | 0 -> (* child, will be the daemon *)
-      Lwt_daemon.daemonize ~syslog:false ~directory:"/tmp"
-        ~stdin:`Close ~stdout:`Close ~stderr:`Close ();
-      (* change logger *)
-      Lwt_log.file ~mode:`Append ~perm:0o666 ~file_name:"/tmp/join_lock.log" ()
-      >>= fun logger ->
-      Lwt_log.default := logger;
-      Lwt_log.add_rule "*" Lwt_log.Info;
-      let thread = Lwt.catch
-        (fun () -> spawn port)
-        (fun e ->
-          Lwt_log.ign_error_f "daemon: error: %s" (Printexc.to_string e);
-          Lwt.return_unit
-        )
-      in
-      Lwt.return (`child thread)
-    | _ -> Lwt.return `parent
-end
-
-(** {2 Client Side} *)
-
-module Client = struct
-  (* given the channels to the daemon, acquire lock, call [f], release lock *)
-  let acquire ic oc ~info f =
-    Lwt_log.ign_debug "acquiring lock...";
-    (* send "acquire" *)
-    let pid = Unix.getpid() in
-    let msg = Message.(Acquire {info; pid}) in
-    Message.print oc msg >>= fun () ->
-    (* expect "go" *)
-    Message.parse ic >>= function
-    | Message.Reject ->
-      Lwt_log.ign_error "lock: rejected (daemon too busy?)";
-      Lwt.fail (Failure "lock demand rejected")
-    | Message.Go ->
-      Lwt_log.ign_debug "acquired lock";
-      Lwt.finalize
-        f
-        (fun () ->
-          (* eventually, release *)
-          Lwt_log.ign_debug "release lock";
-          Message.print oc Message.Release
-        )
-    | msg -> Lwt.fail (Message.Unexpected msg)
-
-  let connect port f =
-    Lwt_log.ign_debug_f "trying to connect to daemon on port %d..." port;
-    let addr = Unix.ADDR_INET (Unix.inet_addr_loopback, port) in
-    Lwt_io.with_connection addr
-      (fun (ic,oc) ->
-        Lwt_log.ign_debug_f "connected to daemon";
-        f ic oc
-      )
-
-  (* connect to the given port. *)
-  let connect_and_acquire port ~info f =
-    connect port
-      (fun ic oc ->
-        acquire ic oc ~info f
-      )
-
-  (* try to connect; if it fails, spawn daemon and retry *)
-  let acquire_or_spawn port ~info f =
-    Lwt.catch
-      (fun () -> connect_and_acquire port ~info f)
-      (fun _e ->
-        (* launch daemon and re-connect *)
-        Lwt_log.ign_info "could not connect; launch daemon...";
-        Lwt_io.flush_all() >>= fun () ->
-        Daemon.fork_and_spawn port >>= function
-        | `child thread ->
-            thread >>= fun() ->
-            Lwt.fail Exit
-        | `parent ->
-            Lwt_unix.sleep 1. >>= fun () ->
-            Lwt_log.ign_info "retry to connect to daemon...";
-            connect_and_acquire port ~info f
-      )
-end
 
 type cmd =
   | Shell of string
@@ -390,40 +65,48 @@ type result = {
 (* main task: acquire lock file, execute command [cmd], release lock *)
 let run_command params =
   let info = show_cmd params.cmd in
-  Client.acquire_or_spawn params.port ~info
-    (fun () ->
-      let cmd, cmd_string = match params.cmd with
-        | PrintStatus
-        | StopAccepting -> assert false
-        | Shell c -> Lwt_process.shell c, c
-        | Exec (prog, args) ->
-            let cmd = prog, Array.of_list (prog::args) in
-            cmd, (String.concat " " (prog::args))
-      in
-      Lwt_log.ign_debug_f "start command %s" cmd_string;
-      let start = Unix.gettimeofday () in
-      Lwt_process.with_process cmd
-        (fun process ->
-          (* launch command, read its output line by line and
-            display it at the same time *)
-          let lines_stream = Lwt_io.read_lines process#stdout in
-          let buf = Buffer.create 256 in
-          Lwt_stream.iter_s
-            (fun line ->
-              Buffer.add_string buf line;
-              Buffer.add_char buf '\n';
-              Lwt_io.printl line
-            ) lines_stream
-          >>= fun () ->
-          process#status >>= fun status ->
-          (* measure time elapsed since we started the process *)
-          let stop = Unix.gettimeofday () in
-          let time = stop -. start in
-          Lwt_log.ign_debug_f "command finished after %.2fs" time;
-          let res = {res_cmd=cmd_string; out=Buffer.contents buf;
-                     time; status; pid=process#pid; } in
-          Lwt.return res
-        )
+  let user = try Some(Sys.getenv "USER") with _ -> None in
+  FrogLockClient.connect_or_spawn params.port
+    (fun daemon ->
+      FrogLockClient.acquire ?user ~info daemon
+        (function
+        | true ->
+          let cmd, cmd_string = match params.cmd with
+            | PrintStatus
+            | StopAccepting -> assert false
+            | Shell c -> Lwt_process.shell c, c
+            | Exec (prog, args) ->
+                let cmd = prog, Array.of_list (prog::args) in
+                cmd, (String.concat " " (prog::args))
+          in
+          Lwt_log.ign_debug_f "start command %s" cmd_string;
+          let start = Unix.gettimeofday () in
+          Lwt_process.with_process cmd
+            (fun process ->
+              (* launch command, read its output line by line and
+                display it at the same time *)
+              let lines_stream = Lwt_io.read_lines process#stdout in
+              let buf = Buffer.create 256 in
+              Lwt_stream.iter_s
+                (fun line ->
+                  Buffer.add_string buf line;
+                  Buffer.add_char buf '\n';
+                  Lwt_io.printl line
+                ) lines_stream
+              >>= fun () ->
+              process#status >>= fun status ->
+              (* measure time elapsed since we started the process *)
+              let stop = Unix.gettimeofday () in
+              let time = stop -. start in
+              Lwt_log.ign_debug_f ~section "command finished after %.2fs" time;
+              let res = {res_cmd=cmd_string; out=Buffer.contents buf;
+                         time; status; pid=process#pid; } in
+              Lwt.return (Some res)
+            )
+      | false ->
+          Lwt_log.ign_info_f "could not acquire lock";
+          Lwt.return_none
+      )
     )
 
 (* send a recap mail to the given address *)
@@ -464,52 +147,40 @@ let send_mails params res =
           Lwt_log.error_f "could not send mail to %s: %s" addr msg)
     ) params.mails
 
+module M = FrogLockMessages
+
+let maybe_str = function
+  | None -> "<none>"
+  | Some s -> s
+
 (* connect to daemon (if any) and ask status *)
 let print_status params =
-  let module M = Message in
   Lwt.catch
     (fun () ->
-      Client.connect params.port
-        (fun ic oc ->
-          Lwt.catch
-            (fun () ->
-              M.print oc M.Status >>= fun () ->
-              M.parse ic >>= function
-              | M.StatusAnswer {M.current=c; waiting} ->
-                  begin match c with
-                    | None -> Lwt.return_unit
-                    | Some c ->
-                        let time = Unix.gettimeofday() -. c.M.current_start in
-                        Lwt_io.printlf "current job (pid %d, running for %.2fs): %s"
-                          c.M.current_pid time c.M.current_info
-                  end >>= fun () ->
-                  Lwt_list.iter_s
-                    (fun job ->
-                      Lwt_io.printlf "waiting job n°%d (pid %d): %s"
-                        job.M.waiting_id job.M.waiting_pid job.M.waiting_info
-                    ) waiting
-              | m ->
-                  Lwt.fail (M.Unexpected m)
-            )
-            (fun e ->
-              Lwt_log.ign_error_f "error: %s" (Printexc.to_string e);
-              Lwt.return_unit
-            )
-        )
-    )
-    (fun _ ->
-      Lwt_log.ign_info_f "daemon not running";
-      Lwt.return_unit
-    )
-
-(* connect to daemon (if any) and tell it to stop *)
-let stop_accepting params =
-  Lwt.catch
-    (fun () -> Client.connect params.port
-      (fun _ic oc -> Message.print oc Message.StopAccepting)
+      FrogLockClient.get_status params.port >>= function
+      | None ->
+        Lwt_log.info_f ~section "daemon not running"
+      | Some {M.current=c; waiting} ->
+          begin match c with
+            | None -> Lwt.return_unit
+            | Some c ->
+                let time = Unix.gettimeofday() -. c.M.current_start in
+                Lwt_io.printlf "current job (user %s, pid %d, running for %.2fs): %s"
+                  (maybe_str c.M.current_user)
+                  c.M.current_pid time
+                  (maybe_str c.M.current_info)
+          end >>= fun () ->
+          Lwt_list.iter_s
+            (fun job ->
+              Lwt_io.printlf "waiting job n°%d (user %s, pid %d): %s"
+                job.M.waiting_id
+                  (maybe_str job.M.waiting_user)
+                  job.M.waiting_pid
+                  (maybe_str job.M.waiting_info)
+            ) waiting
     )
     (fun e ->
-      Lwt_log.ign_error_f "error: %s" (Printexc.to_string e);
+      Lwt_log.ign_error_f ~section "error: %s" (Printexc.to_string e);
       Lwt.return_unit
     )
 
@@ -522,13 +193,16 @@ let main params =
       );
       match params.cmd with
       | PrintStatus -> print_status params
-      | StopAccepting -> stop_accepting params
+      | StopAccepting -> FrogLockClient.stop_accepting params.port
       | Exec _
       | Shell _ ->
-          run_command params >>= fun res ->
-          (* TODO: print more details, like return code *)
-          Lwt_log.ign_info_f "process ran in %.2fs (pid: %d)\n" res.time res.pid;
-          send_mails params res
+          run_command params >>= function
+          | None -> Lwt.return_unit
+          | Some res ->
+            (* TODO: print more details, like return code *)
+            Lwt_log.ign_info_f ~section "process ran in %.2fs (pid: %d)\n"
+              res.time res.pid;
+            send_mails params res
     )
 
 (** {2 Main} *)
