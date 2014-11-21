@@ -70,7 +70,6 @@ let run_command params =
   let cwd = Sys.getcwd () in
   FrogLockClient.connect_or_spawn ~log_file:"/tmp/froglock.log" params.port
     (fun daemon ->
-      Lwt_log.add_rule "*" Lwt_log.Info;
       FrogLockClient.acquire ~cwd ?user ~info ~tags:params.tags daemon
         (function
         | true ->

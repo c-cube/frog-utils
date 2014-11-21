@@ -245,10 +245,12 @@ let fork_and_spawn ?log_file port =
     Lwt_daemon.daemonize ~syslog:false ~directory:"/tmp"
       ~stdin:`Close ~stdout:`Close ~stderr:`Keep ();
     setup_loggers ?log_file () >>= fun () ->
+    Lwt_log.Section.set_level section Lwt_log.Info;
+    Lwt_log.ign_debug ~section "loggers are setup";
     let thread = Lwt.catch
       (fun () -> spawn port)
       (fun e ->
-        Lwt_log.ign_error_f "daemon: error: %s" (Printexc.to_string e);
+        Lwt_log.ign_error_f ~section "daemon: error: %s" (Printexc.to_string e);
         Lwt.return_unit
       )
     in
