@@ -70,13 +70,13 @@ let acquire ?user ?info {ic; oc} f =
   | msg -> Lwt.fail (M.Unexpected msg)
 
 (* try to connect; if it fails, spawn daemon and retry *)
-let connect_or_spawn ?(retry=1.) port f =
+let connect_or_spawn ?log_file ?(retry=1.) port f =
   Lwt.catch
     (fun () -> connect port f)
     (fun _e ->
       (* launch daemon and re-connect *)
       Lwt_log.ign_info ~section "could not connect; launch daemon...";
-      FrogLockDaemon.fork_and_spawn port >>= function
+      FrogLockDaemon.fork_and_spawn ?log_file port >>= function
       | `child thread ->
           thread >>= fun() ->
           Lwt.fail Exit

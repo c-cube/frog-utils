@@ -66,7 +66,7 @@ type result = {
 let run_command params =
   let info = show_cmd params.cmd in
   let user = try Some(Sys.getenv "USER") with _ -> None in
-  FrogLockClient.connect_or_spawn params.port
+  FrogLockClient.connect_or_spawn ~log_file:"/tmp/froglock.log" params.port
     (fun daemon ->
       FrogLockClient.acquire ?user ~info daemon
         (function

@@ -42,7 +42,8 @@ val acquire : ?user:string -> ?info:string ->
     @param info additional info about the lock acquisition
     @param user who did ask for the lock? *)
 
-val connect_or_spawn : ?retry:float -> int -> (remote_daemon -> 'a Lwt.t) -> 'a Lwt.t
+val connect_or_spawn : ?log_file:string -> ?retry:float ->
+                       int -> (remote_daemon -> 'a Lwt.t) -> 'a Lwt.t
 (** Similar to {!connect}, but if it could connect it launches the daemon
     and waits {!retry} seconds before retrying. *)
 

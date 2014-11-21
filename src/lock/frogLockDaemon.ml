@@ -61,6 +61,10 @@ let make_state () = {
   scheduler = Lwt_mvar.create_empty ();
 }
 
+let maybe_str = function
+  | None -> "<none>"
+  | Some s -> s
+
 (* scheduler: receives requests from several clients, and pings them back *)
 let start_scheduler ~state () =
   let inbox = state.scheduler in
@@ -105,9 +109,9 @@ let start_scheduler ~state () =
       let task = Queue.take state.queue in
       Lwt_log.ign_info_f ~section "start task %d (user %s, pid %d): %s"
         task.id
-        ([%show:string option] task.query.M.user)
+        (maybe_str task.query.M.user)
         task.query.M.pid
-        ([%show:string option] task.query.M.info);
+        (maybe_str task.query.M.info);
       let cur = {
         M.current_id=task.id;
         current_user=task.query.M.user;
@@ -213,20 +217,39 @@ let spawn port =
   Lwt_io.shutdown_server server;
   Lwt.return_unit
 
-(* TODO: more general logging (param for the file; syslog)? *)
 (* TODO: change log level through connection *)
 
+let setup_loggers  ?log_file () =
+  let syslog = Lwt_log.syslog ~facility:`User () in
+  Lwt_log.default := syslog;
+  begin match log_file with
+    | None -> Lwt.return_unit
+    | Some file_name ->
+        (* also redirect to the given file *)
+        Lwt.catch
+          (fun () ->
+            Lwt_log.file ~mode:`Append ~perm:0o666 ~file_name ()
+            >>= fun log' ->
+            let all_log = Lwt_log.broadcast [log'; syslog] in
+            Lwt_log.default := all_log;
+            Lwt.return_unit
+          )
+          (fun e ->
+            Lwt_io.eprintlf "error opening log file %s" file_name >>= fun () ->
+            Lwt_log.ign_error_f "could not open file %s: %s"
+              file_name (Printexc.to_string e);
+            Lwt.return_unit
+          )
+  end >>= fun () ->
+  Lwt_io.close Lwt_io.stderr
+
 (* fork and spawn a daemon on the given port *)
-let fork_and_spawn port =
+let fork_and_spawn ?log_file port =
   match Lwt_unix.fork () with
   | 0 -> (* child, will be the daemon *)
     Lwt_daemon.daemonize ~syslog:false ~directory:"/tmp"
-      ~stdin:`Close ~stdout:`Close ~stderr:`Close ();
-    (* change logger *)
-    Lwt_log.file ~mode:`Append ~perm:0o666 ~file_name:"/tmp/join_lock.log" ()
-    >>= fun logger ->
-    Lwt_log.default := logger;
-    Lwt_log.add_rule "*" Lwt_log.Info;
+      ~stdin:`Close ~stdout:`Close ~stderr:`Keep ();
+    setup_loggers ?log_file () >>= fun () ->
     let thread = Lwt.catch
       (fun () -> spawn port)
       (fun e ->
