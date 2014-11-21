@@ -1,12 +1,12 @@
 
 OPTIONS=-use-ocamlfind
 
-LIB_NAMES=frogreduce libfroglock
-LIB=$(addprefix $(LIB_NAME), .cma .cmxa .cmxs)
+LIB_NAMES=libfroglock
+LIBS=$(addprefix $(LIB_NAMES), .cma .cmxa .cmxs)
 BINARIES=froglock.native frogmap.native
 TARGETS=$(LIBS) $(BINARIES)
 
-BINDIR=/usr/local/bin
+BINDIR=/usr/local/bin/
 
 all:
 	ocamlbuild $(OPTIONS) $(TARGETS)
@@ -14,15 +14,15 @@ all:
 clean:
 	ocamlbuild -clean
 
-BIN_INSTALL_DIR="$(BINDIR)/froglock/"
+INSTALL_TARGETS=$(addprexix _build/src/lock/, $(LIBS))
 
 install: all
-	ocamlfind install frogutils META $(LIBS)
+	ocamlfind install frogutils META $(INSTALL_TARGETS)
 	mkdir -p "$(BIN_INSTALL_DIR)/"
-	cp $(BINARIES) "$(BIN_INSTALL_DIR)/"
+	cp $(BINARIES) "$(BINDIR)/"
 
 uninstall:
 	ocamlfind remove frogutils
-	rm $(addprefix "$(BIN_INSTALL_DIR)/", $(BINARIES))
+	rm $(addprefix "$(BINDIR)/", $(BINARIES)) || true
 
 PHONY: all clean install uninstall
