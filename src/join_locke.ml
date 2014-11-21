@@ -325,7 +325,7 @@ module Client = struct
         (fun () ->
           (* eventually, release *)
           Lwt_log.ign_debug "release lock";
-          write_line oc "release"
+          Message.print oc Message.Release
         )
     | msg -> Lwt.fail (Message.Unexpected msg)
 
