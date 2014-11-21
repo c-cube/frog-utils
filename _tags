@@ -1,6 +1,10 @@
 true: warn_A, warn(-4), warn(-44)
 <src>: include
-<src/**/*>: package(unix), package(lwt), package(lwt.unix), package(smtp), \
-            package(smtp.lwt), package(ppx_deriving.std), \
+<src/lock>: include
+<src/map>: include
+<src/reduce>: include
+<src/**/*>: package(ppx_deriving_yojson), package(unix), package(lwt), \
+            package(lwt.unix), package(ppx_deriving.std), \
             package(ppx_deriving_yojson)
+<src/lock/*>: package(smtp), package(smtp.lwt)
 
