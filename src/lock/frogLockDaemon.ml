@@ -34,7 +34,7 @@ let section = Lwt_log.Section.make "FrogLockDaemon"
 type acquire_task = {
   box : unit Lwt_mvar.t;
   id : int;
-  query : M.acquire_query;
+  query : M.job;
 }
 
 (* internal message between client handlers and the scheduler *)
@@ -82,7 +82,7 @@ let start_scheduler ~state () =
         | Some t when t.M.current_id = task'.id ->
             (* task if finished, run the next one *)
             Lwt_log.ign_info_f ~section "task %d finished (pid %d) after %.2fs"
-              task'.id t.M.current_pid
+              task'.id t.M.current_job.M.pid
               (Unix.gettimeofday() -. t.M.current_start);
             state.current <- None;
             run_next ()
@@ -113,12 +113,8 @@ let start_scheduler ~state () =
         task.query.M.pid
         (maybe_str task.query.M.info);
       let cur = {
-        M.current_id=task.id;
-        current_user=task.query.M.user;
-        current_tags=task.query.M.tags;
-        current_pid=task.query.M.pid;
-        current_info=task.query.M.info;
-        current_query_time=task.query.M.query_time;
+        M.current_job=task.query;
+        current_id=task.id;
         current_start=Unix.gettimeofday();
       } in
       state.current <- Some cur;
@@ -160,13 +156,8 @@ let stop_accepting ~state =
 let handle_status ~state oc =
   let module M = M in
   let waiting = Queue.fold
-    (fun acc job ->
-      {M.waiting_pid=job.query.M.pid;
-       waiting_user=job.query.M.user;
-       waiting_id=job.id;
-       waiting_query_time=job.query.M.query_time;
-       waiting_tags=job.query.M.tags;
-       waiting_info=job.query.M.info} :: acc
+    (fun acc task ->
+      { M.waiting_id=task.id; waiting_job=task.query; } :: acc
     ) [] state.queue
   in
   let waiting = List.rev waiting in

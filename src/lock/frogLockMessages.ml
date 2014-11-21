@@ -29,32 +29,25 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 let (>>=) = Lwt.(>>=)
 let (>|=) = Lwt.(>|=)
 
-(* a message "acquire" *)
-type acquire_query = {
+type job = {
   info : string option;
   user : string option;
   query_time : float; (* time at which the query was issued *)
+  cwd : string option; (* working dir *)
   tags : string list;
   pid : int;
-} [@@deriving yojson,show]
+}
+[@@deriving yojson,show]
 
 type current_job = {
-  current_id : int;  (* job ID *)
-  current_pid : int;
-  current_info : string option;
-  current_user : string option;
-  current_tags : string list;
-  current_query_time : float; (* query time *)
-  current_start : float;  (* start time *)
+  current_job : job;
+  current_id : int;
+  current_start : float;  (* time at which task started *)
 } [@@deriving yojson,show]
 
 type waiting_job = {
+  waiting_job : job;
   waiting_id : int;
-  waiting_pid : int;
-  waiting_info : string option;
-  waiting_tags : string list;
-  waiting_query_time : float;
-  waiting_user : string option;
 } [@@deriving yojson,show]
 
 type status_answer = {
@@ -63,7 +56,7 @@ type status_answer = {
 } [@@deriving yojson,show]
 
 type t =
-  | Acquire of acquire_query
+  | Acquire of job
   | Release
   | Go (* acquisition succeeded *)
   | Status

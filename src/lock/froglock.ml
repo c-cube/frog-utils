@@ -67,9 +67,11 @@ type result = {
 let run_command params =
   let info = show_cmd params.cmd in
   let user = try Some(Sys.getenv "USER") with _ -> None in
+  let cwd = Sys.getcwd () in
   FrogLockClient.connect_or_spawn ~log_file:"/tmp/froglock.log" params.port
     (fun daemon ->
-      FrogLockClient.acquire ?user ~info ~tags:params.tags daemon
+      Lwt_log.add_rule "*" Lwt_log.Info;
+      FrogLockClient.acquire ~cwd ?user ~info ~tags:params.tags daemon
         (function
         | true ->
           let cmd, cmd_string = match params.cmd with
@@ -172,22 +174,24 @@ let print_status params =
             | None -> Lwt.return_unit
             | Some c ->
                 let time = Unix.gettimeofday() -. c.M.current_start in
-                Lwt_io.printlf "current job (user %s, pid %d, issued %.2fs ago, %s running for %.2fs): %s"
-                  (maybe_str c.M.current_user)
-                  c.M.current_pid
-                  (now -. c.M.current_query_time)
-                  (tags2str c.M.current_tags)
-                  time (maybe_str c.M.current_info)
+                let job = c.M.current_job in
+                Lwt_io.printlf "current job (user %s, pid %d, cwd %s, issued %.2fs ago%s, running for %.2fs): %s"
+                  (maybe_str job.M.user)
+                  job.M.pid (maybe_str job.M.cwd)
+                  (now -. job.M.query_time)
+                  (tags2str job.M.tags)
+                  time (maybe_str job.M.info)
           end >>= fun () ->
           Lwt_list.iter_s
-            (fun job ->
-              Lwt_io.printlf "waiting job n°%d (user %s, pid %d, issued %.2fs ago%s): %s"
-                job.M.waiting_id
-                (maybe_str job.M.waiting_user)
-                job.M.waiting_pid
-                (now -. job.M.waiting_query_time)
-                (tags2str job.M.waiting_tags)
-                (maybe_str job.M.waiting_info)
+            (fun wjob ->
+              let job = wjob.M.waiting_job in
+              Lwt_io.printlf "waiting job n°%d (user %s, pid %d, cwd %s, issued %.2fs ago%s): %s"
+                wjob.M.waiting_id
+                (maybe_str job.M.user)
+                job.M.pid (maybe_str job.M.cwd)
+                (now -. job.M.query_time)
+                (tags2str job.M.tags)
+                (maybe_str job.M.info)
             ) waiting
     )
     (fun e ->
