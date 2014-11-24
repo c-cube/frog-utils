@@ -53,9 +53,9 @@ let make_fresh_file ?dir pattern =
     | Some d -> d
     | None -> Sys.getcwd ()
   in
-  let cmd = Printf.sprintf "mktemp -d '%s' '%s'" dir pattern |> Lwt_process.shell in
+  let cmd = Printf.sprintf "mktemp --tmpdir='%s' '%s'" dir pattern |> Lwt_process.shell in
   Lwt_process.with_process_in cmd
-    (fun p -> Lwt_io.read p#stdout)
+    (fun p -> Lwt_io.read_line p#stdout)
 
 let print_job oc job =
   let s = Yojson.Safe.to_string (job_to_yojson job) in

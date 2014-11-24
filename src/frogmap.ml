@@ -110,8 +110,8 @@ let resume ?timeout ~j file =
   Lwt_log.ign_debug_f "change directory to %s" job.S.cwd;
   Sys.chdir job.S.cwd;
   (* execute remaining tasks *)
-  Lwt_log.ign_debug_f "resume: %d remaining tasks (%d done)"
-    (List.length remaining_tasks) (StrSet.cardinal done_tasks);
+  Lwt_io.printlf "resume: %d remaining tasks (%d done)"
+    (List.length remaining_tasks) (StrSet.cardinal done_tasks) >>= fun () ->
   S.append_job ~file
     (fun yield_res ->
       map_args ?timeout ~j job.S.cmd yield_res remaining_tasks
@@ -119,12 +119,12 @@ let resume ?timeout ~j file =
 
 let run_map params cmd args =
   (* chose output file *)
-  ( match params.filename with
-    | None -> S.make_fresh_file ?dir:params.dir "frogmapXXXXX"
+  begin match params.filename with
+    | None -> S.make_fresh_file ?dir:params.dir "frogmapXXXXX.json"
     | Some f -> Lwt.return f
-  ) >>= fun file ->
-  Lwt_log.ign_debug_f "run command '%s' on %d arguments, parallelism %d"
-    cmd (List.length args) params.parallelism_level;
+  end >>= fun file ->
+  Lwt_io.printlf "run command '%s' on %d arguments, parallelism %d, output to %s"
+    cmd (List.length args) params.parallelism_level file >>= fun () ->
   let job = {S.cmd = cmd; arguments=args; cwd= Sys.getcwd(); } in
   (* open file *)
   S.make_job ~file job
