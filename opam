@@ -11,7 +11,7 @@ build: [
   [make]
 ]
 install: [make "BINDIR=%{bin}%" "install"]
-remove: ["ocamlfind" "remove" "join-locke"]
+remove: ["ocamlfind" "remove" "frogutils"]
 depends: [
     "ocamlfind" {build}
     "lwt"
