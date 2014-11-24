@@ -6,7 +6,6 @@ B _build/src/map/
 B _build/src/reduce
 PKG lwt
 PKG lwt.unix
-PKG ppx_lwt
 PKG unix
 PKG smtp.lwt
 PKG yojson

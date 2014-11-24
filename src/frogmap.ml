@@ -25,3 +25,5 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *)
 
 (** {1 Map a command on many arguments, with parallelism} *)
+
+(* TODO: use FrogMapState to store result; use Lwt_process for the rest *)
