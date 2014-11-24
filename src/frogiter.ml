@@ -31,12 +31,18 @@ module S = FrogMapState
 
 let (>>=) = Lwt.(>>=)
 
+(* what kind of input to give to the command, for every result? *)
+type format_in =
+  | OutOnly  (* pass result.res_out to command *)
+  | Prelude  (* pass result.res_out + prelude with other data *)
+  | AsArg    (* do not use cmd.stdin, but give result.res_out as CLI arg *)
+
 type cmd =
   | Shell of string
   | Exec of string * string list
 
 type params = {
-  out_only : bool;
+  format_in : format_in;
   cmd : cmd;
   filename : string;
 }
@@ -49,18 +55,23 @@ let print_prelude oc res =
 
 (* run command on the given result *)
 let run_cmd params res =
-  let cmd = match params.cmd with
-    | Shell c -> Lwt_process.shell c
-    | Exec (p, args) -> (p, Array.of_list (p::args))
+  let cmd = match params.cmd, params.format_in with
+    | Shell c, AsArg -> Lwt_process.shell (c ^ " '" ^ res.S.res_out ^ "'")
+    | Shell c, _ -> Lwt_process.shell c
+    | Exec (p, args), AsArg -> (p, Array.of_list (p::args @ [res.S.res_out]))
+    | Exec (p, args), _ -> (p, Array.of_list (p::args))
   in
   Lwt_process.with_process_out
     ~stdout:`Keep ~stderr:`Keep cmd
     (fun p ->
-      (if params.out_only
-        then Lwt.return_unit
-        else print_prelude p#stdin res
-      ) >>= fun () ->
-      Lwt_io.write p#stdin res.S.res_out >>= fun () ->
+      begin match params.format_in with
+      | OutOnly ->
+          Lwt_io.write p#stdin res.S.res_out
+      | Prelude ->
+          print_prelude p#stdin res >>= fun () ->
+          Lwt_io.write p#stdin res.S.res_out
+      | AsArg -> Lwt.return_unit
+      end >>= fun () ->
       Lwt_io.close p#stdin >>= fun () ->
       p#status >>= fun _ ->
       Lwt.return_unit
@@ -77,7 +88,7 @@ let main params =
 
 
 
-let out_only_ = ref false
+let format_in_ = ref OutOnly
 let cmd_ = ref []
 let shell_cmd_ = ref None
 let file_ = ref None
@@ -85,13 +96,17 @@ let file_ = ref None
 let push_ s = match !file_ with
   | None -> file_ := Some s
   | Some _ -> cmd_ := s :: !cmd_
+let set_format_in_ x () = format_in_ := x
 
 let usage = "iter [options] <file> [--] <cmd>\
   call the command <cmd> on every result in <file>, piping the result's output\
   into <cmd>'s input"
 
 let options = Arg.align
-  [ "-out", Arg.Set out_only_, " only print the stdout"
+  [ "-prelude", Arg.Unit (set_format_in_ Prelude),
+      " pipe additional info about the result into the command"
+  ; "-arg", Arg.Unit (set_format_in_ AsArg),
+      " give res.output as a CLI argument to <cmd>"
   ; "-c", Arg.String (fun s -> shell_cmd_ := Some s), " invoke command in a shell"
   ; "--", Arg.Rest push_, " start parsing command"
   ]
@@ -99,7 +114,7 @@ let options = Arg.align
 let () =
   Arg.parse options push_ usage;
   let mk_params filename cmd =
-    {out_only= !out_only_; cmd; filename}
+    {format_in= !format_in_; cmd; filename}
   in
   let params = match !file_, !shell_cmd_, List.rev !cmd_ with
     | Some filename, Some cmd, _ ->
