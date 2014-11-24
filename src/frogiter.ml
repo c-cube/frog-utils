@@ -98,8 +98,8 @@ let push_ s = match !file_ with
   | Some _ -> cmd_ := s :: !cmd_
 let set_format_in_ x () = format_in_ := x
 
-let usage = "iter [options] <file> [--] <cmd>\
-  call the command <cmd> on every result in <file>, piping the result's output\
+let usage = "iter [options] <file> [--] <cmd>\n\
+  call the command <cmd> on every result in <file>, piping the result's output\n\
   into <cmd>'s input"
 
 let options = Arg.align

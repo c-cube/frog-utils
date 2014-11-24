@@ -150,6 +150,7 @@ let file_ = ref None
 let dir_ = ref None
 let timeout_ = ref None
 let resume_ = ref None
+let file_args_ = ref None
 
 let set_file_ s = file_ := Some s
 let set_dir_ s = dir_ := Some s
@@ -164,9 +165,10 @@ let set_debug_ () =
 let set_resume_ s = match !resume_ with
   | Some _ -> failwith "can resume at most one file"
   | None -> resume_ := Some s
+let set_file_args_ f = file_args_ := Some f
 
 let usage =
-  "map [options] <file> cmd [--] arg [arg...] \
+  "map [options] <file> cmd [--] arg [arg...] \n\
   map [options] -resume <file>"
 
 let options = Arg.align
@@ -176,24 +178,37 @@ let options = Arg.align
   ; "-timeout", Arg.Float set_timeout_, " timeout for the command (in s)"
   ; "-debug", Arg.Unit set_debug_, " enable debug messages"
   ; "-resume", Arg.String set_resume_, " resume given file"
+  ; "-F", Arg.String set_file_args_, " read arguments from file"
   ; "--", Arg.Rest push_, " arguments to the command"
   ]
 
-(* TODO: handle "resume" *)
+let read_file_args file =
+  Lwt_io.with_file ~mode:Lwt_io.input file
+    (fun ic ->
+      let lines = Lwt_io.read_lines ic in
+      Lwt_stream.to_list lines
+    )
+
+let read_params () =
+  let mk_params cmd =
+    Lwt.return {
+      cmd;
+      filename= !file_;
+      dir= !dir_;
+      parallelism_level= !j_;
+      timeout = !timeout_;
+    }
+  in
+  match !resume_, !cmd_ with
+    | Some f, _ -> mk_params (Resume f)
+    | None, Some c ->
+        begin match !file_args_ with
+          | None -> Lwt.return (List.rev !args_)
+          | Some f -> read_file_args f
+        end >>= fun args ->
+        mk_params (Run (c, args))
+    | None, None -> Arg.usage options usage; exit 1
 
 let () =
   Arg.parse options push_ usage;
-  let mk_params cmd = {
-    cmd;
-    filename= !file_;
-    dir= !dir_;
-    parallelism_level= !j_;
-    timeout = !timeout_;
-  }
-  in
-  let params = match !resume_, !cmd_ with
-    | Some f, _ -> mk_params (Resume f)
-    | None, Some c -> mk_params (Run (c, List.rev !args_))
-    | None, None -> Arg.usage options usage; exit 1
-  in
-  Lwt_main.run (main params)
+  Lwt_main.run (read_params () >>= main)
