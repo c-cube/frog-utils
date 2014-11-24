@@ -64,21 +64,13 @@ let print_job oc job =
 (* given a handle to the result file, adds the result to it *)
 let add_res oc res =
   let s = Yojson.Safe.to_string (result_to_yojson res) in
-  Lwt_io.write_line oc s
+  Lwt_io.write_line oc s >>= fun () ->
+  Lwt_io.flush oc
 
 (* TODO: locking *)
 
-let truncate_if_exists file =
-  Lwt.async
-    (fun () ->
-      Lwt.catch
-        (fun () -> Lwt_unix.truncate file 0)
-        (fun e -> Lwt.return_unit)
-    )
-
 let make_job ~file job f =
-  truncate_if_exists file;
-  let flags = [Unix.O_WRONLY; Unix.O_CREAT; Unix.O_SYNC] in
+  let flags = [Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC; Unix.O_SYNC] in
   Lwt_io.with_file ~flags~perm:0o644 ~mode:Lwt_io.output file
     (fun oc ->
       (* print header *)
@@ -89,7 +81,7 @@ let make_job ~file job f =
 
 (* TODO: function to open already existing job file (for "resume") *)
 let append_job ~file f =
-  let flags = [Unix.O_APPEND; Unix.O_SYNC] in
+  let flags = [Unix.O_APPEND; Unix.O_WRONLY; Unix.O_SYNC] in
   Lwt_io.with_file ~flags~perm:0o644 ~mode:Lwt_io.output file
     (fun oc ->
       f (add_res oc)
