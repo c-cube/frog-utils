@@ -40,6 +40,7 @@ type format_in =
 type cmd =
   | Shell of string
   | Exec of string * string list
+  | Stats
 
 type params = {
   format_in : format_in;
@@ -60,6 +61,7 @@ let run_cmd params res =
     | Shell c, _ -> Lwt_process.shell c
     | Exec (p, args), AsArg -> (p, Array.of_list (p::args @ [res.S.res_out]))
     | Exec (p, args), _ -> (p, Array.of_list (p::args))
+    | Stats, _ -> assert false
   in
   Lwt_process.with_process_out
     ~stdout:`Keep ~stderr:`Keep cmd
@@ -77,12 +79,31 @@ let run_cmd params res =
       Lwt.return_unit
     )
 
+(* print some statistics *)
+let show_stats filename =
+  S.read_state filename >>= fun (job, map) ->
+  Lwt_io.printlf "job: run '%s' on %d arguments"
+    job.S.cmd (List.length job.S.arguments)  >>= fun () ->
+  (* compute basic statistics *)
+  let foi = float_of_int in
+  let num, sum_len_out = S.StrMap.fold
+    (fun _ res (num,sum_len_out) ->
+      num + 1, sum_len_out + String.length res.S.res_out
+    ) map (0,0)
+  in
+  Lwt_io.printlf "%d arguments dealt with, total length of outputs %d (avg output len %.2f)"
+    num sum_len_out (if num=0 then 0. else foi sum_len_out /. foi num)
+
 let main params =
-  FrogMapState.fold_state_s
-    (fun () res ->
-      run_cmd params res
-    ) (fun _job -> Lwt.return_unit)
-    params.filename
+  match params.cmd with
+  | Stats -> show_stats params.filename
+  | Shell _
+  | Exec _ ->
+      FrogMapState.fold_state_s
+        (fun () res ->
+          run_cmd params res
+        ) (fun _job -> Lwt.return_unit)
+        params.filename
 
 (** {2 Main} *)
 
@@ -92,6 +113,7 @@ let format_in_ = ref OutOnly
 let cmd_ = ref []
 let shell_cmd_ = ref None
 let file_ = ref None
+let stats_ = ref false
 
 let push_ s = match !file_ with
   | None -> file_ := Some s
@@ -107,6 +129,7 @@ let options = Arg.align
       " pipe additional info about the result into the command"
   ; "-arg", Arg.Unit (set_format_in_ AsArg),
       " give res.output as a CLI argument to <cmd>"
+  ; "-stats", Arg.Set stats_, " print statistics about the file"
   ; "-c", Arg.String (fun s -> shell_cmd_ := Some s), " invoke command in a shell"
   ; "--", Arg.Rest push_, " start parsing command"
   ]
@@ -117,6 +140,7 @@ let () =
     {format_in= !format_in_; cmd; filename}
   in
   let params = match !file_, !shell_cmd_, List.rev !cmd_ with
+    | Some filename, _, _ when !stats_ -> mk_params filename Stats
     | Some filename, Some cmd, _ ->
         mk_params filename (Shell cmd)
     | Some filename, None, prog::args ->
