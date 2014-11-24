@@ -83,7 +83,9 @@ let map_args ?timeout ~j cmd yield_res args =
     (fun arg ->
       Lwt_pool.use pool
         (fun () ->
+          Lwt_io.printlf "run on %s..." arg >>= fun () ->
           run_cmd ?timeout cmd arg >>= fun res ->
+          Lwt_io.printlf "... %s: done (errcode %d)" arg res.S.res_errcode >>= fun () ->
           yield_res res  (* output result *)
         )
     ) args
