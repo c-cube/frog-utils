@@ -82,6 +82,8 @@ let run_command params =
                 cmd, (String.concat " " (prog::args))
           in
           Lwt_log.ign_debug_f "start command %s" cmd_string;
+          (* close stdin so that interactive commands fail *)
+          Lwt_io.close Lwt_io.stdin >>= fun () ->
           let start = Unix.gettimeofday () in
           Lwt_process.with_process cmd
             (fun process ->
