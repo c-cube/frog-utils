@@ -30,9 +30,12 @@ module S = FrogMapState
 
 let (>>=) = Lwt.(>>=)
 
+type cmd =
+  | Resume of string   (* resume filename *)
+  | Run of string * string list (* run command *)
+
 type params = {
-  cmd : string;
-  args : string list;
+  cmd : cmd;
   filename : string option;
   dir : string option;
   parallelism_level : int;
@@ -85,26 +88,58 @@ let map_args ?timeout ~j cmd yield_res args =
         )
     ) args
 
-let mk_job params =
-  {S.cmd = params.cmd; arguments=params.args; cwd= Sys.getcwd(); }
+(* TODO: lock result file *)
 
-let main params =
+(** {2 Main Commands} *)
+
+module StrSet = Set.Make(String)
+
+(* resume job from the given file *)
+let resume ?timeout ~j file =
+  (* get the job and the set of executed tasks *)
+  S.fold_state
+    (fun (job,set) res -> job, StrSet.add res.S.res_arg set)
+    (fun job -> job, StrSet.empty)
+    file
+  >>= fun (job, done_tasks) ->
+  let remaining_tasks = List.filter
+    (fun arg -> not (StrSet.mem arg done_tasks))
+    job.S.arguments
+  in
+  (* change directory *)
+  Lwt_log.ign_debug_f "change directory to %s" job.S.cwd;
+  Sys.chdir job.S.cwd;
+  (* execute remaining tasks *)
+  Lwt_log.ign_debug_f "resume: %d remaining tasks (%d done)"
+    (List.length remaining_tasks) (StrSet.cardinal done_tasks);
+  S.append_job ~file
+    (fun yield_res ->
+      map_args ?timeout ~j job.S.cmd yield_res remaining_tasks
+    )
+
+let run_map params cmd args =
   (* chose output file *)
   ( match params.filename with
     | None -> S.make_fresh_file ?dir:params.dir "frogmapXXXXX"
     | Some f -> Lwt.return f
   ) >>= fun file ->
   Lwt_log.ign_debug_f "run command '%s' on %d arguments, parallelism %d"
-    params.cmd (List.length params.args) params.parallelism_level;
-  let job = mk_job params in
+    cmd (List.length args) params.parallelism_level;
+  let job = {S.cmd = cmd; arguments=args; cwd= Sys.getcwd(); } in
+  (* open file *)
   S.make_job ~file job
-    (fun cur_job ->
-      let yield_res = cur_job#add_res in
+    (fun yield_res ->
+      (* map [cmd] on every element of [args] *)
       map_args ?timeout:params.timeout ~j:params.parallelism_level
-        params.cmd yield_res params.args
+        cmd yield_res args
     )
 
-(* TODO: lock result file *)
+let main params =
+  match params.cmd with
+  | Run (cmd, args) ->
+      run_map params cmd args
+  | Resume file ->
+      resume ?timeout:params.timeout ~j:params.parallelism_level file
 
 (** {2 Main} *)
 
@@ -114,6 +149,7 @@ let args_ = ref []
 let file_ = ref None
 let dir_ = ref None
 let timeout_ = ref None
+let resume_ = ref None
 
 let set_file_ s = file_ := Some s
 let set_dir_ s = dir_ := Some s
@@ -125,14 +161,21 @@ let set_timeout_ f =
   else timeout_ := Some f
 let set_debug_ () =
   Lwt_log.add_rule "*" Lwt_log.Debug
+let set_resume_ s = match !resume_ with
+  | Some _ -> failwith "can resume at most one file"
+  | None -> resume_ := Some s
 
-let usage = "iter [options] <file> [--] cmd"
+let usage =
+  "map [options] <file> cmd [--] arg [arg...] \
+  map [options] -resume <file>"
+
 let options = Arg.align
   [ "-j", Arg.Set_int j_, " parallelism level"
   ; "-o", Arg.String set_file_, " set state file"
   ; "-d", Arg.String set_dir_, " directory where to put state file"
   ; "-timeout", Arg.Float set_timeout_, " timeout for the command (in s)"
   ; "-debug", Arg.Unit set_debug_, " enable debug messages"
+  ; "-resume", Arg.String set_resume_, " resume given file"
   ; "--", Arg.Rest push_, " arguments to the command"
   ]
 
@@ -142,15 +185,15 @@ let () =
   Arg.parse options push_ usage;
   let mk_params cmd = {
     cmd;
-    args= List.rev !args_;
     filename= !file_;
     dir= !dir_;
     parallelism_level= !j_;
     timeout = !timeout_;
   }
   in
-  let params = match !cmd_ with
-    | Some c -> mk_params c
-    | None -> Arg.usage options usage; exit 1
+  let params = match !resume_, !cmd_ with
+    | Some f, _ -> mk_params (Resume f)
+    | None, Some c -> mk_params (Run (c, List.rev !args_))
+    | None, None -> Arg.usage options usage; exit 1
   in
   Lwt_main.run (main params)

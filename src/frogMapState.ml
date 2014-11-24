@@ -42,11 +42,7 @@ type result = {
 } [@@deriving yojson,show]
 (** Result of running the command on one argument *)
 
-type current_job = <
-  job : job;
-  add_res : result -> unit Lwt.t;
-> (** Object to manipulate the current job, modifying it and saving
-      it to the disk *)
+type yield_res = result -> unit Lwt.t
 
 let (>>=) = Lwt.(>>=)
 let (>|=) = Lwt.(>|=)
@@ -72,35 +68,32 @@ let add_res oc res =
 
 (* TODO: locking *)
 
+let truncate_if_exists file =
+  Lwt.async
+    (fun () ->
+      Lwt.catch
+        (fun () -> Lwt_unix.truncate file 0)
+        (fun e -> Lwt.return_unit)
+    )
+
 let make_job ~file job f =
+  truncate_if_exists file;
   let flags = [Unix.O_WRONLY; Unix.O_CREAT; Unix.O_SYNC] in
   Lwt_io.with_file ~flags~perm:0o644 ~mode:Lwt_io.output file
     (fun oc ->
       (* print header *)
       print_job oc job >>= fun () ->
-      (* call f with a [current_job] object *)
-      let cur_job : current_job = object
-        method job=job
-        method add_res res = add_res oc res
-      end in
-      f cur_job
+      (* call f with a yield_res function*)
+      f (add_res oc)
     )
 
 (* TODO: function to open already existing job file (for "resume") *)
 let append_job ~file f =
-  assert false
-  (* 
   let flags = [Unix.O_APPEND; Unix.O_SYNC] in
   Lwt_io.with_file ~flags~perm:0o644 ~mode:Lwt_io.output file
     (fun oc ->
-      (* call f with a [current_job] object *)
-      let cur_job : current_job = object
-        method job=job
-        method add_res res = add_res oc res
-      end in
-      f cur_job
+      f (add_res oc)
     )
-    *)
 
 (* stream of json values from [filename] *)
 let read_json_stream filename =

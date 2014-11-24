@@ -86,7 +86,10 @@ let push_ s = match !file_ with
   | None -> file_ := Some s
   | Some _ -> cmd_ := s :: !cmd_
 
-let usage = "iter [options] <file> [--] cmd"
+let usage = "iter [options] <file> [--] <cmd>\
+  call the command <cmd> on every result in <file>, piping the result's output\
+  into <cmd>'s input"
+
 let options = Arg.align
   [ "-out", Arg.Set out_only_, " only print the stdout"
   ; "-c", Arg.String (fun s -> shell_cmd_ := Some s), " invoke command in a shell"

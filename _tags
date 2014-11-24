@@ -6,3 +6,4 @@ true: warn_A, warn(-4), warn(-44)
 <src/**/*>: annot, bin_annot
 <src/froglock.*>: package(smtp), package(smtp.lwt)
 <src/frogLockMessage*>: warn(-39)
+<src/frogMapState*>: warn(-39)
