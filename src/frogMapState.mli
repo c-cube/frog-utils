@@ -26,6 +26,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 (** {1 Persistent State for FrogMap} *)
 
+(** {2 Types} *)
+
 type job = {
   cmd       [@key "cmd"]        : string;
   arguments [@key "arguments"]  : string list;
@@ -42,18 +44,31 @@ type result = {
 } [@@deriving yojson,show]
 (** Result of running the command on one argument *)
 
+(** {2 Creating/Updating State} *)
+
 type current_job = <
   job : job;
   add_res : result -> unit Lwt.t;
-  filename : string;
 > (** Object to manipulate the current job, modifying it and saving
       it to the disk *)
 
-val with_state : ?dir:string -> job -> (current_job -> 'a Lwt.t) -> 'a Lwt.t
-(** [with_state job f] creates a new state file for the given job,
-    in [dir] (default: current dir), tailored for the job.
+val make_fresh_file : ?dir:string -> string -> string Lwt.t
+(** [make_fresh_file pattern] creates a fresh file with the given name
+    pattern.
+    @param dir directory into which to put the file (default: cwd) *)
+
+val make_job : file:string -> job -> (current_job -> 'a Lwt.t) -> 'a Lwt.t
+(** [make_job ~file job f] creates a new state file for the given job,
+    in file [file]. The content of [file] is erased.
     It calls [f] with a value that can be used to push results,
     obtain the file's name, etc. *)
+
+val append_job : file:string -> (current_job -> 'a Lwt.t) -> 'a Lwt.t
+(** [append_job ~file f] opens the file [file], expecting it to be
+    a proper job file
+    TODO: check this property and fail if needed *)
+
+(** {2 Read state} *)
 
 val fold_state_s : ('a -> result -> 'a Lwt.t) -> (job -> 'a Lwt.t)
                   -> string -> 'a Lwt.t

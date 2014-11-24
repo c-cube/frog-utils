@@ -45,7 +45,6 @@ type result = {
 type current_job = <
   job : job;
   add_res : result -> unit Lwt.t;
-  filename : string;
 > (** Object to manipulate the current job, modifying it and saving
       it to the disk *)
 
@@ -53,8 +52,12 @@ let (>>=) = Lwt.(>>=)
 let (>|=) = Lwt.(>|=)
 
 (* create a new file in the given directory with the given "name pattern" *)
-let make_fresh_file dir pattern =
-  let cmd = Printf.sprintf "mkstemp -d '%s' '%s'" dir pattern |> Lwt_process.shell in
+let make_fresh_file ?dir pattern =
+  let dir = match dir with
+    | Some d -> d
+    | None -> Sys.getcwd ()
+  in
+  let cmd = Printf.sprintf "mktemp -d '%s' '%s'" dir pattern |> Lwt_process.shell in
   Lwt_process.with_process_in cmd
     (fun p -> Lwt_io.read p#stdout)
 
@@ -67,25 +70,37 @@ let add_res oc res =
   let s = Yojson.Safe.to_string (result_to_yojson res) in
   Lwt_io.write_line oc s
 
-let with_state ?dir job f =
-  let dir = match dir with
-    | Some d -> d
-    | None -> Sys.getcwd ()
-  in
-  make_fresh_file dir "frogmapXXXXX" >>= fun filename ->
+(* TODO: locking *)
+
+let make_job ~file job f =
   let flags = [Unix.O_WRONLY; Unix.O_CREAT; Unix.O_SYNC] in
-  Lwt_io.with_file ~flags~perm:0o644 ~mode:Lwt_io.output filename
+  Lwt_io.with_file ~flags~perm:0o644 ~mode:Lwt_io.output file
     (fun oc ->
       (* print header *)
       print_job oc job >>= fun () ->
       (* call f with a [current_job] object *)
       let cur_job : current_job = object
-        method filename=filename
         method job=job
         method add_res res = add_res oc res
       end in
       f cur_job
     )
+
+(* TODO: function to open already existing job file (for "resume") *)
+let append_job ~file f =
+  assert false
+  (* 
+  let flags = [Unix.O_APPEND; Unix.O_SYNC] in
+  Lwt_io.with_file ~flags~perm:0o644 ~mode:Lwt_io.output file
+    (fun oc ->
+      (* call f with a [current_job] object *)
+      let cur_job : current_job = object
+        method job=job
+        method add_res res = add_res oc res
+      end in
+      f cur_job
+    )
+    *)
 
 (* stream of json values from [filename] *)
 let read_json_stream filename =
