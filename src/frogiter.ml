@@ -43,8 +43,8 @@ type params = {
 
 (* print metadata of result on the given chan *)
 let print_prelude oc res =
-  Lwt_io.fprintf oc "# argument: %s" res.S.res_arg >>= fun () ->
-  Lwt_io.fprintf oc "# time: %.2f" res.S.res_time >>= fun () ->
+  Lwt_io.fprintf oc "# argument: %s\n" res.S.res_arg >>= fun () ->
+  Lwt_io.fprintf oc "# time: %.2f\n" res.S.res_time >>= fun () ->
   Lwt.return_unit
 
 (* run command on the given result *)
@@ -61,7 +61,7 @@ let run_cmd params res =
         else print_prelude p#stdin res
       ) >>= fun () ->
       Lwt_io.write p#stdin res.S.res_out >>= fun () ->
-      Lwt_io.flush p#stdin >>= fun () ->
+      Lwt_io.close p#stdin >>= fun () ->
       p#status >>= fun _ ->
       Lwt.return_unit
     )
