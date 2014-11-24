@@ -18,11 +18,16 @@ INSTALL_TARGETS=$(addprefix _build/src/, $(LIBS))
 
 install: all
 	mkdir -p "$(BIN_INSTALL_DIR)/"
-	cp $(BINARIES) "$(BINDIR)/"
+	for b in $(BINARIES) ; do \
+	    cp $$b "$(BINDIR)/$$( basename $$b .native )" ; \
+	done
 	ocamlfind install frogutils META $(INSTALL_TARGETS) _build/src/*.{cmi,cmt}
 
 uninstall:
 	ocamlfind remove frogutils
+	for b in $(BINARIES) ; do \
+	    rm "$(BINDIR)/$$( basename $b .native )" ; \
+	done
 	rm $(addprefix "$(BINDIR)/", $(BINARIES)) || true
 
 PHONY: all clean install uninstall
