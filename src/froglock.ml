@@ -47,7 +47,6 @@ type cmd =
   [@@deriving show]
 
 type parameters = {
-  mails : string list;
   port : int;
   cmd : cmd;
   debug : bool;
@@ -112,44 +111,6 @@ let run_command params =
           Lwt.return_none
       )
     )
-
-(* send a recap mail to the given address *)
-let send_mail addr res =
-  let real_addr = Smtp_lwt.Addr.of_string addr in
-  let i = String.index addr '@' in
-  let domain = String.sub addr (i+1) (String.length addr-i-1) in
-  let from = "\"join-locke\" <joinlocke@example.com>" in
-  Lwt_log.ign_debug_f "try to send a mail to %s..." addr;
-  (* connect to SMTP server *)
-  Smtp_lwt.connect ~host:domain ~name:"<joinlocke@example.com>" () >>= fun c ->
-  let body = Printf.sprintf
-    "Subject: job '%s' (%.2fs)\n\
-    From: %s\n\
-    To: %s \n\
-    \n\
-    %s" (String.escaped res.res_cmd) res.time from addr res.out in
-  Smtp_lwt.send c
-    ~from:(Smtp_lwt.Addr.of_string from)
-    ~to_:[real_addr]
-    ~body
-  >>= function
-  | `Ok (_,_) ->
-      Lwt_log.ign_debug_f "succeeded in sending the mail to %s" addr;
-      Lwt.return_unit
-  | `Failure (c,msg) ->
-      let msg = Printf.sprintf "could not send mail to %s: %s (code %d)" addr msg c in
-      failwith msg
-
-(* send mail to addresses *)
-let send_mails params res =
-  Lwt_list.iter_p
-    (fun addr ->
-      Lwt.catch
-        (fun () -> send_mail addr res)
-        (fun e ->
-          let msg = Printexc.to_string e in
-          Lwt_log.error_f "could not send mail to %s: %s" addr msg)
-    ) params.mails
 
 module M = FrogLockMessages
 
@@ -218,7 +179,7 @@ let main params =
             (* TODO: print more details, like return code *)
             Lwt_log.ign_info_f ~section "process ran in %.2fs (pid: %d)\n"
               res.time res.pid;
-            send_mails params res
+            Lwt.return_unit
     )
 
 (** {2 Main} *)
@@ -227,20 +188,17 @@ let port_ = ref 12000
 let cmd_ = ref []
 let debug_ = ref false
 let shell_ = ref None
-let mails_ = ref []
 let status_ = ref false
 let stop_accepting_ = ref false
 let tags_ = ref []
 
 let push_cmd_ s = cmd_ := s :: !cmd_
 let set_shell_ s = shell_ := Some s
-let add_mail_ s = mails_ := s :: !mails_
 let add_tag_ s = tags_ := s :: !tags_
 
-let options = Arg.align
+let options = ref
   [ "-port", Arg.Set_int port_, " local port for the daemon"
   ; "-debug", Arg.Set debug_, " enable debug"
-  ; "-mail", Arg.String add_mail_, " add mail address"
   ; "-c", Arg.String set_shell_, " use a shell command"
   ; "-tag", Arg.String add_tag_, " add a user-defined tag to a job"
   ; "-status", Arg.Set status_, " report status of the daemon (if any)"
@@ -252,17 +210,18 @@ let options = Arg.align
 let usage_ = "lock [options] <cmd> <args>"
 
 (* TODO: option to specify estimated completion time *)
+(* TODO: dynamic plugins, that can add their own options to [options] *)
 
 let () =
-  Arg.parse options push_cmd_ usage_;
+  Arg.parse (Arg.align !options) push_cmd_ usage_;
   let mk_params cmd =
-    { debug= !debug_; port= !port_; mails= !mails_; tags= !tags_; cmd; }
+    { debug= !debug_; port= !port_; tags= !tags_; cmd; }
   in
   let params = match !shell_, List.rev !cmd_ with
     | _ when !status_ -> mk_params PrintStatus
     | _ when !stop_accepting_ -> mk_params StopAccepting
     | None, [] ->
-        Arg.usage options usage_;
+        Arg.usage (Arg.align !options) usage_;
         exit 0
     | Some c, _ -> mk_params (Shell c)
     | None, head::args -> mk_params (Exec (head,args))

@@ -14,6 +14,7 @@ Provide several tools.
 - `frogmap`: run a command on many inputs (files?), with parallelization
 - `frogiter`: run a command on every result obtained with `frogmap`
 
+For instance:
 
 ```sh
 $ froglock <cmd> <arg1> ... <argn>

@@ -1,11 +1,11 @@
 opam-version: "1.2"
-name: "join-locke"
+name: "frogutils"
 version: "0.1"
 maintainer: "Simon Cruanes <simon.cruanes.2007@m4x.org>"
 authors: "Simon Cruanes <simon.cruanes.2007@m4x.org>"
-homepage: "https://github.com/c-cube/join-locke/"
-dev-repo: "https://github.com/c-cube/join-locke.git"
-bug-reports: "https://github.com/c-cube/join-locke/issues"
+homepage: "https://github.com/c-cube/frog-utils"
+dev-repo: "https://github.com/c-cube/frog-utils.git"
+bug-reports: "https://github.com/c-cube/frog-utils/issues"
 license: "BSD-2-clause"
 build: [
   [make]
@@ -16,8 +16,8 @@ depends: [
     "ocamlfind" {build}
     "lwt"
     "base-unix"
-    "smtp"
     "yojson"
+    "toml"
     "ppx_deriving"
     "ppx_deriving_yojson"
 ]
