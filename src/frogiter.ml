@@ -1,0 +1,109 @@
+
+(*
+copyright (c) 2013-2014, simon cruanes
+all rights reserved.
+
+redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+redistributions of source code must retain the above copyright notice, this
+list of conditions and the following disclaimer.  redistributions in binary
+form must reproduce the above copyright notice, this list of conditions and the
+following disclaimer in the documentation and/or other materials provided with
+the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*)
+
+
+(** {1 Call a command on each result of frogmap} *)
+
+module S = FrogMapState
+
+let (>>=) = Lwt.(>>=)
+
+type cmd =
+  | Shell of string
+  | Exec of string * string list
+
+type params = {
+  out_only : bool;
+  cmd : cmd;
+  filename : string;
+}
+
+(* print metadata of result on the given chan *)
+let print_prelude oc res =
+  Lwt_io.fprintf oc "# argument: %s" res.S.res_arg >>= fun () ->
+  Lwt_io.fprintf oc "# time: %.2f" res.S.res_time >>= fun () ->
+  Lwt.return_unit
+
+(* run command on the given result *)
+let run_cmd params res =
+  let cmd = match params.cmd with
+    | Shell c -> Lwt_process.shell c
+    | Exec (p, args) -> (p, Array.of_list (p::args))
+  in
+  Lwt_process.with_process_out
+    ~stdout:`Keep ~stderr:`Keep cmd
+    (fun p ->
+      (if params.out_only
+        then Lwt.return_unit
+        else print_prelude p#stdin res
+      ) >>= fun () ->
+      Lwt_io.write p#stdin res.S.res_out >>= fun () ->
+      Lwt_io.flush p#stdin >>= fun () ->
+      p#status >>= fun _ ->
+      Lwt.return_unit
+    )
+
+let main params =
+  FrogMapState.fold_state_s
+    (fun () res ->
+      run_cmd params res
+    ) (fun _job -> Lwt.return_unit)
+    params.filename
+
+(** {2 Main} *)
+
+
+
+let out_only_ = ref false
+let cmd_ = ref []
+let shell_cmd_ = ref None
+let file_ = ref None
+
+let push_ s = match !file_ with
+  | None -> file_ := Some s
+  | Some _ -> cmd_ := s :: !cmd_
+
+let usage = "iter [options] <file> [--] cmd"
+let options = Arg.align
+  [ "-out", Arg.Set out_only_, " only print the stdout"
+  ; "-c", Arg.String (fun s -> shell_cmd_ := Some s), " invoke command in a shell"
+  ; "--", Arg.Rest push_, " start parsing command"
+  ]
+
+let () =
+  Arg.parse options push_ usage;
+  let mk_params filename cmd =
+    {out_only= !out_only_; cmd; filename}
+  in
+  let params = match !file_, !shell_cmd_, List.rev !cmd_ with
+    | Some filename, Some cmd, _ ->
+        mk_params filename (Shell cmd)
+    | Some filename, None, prog::args ->
+        mk_params filename (Exec (prog,args))
+    | _ ->
+        failwith "file and command are required"  (* TODO print usage? *)
+  in
+  Lwt_main.run (main params)

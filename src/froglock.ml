@@ -235,7 +235,6 @@ let set_shell_ s = shell_ := Some s
 let add_mail_ s = mails_ := s :: !mails_
 let add_tag_ s = tags_ := s :: !tags_
 
-let usage = "locke [options] <cmd> <args>"
 let options = Arg.align
   [ "-port", Arg.Set_int port_, " local port for the daemon"
   ; "-debug", Arg.Set debug_, " enable debug"
@@ -245,10 +244,10 @@ let options = Arg.align
   ; "-status", Arg.Set status_, " report status of the daemon (if any)"
   ; "-stop", Arg.Set stop_accepting_,
       " tell the daemon (if any) to stop accepting new jobs"
-  ; "--", Arg.Rest push_cmd_, "start parsing command"
+  ; "--", Arg.Rest push_cmd_, " start parsing command"
   ]
 
-let usage_ = "locke [options] <cmd> <args>"
+let usage_ = "lock [options] <cmd> <args>"
 
 (* TODO: option to specify estimated completion time *)
 

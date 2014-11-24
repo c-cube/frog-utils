@@ -53,7 +53,7 @@ let (>>=) = Lwt.(>>=)
 let (>|=) = Lwt.(>|=)
 
 (* create a new file in the given directory with the given "name pattern" *)
-let with_fresh_file dir pattern =
+let make_fresh_file dir pattern =
   let cmd = Printf.sprintf "mkstemp -d '%s' '%s'" dir pattern |> Lwt_process.shell in
   Lwt_process.with_process_in cmd
     (fun p -> Lwt_io.read p#stdout)
@@ -72,7 +72,7 @@ let with_state ?dir job f =
     | Some d -> d
     | None -> Sys.getcwd ()
   in
-  with_fresh_file dir "frogmapXXXXX" >>= fun filename ->
+  make_fresh_file dir "frogmapXXXXX" >>= fun filename ->
   let flags = [Unix.O_WRONLY; Unix.O_CREAT; Unix.O_SYNC] in
   Lwt_io.with_file ~flags~perm:0o644 ~mode:Lwt_io.output filename
     (fun oc ->

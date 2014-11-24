@@ -1,9 +1,5 @@
-S src/lock/
-S src/map/
-S src/reduce
-B _build/src/lock/
-B _build/src/map/
-B _build/src/reduce
+S src/
+B _build/src
 PKG lwt
 PKG lwt.unix
 PKG unix

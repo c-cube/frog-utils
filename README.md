@@ -12,6 +12,7 @@ Provide several tools.
 
 - `froglock`: execute a command when the scheduler decides so
 - `frogmap`: run a command on many inputs (files?), with parallelization
+- `frogiter`: run a command on every result obtained with `frogmap`
 
 
 ```sh
