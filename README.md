@@ -12,8 +12,6 @@ Provide several tools.
 
 - `froglock`: execute a command when the scheduler decides so
 - `frogmap`: run a command on many inputs (files?), with parallelization
-- `frogreduce`: a library to analyse the output of `frogmap`
-
 
 
 ```sh
