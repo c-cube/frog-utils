@@ -10,7 +10,7 @@ license: "BSD-2-clause"
 build: [
   [make]
 ]
-install: [make "BINDIR=%{bin}%" "install"]
+install: [make "BINDIR=%{bin}%" "SHAREDIR=%{share}%" "install"]
 remove: ["ocamlfind" "remove" "frogutils"]
 depends: [
     "ocamlfind" {build}
@@ -18,8 +18,12 @@ depends: [
     "base-unix"
     "yojson"
     "toml"
+    "re"
     "ppx_deriving"
     "ppx_deriving_yojson"
 ]
 available: ["ocaml-version" >= "4.02.1"]
 tags: ["lock" "batch"]
+post-messages: [
+    "Config files can be found in %{share}%/frogutils/. Tools provide a -help option."
+]
