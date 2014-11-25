@@ -25,5 +25,5 @@ depends: [
 available: ["ocaml-version" >= "4.02.1"]
 tags: ["lock" "batch"]
 post-messages: [
-    "Config files can be found in %{share}%/frogutils/. Tools provide a -help option."
+    "Config files can be found in %{share}%/frogutils/ . Tools provide a -help option."
 ]

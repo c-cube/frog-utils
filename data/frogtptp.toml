@@ -4,7 +4,7 @@ timeout = 60  # in s
 memory = 1000  # in MB
 
 provers = [ "spass", "eprover", "zip", "zip-arith", "zenon",
-            "iprover", "read-status" ]
+            "iprover", "read-status", "beagle", "princess" ]
 
 [spass]
 
