@@ -75,20 +75,37 @@ let run_cmd ?timeout cmd arg =
     )
 
 (* thread that prints progress *)
+let nb_sec_minute = 60
+let nb_sec_hour = 60 * nb_sec_minute
+let nb_sec_day = 24 * nb_sec_hour
+
+let print_time () f =
+    let n = int_of_float f in
+    let aux n div = n / div, n mod div in
+    let n_day, n = aux n nb_sec_day in
+    let n_hour, n = aux n nb_sec_hour in
+    let n_min, n = aux n nb_sec_minute in
+    let print_aux s n = if n <> 0 then (string_of_int n) ^ s else "" in
+    (print_aux "d" n_day) ^
+    (print_aux "h" n_hour) ^
+    (print_aux "m" n_min) ^
+    (string_of_int n) ^ "s"
+
 let make_progress_thread n =
   let cur = ref 0 in
   let start = Unix.gettimeofday () in
   let rec loop () =
-    if !cur = n
-    then Lwt_io.printl ""
-    else (
       let time_elapsed = Unix.gettimeofday () -. start in
       let bar = String.init 20 (fun i -> if i * n < 20 * !cur then '#' else ' ') in
       Lwt_io.printf "\r... %d/%d [%.0fs: %s]" !cur n time_elapsed bar >>= fun () ->
-      Lwt_io.flush Lwt_io.stdout >>= fun () ->
-      Lwt_unix.sleep 0.2 >>= fun () ->
-      loop ()
-    )
+      Lwt_io.flush Lwt_io.stdout >>= fun () -> (
+      if !cur = n
+      then Lwt_io.printl ""
+      else (
+        Lwt_unix.sleep 0.2 >>= fun () ->
+        loop ()
+        )
+      )
   in
   Lwt.async loop;
   fun () -> incr cur
