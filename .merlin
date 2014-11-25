@@ -1,9 +1,12 @@
 S src/
 B _build/src
+S src/lib
+B _build/src/lib
 PKG lwt
 PKG lwt.unix
 PKG unix
 PKG yojson
+PKG re.posix
 PKG ppx_deriving
 PKG ppx_deriving.std
 PKG ppx_deriving_yojson

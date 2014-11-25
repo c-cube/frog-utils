@@ -1,5 +1,6 @@
 true: warn_A, warn(-4), warn(-44)
 <src>: include
+<src/lib>: include
 <src/**/*>: package(ppx_deriving_yojson), package(unix), package(lwt), \
             package(lwt.unix), package(lwt.preemptive), package(ppx_deriving.std), \
             package(ppx_deriving_yojson), package(toml), package(re.posix), thread
