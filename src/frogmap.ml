@@ -40,6 +40,7 @@ type params = {
   dir : string option;
   parallelism_level : int;
   timeout : float option;
+  progress : bool;
 }
 
 (** {2 Processing} *)
@@ -73,19 +74,42 @@ let run_cmd ?timeout cmd arg =
       Lwt.return {S.res_arg=arg; res_time; res_errcode; res_out; res_err; }
     )
 
+(* thread that prints progress *)
+let make_progress_thread n =
+  let cur = ref 0 in
+  let start = Unix.gettimeofday () in
+  let rec loop () =
+    if !cur = n
+    then Lwt.return_unit
+    else (
+      let time_elapsed = Unix.gettimeofday () -. start in
+      Lwt_io.printf "\r... %d/%d [%.0fs]" !cur n time_elapsed >>= fun () ->
+      Lwt_io.flush Lwt_io.stdout >>= fun () ->
+      Lwt_unix.sleep 0.2 >>= fun () ->
+      loop ()
+    )
+  in
+  Lwt.async loop;
+  fun () -> incr cur
+
 (* run the job's command on every argument, call [yield_res] with
   every result *)
-let map_args ?timeout ~j cmd yield_res args =
+let map_args ?timeout ~progress ~j cmd yield_res args =
   assert (j >= 1);
+  let send_done = if progress
+    then make_progress_thread (List.length args)
+    else (fun () -> ())
+  in
   (* use a pool to limit parallelism to [j] *)
   let pool = Lwt_pool.create j (fun () -> Lwt.return_unit) in
   Lwt_list.iter_p
     (fun arg ->
       Lwt_pool.use pool
         (fun () ->
-          Lwt_io.printlf "run on %s..." arg >>= fun () ->
+          Lwt_log.ign_debug_f "run on %s..." arg;
           run_cmd ?timeout cmd arg >>= fun res ->
-          Lwt_io.printlf "... %s: done (errcode %d)" arg res.S.res_errcode >>= fun () ->
+          send_done ();
+          Lwt_log.ign_debug_f "... %s: done (errcode %d)" arg res.S.res_errcode;
           yield_res res  (* output result *)
         )
     ) args
@@ -97,7 +121,7 @@ let map_args ?timeout ~j cmd yield_res args =
 module StrSet = Set.Make(String)
 
 (* resume job from the given file *)
-let resume ?timeout ~j file =
+let resume ?timeout ~progress ~j file =
   (* get the job and the set of executed tasks *)
   S.fold_state
     (fun (job,set) res -> job, StrSet.add res.S.res_arg set)
@@ -116,7 +140,7 @@ let resume ?timeout ~j file =
     (List.length remaining_tasks) (StrSet.cardinal done_tasks) >>= fun () ->
   S.append_job ~file
     (fun yield_res ->
-      map_args ?timeout ~j job.S.cmd yield_res remaining_tasks
+      map_args ?timeout ~progress ~j job.S.cmd yield_res remaining_tasks
     )
 
 let run_map params cmd args =
@@ -132,7 +156,9 @@ let run_map params cmd args =
   S.make_job ~file job
     (fun yield_res ->
       (* map [cmd] on every element of [args] *)
-      map_args ?timeout:params.timeout ~j:params.parallelism_level
+      map_args ?timeout:params.timeout
+        ~progress:params.progress
+        ~j:params.parallelism_level
         cmd yield_res args
     )
 
@@ -141,7 +167,10 @@ let main params =
   | Run (cmd, args) ->
       run_map params cmd args
   | Resume file ->
-      resume ?timeout:params.timeout ~j:params.parallelism_level file
+      resume ?timeout:params.timeout
+        ~progress:params.progress
+        ~j:params.parallelism_level
+        file
 
 (** {2 Main} *)
 
@@ -153,6 +182,7 @@ let dir_ = ref None
 let timeout_ = ref None
 let resume_ = ref None
 let file_args_ = ref None
+let progress_ = ref true
 
 let set_file_ s = file_ := Some s
 let set_dir_ s = dir_ := Some s
@@ -177,6 +207,7 @@ let options = Arg.align
   [ "-j", Arg.Set_int j_, " parallelism level"
   ; "-o", Arg.String set_file_, " set state file"
   ; "-d", Arg.String set_dir_, " directory where to put state file"
+  ; "-progress", Arg.Bool (fun b->progress_ := b), " enable/disable progress bar"
   ; "-timeout", Arg.Float set_timeout_, " timeout for the command (in s)"
   ; "-debug", Arg.Unit set_debug_, " enable debug messages"
   ; "-resume", Arg.String set_resume_, " resume given file"
@@ -199,6 +230,7 @@ let read_params () =
       dir= !dir_;
       parallelism_level= !j_;
       timeout = !timeout_;
+      progress = !progress_;
     }
   in
   match !resume_, !cmd_ with
