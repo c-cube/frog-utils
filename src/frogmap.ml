@@ -79,7 +79,7 @@ let nb_sec_minute = 60
 let nb_sec_hour = 60 * nb_sec_minute
 let nb_sec_day = 24 * nb_sec_hour
 
-let print_time () f =
+let time_string f =
     let n = int_of_float f in
     let aux n div = n / div, n mod div in
     let n_day, n = aux n nb_sec_day in
@@ -97,7 +97,7 @@ let make_progress_thread n =
   let rec loop () =
       let time_elapsed = Unix.gettimeofday () -. start in
       let bar = String.init 20 (fun i -> if i * n < 20 * !cur then '#' else ' ') in
-      Lwt_io.printf "\r... %d/%d [%.0fs: %s]" !cur n time_elapsed bar >>= fun () ->
+      Lwt_io.printf "\r... %d/%d [%s: %s]" !cur n (time_string time_elapsed) bar >>= fun () ->
       Lwt_io.flush Lwt_io.stdout >>= fun () -> (
       if !cur = n
       then Lwt_io.printl ""
