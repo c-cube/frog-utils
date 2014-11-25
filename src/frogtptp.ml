@@ -32,6 +32,14 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 module Conf = FrogConfig
 module StrMap = Map.Make(String)
 
+let debug_ = ref false
+let debug fmt =
+  if !debug_
+  then Printf.kfprintf
+    (fun _ -> output_char stdout '\n'; flush stdout)
+    stdout fmt
+  else Printf.ifprintf stdout fmt
+
 module Prover = struct
   type t = {
     cmd : string;  (* string that possible contains $file, $memory and $timeout *)
@@ -53,7 +61,7 @@ module Prover = struct
         | _ -> raise Not_found
       ) s
     in
-    add_str "ulimit -t $time -m $memory; ";
+    add_str "ulimit -t $time -v \\$(( 1000000 * $memory )); ";
     add_str p.cmd;
     Buffer.contents buf
 
@@ -76,14 +84,25 @@ module Prover = struct
       ) StrMap.empty provers
 end
 
-let run ~config prog file =
+let run ?timeout ?memory ~config prog file =
   let provers = Prover.of_config config in
-  let timeout = Conf.get_int ~default:30 config "timeout" in
-  let memory = Conf.get_int ~default:1000 config "memory" in
+  let tptp = Conf.get_string ~default:"" config "TPTP" in
+  let timeout = match timeout with
+    | Some t -> t
+    | None -> Conf.get_int ~default:30 config "timeout"
+  in
+  let memory = match memory with
+    | Some m -> m
+    | None -> Conf.get_int ~default:1000 config "memory"
+  in
+  debug "tptp: %s, timeout: %d, memory: %d" tptp timeout memory;
   try
     let p = StrMap.find prog provers in
-    let cmd = [| "/bin/sh"; "-c"; Prover.make_command p ~timeout ~memory ~file |] in
-    Unix.execv "/bin/sh" cmd
+    let cmd = [ Prover.make_command p ~timeout ~memory ~file ] in
+    let cmd = if tptp="" then cmd else ("TPTP="^tptp) :: cmd in
+    let cmd = "/bin/sh" :: "-c" :: cmd in
+    debug "run command %s" (String.concat " " cmd);
+    Unix.execv "/bin/sh" (Array.of_list cmd)
   with Not_found ->
     failwith ("could not find description of prover " ^ prog)
 
@@ -105,16 +124,25 @@ type cmd =
   | Run of string * string
   | ListProvers
 
+type specific_conf = {
+  timeout : int option;
+  memory : int option;
+}
+
 type params = {
   cmd : cmd;
   config_files : string list;
+  conf : specific_conf;
 }
 
 let main params =
   let config = FrogConfig.parse_files params.config_files FrogConfig.empty in
   match params.cmd with
   | Run (prog,args) ->
-      run ~config prog args
+      run
+        ?timeout:params.conf.timeout
+        ?memory:params.conf.memory
+        ~config prog args
   | Analyse file ->
       analyse ~config file
   | ListProvers ->
@@ -127,6 +155,8 @@ let main params =
 let cmd_ = ref `NoCmd
 let config_ = ref ["$HOME/.frogtptp.toml"; (* "/etc/frogtptp.toml" *) ]
 let args_ = ref []
+let timeout_ = ref ~-1
+let memory_ = ref ~-1
 
 let set_analyse_ f = cmd_ := `Analyse f
 let set_run_ p = cmd_ := `Run p
@@ -139,13 +169,20 @@ let options = Arg.align
   ; "-run", Arg.String set_run_, " run given prover"
   ; "-config", Arg.String push_config_, " use given config file"
   ; "-list", Arg.Unit (fun () -> cmd_ := `List), " list provers"
+  ; "-memory", Arg.Set_int memory_, " memory limit (MB)"
+  ; "-timeout", Arg.Set_int timeout_, " timeout (s)"
+  ; "-debug", Arg.Set debug_, " enable debug"
   ; "--", Arg.Rest push_arg_, " stop parsing arguments"
   ]
+
+let some_if_pos_ i =
+  if i>0 then Some i else None
 
 let () =
   Arg.parse options push_arg_ usage;
   let config_files = List.map Conf.interpolate_home !config_ in
-  let mk_params cmd = {cmd; config_files; } in
+  let conf = {memory=some_if_pos_ !memory_; timeout= some_if_pos_ !timeout_;} in
+  let mk_params cmd = {cmd; config_files; conf; } in
   let params = match !cmd_, List.rev !args_ with
   | `Analyse f, _ -> mk_params (Analyse f)
   | `Run prog, [arg] -> mk_params (Run (prog,arg))

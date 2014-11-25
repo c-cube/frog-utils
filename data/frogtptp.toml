@@ -1,14 +1,14 @@
 # Provers
 
-timeout = 120
-memory = 1000000
+timeout = 60  # in s
+memory = 1000  # in MB
 
 provers = [ "spass", "eprover", "zip", "zip-arith", "zenon",
             "iprover", "read-status" ]
 
 [spass]
 
-cmd = "SPASS -TPTP -TimeLimit=$timeout -PGiven=0 -Memory=$memory $file"
+cmd = "SPASS -TPTP -TimeLimit=$timeout -PGiven=0 -Memory=\\$(( 1000000 * $memory )) $file"
 unsat = "proof found"
 sat = "completion found"
 
