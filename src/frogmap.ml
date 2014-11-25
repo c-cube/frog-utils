@@ -96,31 +96,31 @@ let make_progress_thread n =
   let start = Unix.gettimeofday () in
   let rec loop () =
       let time_elapsed = Unix.gettimeofday () -. start in
-      let bar = String.init 20 (fun i -> if i * n < 20 * !cur then '#' else ' ') in
-      Lwt_io.printf "\r... %d/%d [%s: %s]" !cur n (time_string time_elapsed) bar >>= fun () ->
+      let bar = String.init 20 (fun i -> if i * n <= 20 * !cur then '#' else ' ') in
+      Lwt_io.printf "\r... %d/%d [%s: %s]    "
+        !cur n (time_string time_elapsed) bar >>= fun () ->
       Lwt_io.flush Lwt_io.stdout >>= fun () -> (
       if !cur = n
-      then Lwt_io.printl ""
+      then (Lwt_io.printl "" >>= fun () -> Lwt_io.flush Lwt_io.stdout)
       else (
         Lwt_unix.sleep 0.2 >>= fun () ->
         loop ()
         )
       )
   in
-  Lwt.async loop;
-  fun () -> incr cur
+  (fun () -> incr cur), (loop ())
 
 (* run the job's command on every argument, call [yield_res] with
   every result *)
 let map_args ?timeout ~progress ~j cmd yield_res args =
   assert (j >= 1);
-  let send_done = if progress
+  let send_done, progress_thread = if progress
     then make_progress_thread (List.length args)
-    else (fun () -> ())
+    else (fun () -> ()), Lwt.return_unit
   in
   (* use a pool to limit parallelism to [j] *)
   let pool = Lwt_pool.create j (fun () -> Lwt.return_unit) in
-  Lwt_list.iter_p
+  let iter_thread = Lwt_list.iter_p
     (fun arg ->
       Lwt_pool.use pool
         (fun () ->
@@ -131,6 +131,8 @@ let map_args ?timeout ~progress ~j cmd yield_res args =
           yield_res res  (* output result *)
         )
     ) args
+  in
+  Lwt.join [progress_thread; iter_thread]
 
 (* TODO: lock result file *)
 
