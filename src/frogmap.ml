@@ -80,10 +80,11 @@ let make_progress_thread n =
   let start = Unix.gettimeofday () in
   let rec loop () =
     if !cur = n
-    then Lwt.return_unit
+    then Lwt_io.printl ""
     else (
       let time_elapsed = Unix.gettimeofday () -. start in
-      Lwt_io.printf "\r... %d/%d [%.0fs]" !cur n time_elapsed >>= fun () ->
+      let bar = String.init 20 (fun i -> if i * n < 20 * !cur then '#' else ' ') in
+      Lwt_io.printf "\r... %d/%d [%.0fs: %s]" !cur n time_elapsed bar >>= fun () ->
       Lwt_io.flush Lwt_io.stdout >>= fun () ->
       Lwt_unix.sleep 0.2 >>= fun () ->
       loop ()
