@@ -98,10 +98,10 @@ let run ?timeout ?memory ~config prog file =
   debug "tptp: %s, timeout: %d, memory: %d" tptp timeout memory;
   try
     let p = StrMap.find prog provers in
-    let cmd = [ Prover.make_command p ~timeout ~memory ~file ] in
-    let cmd = if tptp="" then cmd else ("TPTP="^tptp) :: cmd in
-    let cmd = "/bin/sh" :: "-c" :: cmd in
-    debug "run command %s" (String.concat " " cmd);
+    let cmd = Prover.make_command p ~timeout ~memory ~file in
+    let cmd = if tptp="" then cmd else "TPTP="^tptp ^ " " ^  cmd in
+    let cmd = ["/bin/sh"; "-c"; cmd] in
+    debug "run command '%s'" (String.concat " " cmd);
     Unix.execv "/bin/sh" (Array.of_list cmd)
   with Not_found ->
     failwith ("could not find description of prover " ^ prog)
