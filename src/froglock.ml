@@ -56,7 +56,6 @@ type parameters = {
 (* result of running a command *)
 type result = {
   res_cmd : string;
-  out : string;
   time : float;  (* running time *)
   status : Unix.process_status;
   pid : int;
@@ -81,29 +80,16 @@ let run_command params =
                 cmd, (String.concat " " (prog::args))
           in
           Lwt_log.ign_debug_f "start command %s" cmd_string;
-          (* close stdin so that interactive commands fail *)
-          Lwt_io.close Lwt_io.stdin >>= fun () ->
           let start = Unix.gettimeofday () in
-          Lwt_process.with_process cmd
+          (* close stdin so that interactive commands fail *)
+          Lwt_process.with_process_none ~stdin:`Close ~stdout:`Keep cmd
             (fun process ->
-              (* launch command, read its output line by line and
-                display it at the same time *)
-              let lines_stream = Lwt_io.read_lines process#stdout in
-              let buf = Buffer.create 256 in
-              Lwt_stream.iter_s
-                (fun line ->
-                  Buffer.add_string buf line;
-                  Buffer.add_char buf '\n';
-                  Lwt_io.printl line
-                ) lines_stream
-              >>= fun () ->
               process#status >>= fun status ->
               (* measure time elapsed since we started the process *)
               let stop = Unix.gettimeofday () in
               let time = stop -. start in
               Lwt_log.ign_debug_f ~section "command finished after %.2fs" time;
-              let res = {res_cmd=cmd_string; out=Buffer.contents buf;
-                         time; status; pid=process#pid; } in
+              let res = {res_cmd=cmd_string; time; status; pid=process#pid; } in
               Lwt.return (Some res)
             )
       | false ->
