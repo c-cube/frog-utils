@@ -51,7 +51,7 @@ module Prover = struct
   }
 
   (* command ready to run in a shell *)
-  let make_command p ~timeout ~memory ~file =
+  let make_command ?tptp p ~timeout ~memory ~file =
     let buf = Buffer.create 32 in
     let add_str s =
     Buffer.add_substitute buf
@@ -63,6 +63,10 @@ module Prover = struct
       ) s
     in
     add_str "ulimit -t $time -v \\$(( 1000000 * $memory )); ";
+    begin match tptp with
+      | None -> ()
+      | Some s -> add_str ("TPTP="^ s ^ " ")
+    end;
     add_str p.cmd;
     Buffer.contents buf
 
@@ -116,7 +120,10 @@ let split_comma s =
 
 let run ?timeout ?memory ~config prog file =
   let p = Prover.find_config config prog in
-  let tptp = Conf.get_string ~default:"" config "TPTP" in
+  let tptp = match Conf.get_string ~default:"" config "TPTP" with
+    | "" -> None
+    | s -> Some s
+  in
   let timeout = match timeout with
     | Some t -> t
     | None -> Conf.get_int ~default:30 config "timeout"
@@ -125,9 +132,8 @@ let run ?timeout ?memory ~config prog file =
     | Some m -> m
     | None -> Conf.get_int ~default:1000 config "memory"
   in
-  debug "tptp: %s, timeout: %d, memory: %d" tptp timeout memory;
-  let cmd = Prover.make_command p ~timeout ~memory ~file in
-  let cmd = if tptp="" then cmd else "TPTP="^tptp ^ " " ^  cmd in
+  debug "tptp: %s, timeout: %d, memory: %d" ([%show:string option] tptp) timeout memory;
+  let cmd = Prover.make_command ?tptp p ~timeout ~memory ~file in
   let cmd = ["/bin/sh"; "-c"; cmd] in
   debug "run command '%s'" (String.concat " " cmd);
   Unix.execv "/bin/sh" (Array.of_list cmd)
