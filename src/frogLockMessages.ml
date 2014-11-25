@@ -26,6 +26,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 (** {1 Communication Protocole} *)
 
+[@@@warning "-39"]
+
 let (>>=) = Lwt.(>>=)
 let (>|=) = Lwt.(>|=)
 
@@ -64,6 +66,8 @@ type t =
   | StopAccepting (* from now on, no more accepts *)
   | Reject  (* request not accepted *)
   [@@deriving yojson, show]
+
+[@@@warning "+39"]
 
 exception InvalidMessage of string
 exception Unexpected of t

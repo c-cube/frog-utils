@@ -26,6 +26,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 (** {1 Persistent State for FrogMap} *)
 
+[@@@warning "-39"]
+
 type job = {
   cmd       [@key "cmd"]        : string;
   arguments [@key "arguments"]  : string list;
@@ -41,6 +43,8 @@ type result = {
   res_err     [@key "stderr"]  : string;
 } [@@deriving yojson,show]
 (** Result of running the command on one argument *)
+
+[@@@warning "+39"]
 
 type yield_res = result -> unit Lwt.t
 
