@@ -138,44 +138,163 @@ let run ?timeout ?memory ~config prog file =
   debug "run command '%s'" (String.concat " " cmd);
   Unix.execv "/bin/sh" (Array.of_list cmd)
 
-(* analyse one file, obtained from given prover *)
-let analyse_single prover job results =
-  let num_all = StrMap.cardinal results in
+type file_summary = {
+  mutable num_all : int;
+  mutable set_unsat : float StrMap.t;  (* pb -> time *)
+  mutable set_sat : float StrMap.t; (* pb -> time *)
+  mutable num_error : int;
+  mutable total_time : float; (* of successfully solved problems *)
+}
+
+(* compute summary of this file *)
+let make_summary prover job results =
+  let s = {
+    num_all=List.length job.St.arguments;
+    set_unsat=StrMap.empty;
+    set_sat=StrMap.empty;
+    num_error=0;
+    total_time=0.;
+  } in
   let re_sat = Re.compile (Re.no_case (Re_posix.re prover.Prover.sat)) in
   let re_unsat = Re.compile (Re.no_case (Re_posix.re prover.Prover.unsat)) in
-  let set_sat = Hashtbl.create 32 in
-  let set_unsat = Hashtbl.create 32 in
-  let num_error = ref 0 in
-  let total_time = ref 0. in
   StrMap.iter
     (fun file res ->
-      total_time := !total_time +. res.St.res_time;
       if res.St.res_errcode <> 0
-        then incr num_error;
-      if Re.execp re_sat res.St.res_out
-        then Hashtbl.add set_sat file ()
-      else if Re.execp re_unsat res.St.res_out
-        then Hashtbl.add set_unsat file ()
-      else ()
+        then s.num_error <- s.num_error + 1;
+      if Re.execp re_sat res.St.res_out then (
+        s.total_time <- s.total_time +. res.St.res_time;
+        s.set_sat <- StrMap.add file res.St.res_time s.set_sat
+      ) else if Re.execp re_unsat res.St.res_out then (
+        s.total_time <- s.total_time +. res.St.res_time;
+        s.set_unsat <- StrMap.add file res.St.res_time s.set_unsat
+      );
     ) results;
-  let num_sat = Hashtbl.length set_sat in
-  let num_unsat = Hashtbl.length set_unsat in
-  let percent_solved = (float (num_sat + num_unsat) *. 100. /. float num_all) in
-  Printf.printf "%d sat, %d unsat, %d total (%.0f%% solved) in %.2fs, %d errors\n"
-    num_sat num_unsat num_all percent_solved !total_time !num_error;
+  s
+
+module PB = PrintBox
+
+let print_single_summary prover s =
+  let num_sat = StrMap.cardinal s.set_sat in
+  let num_unsat = StrMap.cardinal s.set_unsat in
+  let percent_solved = (float (num_sat + num_unsat) *. 100. /. float s.num_all) in
+  Printf.printf "prover %s: %d sat, %d unsat, %d total (%.0f%% solved) in %.2fs, %d errors\n"
+    prover num_sat num_unsat s.num_all percent_solved s.total_time s.num_error;
   ()
 
-let analyse ~config prover file =
-  debug "analyse file %s, obtained from prover %s" file prover;
-  let p = Prover.find_config config prover in
-  (* obtain the full list of problems deal with *)
-  let job, results = St.fold_state
+(* obtain the full list of problems/results deal with in this file *)
+let extract_file file =
+  St.fold_state
     (fun (job,map) res ->
       job, StrMap.add res.St.res_arg res map
     ) (fun job -> job, StrMap.empty) file
     |> Lwt_main.run
+
+let analyse_single_file ~config prover file =
+  let p = Prover.find_config config prover in
+  let job, results = extract_file file in
+  let s = make_summary p job results in
+  print_single_summary prover s
+
+let all_proved s =
+  StrMap.merge (fun _ _ _ -> Some ()) s.set_unsat s.set_sat
+
+(* input: map prover -> summary
+  output: map problem -> unit, containing every problem solved by at
+      least one prover *)
+let all_proved_map map =
+  try
+    let min_p, s = StrMap.min_binding map in
+    let acc = all_proved s in
+    let others = StrMap.remove min_p map in
+    StrMap.fold
+      (fun _ s acc ->
+        acc
+        |> StrMap.merge (fun _ _ _ -> Some ()) s.set_unsat
+        |> StrMap.merge (fun _ _ _ -> Some ()) s.set_sat
+      ) others acc
+  with Not_found ->
+    StrMap.empty
+
+let map_diff m1 m2 =
+  StrMap.merge
+    (fun _ x1 x2 -> match x1, x2 with
+      | Some x, None -> Some x
+      | _ -> None
+    ) m1 m2
+
+(* analyse and compare this list of prover,job,results *)
+let analyse_multiple items =
+  (* individual results *)
+  let map = List.fold_left
+    (fun map (p_name,p,job,results) ->
+      let summary = make_summary p job results in
+      (* individual summary *)
+      StrMap.add p_name summary map
+    ) StrMap.empty items
   in
-  analyse_single p job results
+  (* some globals *)
+  let problems_solved_by_one = ref StrMap.empty in
+  (* print overall *)
+  let first_line = PB.(
+    [| text "prover"; text "sat"; text "unsat"; text "total"; text "exclusive";
+       text "%solved"; text "time (s)"; text "avg time (s)"; text "errors" |]
+  ) in
+  (* next lines *)
+  let next_lines = StrMap.fold
+    (fun prover s acc ->
+      let problems_solved_by_me = all_proved s in
+      let problems_solved_by_others = all_proved_map (StrMap.remove prover map) in
+      let problems_solved_by_me_only = map_diff
+        problems_solved_by_me problems_solved_by_others
+      in
+      problems_solved_by_one := StrMap.add prover
+        problems_solved_by_me_only !problems_solved_by_one;
+      let num_sat = StrMap.cardinal s.set_sat in
+      let num_unsat = StrMap.cardinal s.set_unsat in
+      let percent_solved = (float (num_sat + num_unsat) *. 100. /. float s.num_all) in
+      let num_solved_only = StrMap.cardinal problems_solved_by_me_only in
+      PB.([| text prover; int_ num_sat; int_ num_unsat; int_ s.num_all;
+             int_ num_solved_only;
+             text (Printf.sprintf "%.0f" percent_solved);
+             text (Printf.sprintf "%.2f" s.total_time);
+             text (Printf.sprintf "%.2f" (s.total_time /. float s.num_all));
+             int_ s.num_error |]
+      ) :: acc
+    ) map []
+  in
+  let box = PB.(frame (grid (Array.of_list (first_line :: next_lines)))) in
+  print_endline "";
+  PB.output stdout box;
+  print_endline "";
+  (* TODO: pairwise comparison *)
+  (* print, for each prover, list of problems it's the only one to solve *)
+  StrMap.iter
+    (fun prover map ->
+      Printf.printf "problems solved by only %s:\n" prover;
+      StrMap.iter
+        (fun file () -> Printf.printf "  %s\n" file)
+        map
+    ) !problems_solved_by_one;
+  ()
+
+let analyse_multiple_files ~config l =
+  let items = List.map
+    (fun (prover,file) ->
+      let p = Prover.find_config config prover in
+      let job, results = extract_file file in
+      prover, p, job, results
+    ) l
+  in
+  analyse_multiple items
+
+let analyse ~config l = match l with
+  | [] -> assert false
+  | [p, file] ->
+      debug "analyse file %s, obtained from prover %s" file p;
+      analyse_single_file ~config p file
+  | _ ->
+      debug "analyse %d files" (List.length l);
+      analyse_multiple_files ~config l
 
 (* print list of known provers *)
 let list_provers ~config =
@@ -189,7 +308,7 @@ let list_provers ~config =
 (** {2 Run} *)
 
 type cmd =
-  | Analyse of string * string  (* prover * file *)
+  | Analyse of (string * string) list  (* list (prover, file) *)
   | Run of string * string
   | ListProvers
 
@@ -212,14 +331,12 @@ let main params =
         ?timeout:params.conf.timeout
         ?memory:params.conf.memory
         ~config prog args
-  | Analyse (prover, file) ->
-      analyse ~config prover file
+  | Analyse l ->
+      analyse ~config l
   | ListProvers ->
       list_provers ~config
 
 (** {2 Main} *)
-
-(* TODO: analyse several files, compare them, etc. *)
 
 let cmd_ = ref `NoCmd
 let config_ = ref ["$HOME/.frogtptp.toml"; (* "/etc/frogtptp.toml" *) ]
@@ -227,10 +344,19 @@ let args_ = ref []
 let timeout_ = ref ~-1
 let memory_ = ref ~-1
 
-let set_analyse_ f =
-  match split_comma f with
-  | [p;file] -> cmd_ := `Analyse (p,file)
-  | _ -> failwith "analyse: require a pair \"prover,file\""
+(* TODO: only one -analyse flag, but with a "prover=file,prover=file,..." argument *)
+
+let add_analyse_ f =
+  let p, file = match split_comma f with
+    | [p; f] -> p, f
+    | [p] -> p, p ^ ".json"
+    | [] | _::_::_ -> failwith "analyse: require a pair \"prover,file\""
+  in
+  match !cmd_ with
+  | `Analyse l -> cmd_ := `Analyse ((p,file) :: l)
+  | `NoCmd -> cmd_ := `Analyse [p, file]
+  | `Run _ -> failwith "-analyse must not be used with -run"
+  | `List -> failwith "-analyse must not be used with -list"
 
 let set_run_ p = cmd_ := `Run p
 let push_config_ s = config_ := s :: !config_
@@ -238,7 +364,7 @@ let push_config_ s = config_ := s :: !config_
 let usage = "frogtptp cmd args"
 let push_arg_ s = args_ := s :: !args_
 let options = Arg.align
-  [ "-analyse", Arg.String set_analyse_, " analyse given pair \"prover,output_file\""
+  [ "-analyse", Arg.String add_analyse_, " analyse given pair \"prover,output_file\""
   ; "-run", Arg.String set_run_, " run given prover"
   ; "-config", Arg.String push_config_, " use given config file"
   ; "-list", Arg.Unit (fun () -> cmd_ := `List), " list provers"
@@ -257,7 +383,7 @@ let () =
   let conf = {memory=some_if_pos_ !memory_; timeout= some_if_pos_ !timeout_;} in
   let mk_params cmd = {cmd; config_files; conf; } in
   let params = match !cmd_, List.rev !args_ with
-  | `Analyse (prover,file), _ -> mk_params (Analyse (prover,file))
+  | `Analyse l, _ -> mk_params (Analyse l)
   | `Run prog, [arg] -> mk_params (Run (prog,arg))
   | `Run _, ([] | _::_::_)
   | `List, _ -> mk_params ListProvers
