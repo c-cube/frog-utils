@@ -6,19 +6,17 @@ License: BSD.
 
 ## Usage
 
-Provide several tools.
+Provide several tools and one library, `frogutils`.
 
 **WIP**
 
 - `froglock`: execute a command when the scheduler decides so
 - `frogmap`: run a command on many inputs (files?), with parallelization
 - `frogiter`: run a command on every result obtained with `frogmap`
+- `frogtptp`: run a TPTP prover (more specific!)
 
-For instance:
+A sample config file for `frogtptp` can be found in `data/frogtptp.toml`.
 
-```sh
-$ froglock <cmd> <arg1> ... <argn>
-```
 
 ## Install
 

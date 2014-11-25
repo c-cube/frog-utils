@@ -61,8 +61,7 @@ val make_job : file:string -> job -> (yield_res -> 'a Lwt.t) -> 'a Lwt.t
 
 val append_job : file:string -> (yield_res -> 'a Lwt.t) -> 'a Lwt.t
 (** [append_job ~file f] opens the file [file], expecting it to be
-    a proper job file
-    TODO: check this property and fail if needed *)
+    a proper job file *)
 
 (** {2 Read state} *)
 
