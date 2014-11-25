@@ -44,14 +44,14 @@ sat = "SZS status CounterSatisfiable"
 
 [beagle]
 
-cmd = "beagle -tptp \\$TPTP $file"
+cmd = "beagle $file"
 unsat = "SZS status (Theorem|Unsatisfiable)"
 sat = "SZS status CounterSatisfiable"
 
 [princess]
 cmd = "princess $file"
-unsat = "^VALID"
-sat = "^INVALID"
+unsat = "VALID"
+sat = "INVALID"
 
 [read-status]
 
