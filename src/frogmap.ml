@@ -98,8 +98,10 @@ let make_progress_thread n =
       let time_elapsed = Unix.gettimeofday () -. start in
       let len_bar = 30 in
       let bar = String.init len_bar (fun i -> if i * n <= len_bar * !cur then '#' else ' ') in
+      let percent = if n=0 then 100 else (!cur * 100) / n in
       Lwt_io.printf "\r... %5d/%d | %3d%% [%6s: %s]"
-        !cur n (!cur * 100 / n) (time_string time_elapsed) bar >>= fun () ->
+        !cur n percent (time_string time_elapsed) bar
+      >>= fun () ->
       Lwt_io.flush Lwt_io.stdout >>= fun () -> (
       if !cur = n
       then (Lwt_io.printl "" >>= fun () -> Lwt_io.flush Lwt_io.stdout)
