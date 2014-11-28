@@ -62,7 +62,7 @@ module Prover = struct
         | _ -> raise Not_found
       ) s
     in
-    add_str "ulimit -t $time -v \\$(( 1000000 * $memory )); ";
+    add_str "ulimit -t \\$(( $time + 1 )) -v \\$(( 1000000 * $memory )); ";
     begin match tptp with
       | None -> ()
       | Some s -> add_str ("TPTP="^ s ^ " ")
