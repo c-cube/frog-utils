@@ -22,7 +22,7 @@ sat = "# No proof found"
 
 cmd = "zenon -itptp $file"
 unsat = "(\\\\* PROOF-FOUND \\\\*)"
-sat = "(\\\\* NO-PROOF \\\\*)"
+unknown = "(\\\\* NO-PROOF \\\\*)"
 
 [zip]
 
