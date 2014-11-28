@@ -365,15 +365,11 @@ let memory_ = ref ~-1
 
 (* TODO: only one -analyse flag, but with a "prover=file,prover=file,..." argument *)
 
-let add_analyse_ f =
-  let p, file = match split_comma f with
-    | [p; f] -> p, f
-    | [p] -> p, p ^ ".json"
-    | [] | _::_::_ -> failwith "analyse: require a pair \"prover,file\""
-  in
+let add_analyse_ x =
   match !cmd_ with
-  | `Analyse l -> cmd_ := `Analyse ((p,file) :: l)
-  | `NoCmd -> cmd_ := `Analyse [p, file]
+  | `Analyse l -> cmd_ := `AnalyseFst (x, l)
+  | `AnalyseFst (p, l) -> cmd_ := `Analyse( (p,x) :: l)
+  | `NoCmd -> cmd_ := `AnalyseFst (x, [])
   | `Run _ -> failwith "-analyse must not be used with -run"
   | `List -> failwith "-analyse must not be used with -list"
 
@@ -383,7 +379,7 @@ let push_config_ s = config_ := s :: !config_
 let usage = "frogtptp cmd args"
 let push_arg_ s = args_ := s :: !args_
 let options = Arg.align
-  [ "-analyse", Arg.String add_analyse_, " analyse given pair \"prover,output_file\""
+  [ "-analyse", Arg.Rest add_analyse_, " analyse pairs of \"prover\" \"output_file\""
   ; "-run", Arg.String set_run_, " run given prover"
   ; "-config", Arg.String push_config_, " use given config file"
   ; "-list", Arg.Unit (fun () -> cmd_ := `List), " list provers"
@@ -406,6 +402,7 @@ let () =
   | `Run prog, [arg] -> mk_params (Run (prog,arg))
   | `Run _, ([] | _::_::_)
   | `List, _ -> mk_params ListProvers
+  | `AnalyseFst _, _
   | `NoCmd, _ ->
       Arg.usage options usage;
       exit 1

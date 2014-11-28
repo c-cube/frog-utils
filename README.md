@@ -76,10 +76,11 @@ The commands are:
   Other options specify the memory limit and timeout for the prover.
 - `frogtptp -list` lists the known provers (those detailed
   in the config file).
-- `frogtptp -analyse <prover>,<file.json>` analyses a single output file
+- `frogtptp -analyse <prover> <file.json>` analyses a single output file
   as obtained from `frogmap 'frogtptp -run <prover>' file1 file2 ...`.
-  `frogtptp -analyse "<prover1>,<file1.json>" "<prover2>,<file2.json>" ...`
+  `frogtptp -analyse <prover1> <file1.json> <prover2> <file2.json> ...`
   will do the same but also compare the performance of the different provers.
+  No other option might follow `-analyse`.
   This is still work in progress.
 
 Example:
