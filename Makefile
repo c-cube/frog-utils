@@ -17,14 +17,18 @@ clean:
 
 INSTALL_TARGETS=$(addprefix _build/src/, $(LIBS))
 
-install: all
+install_bin: all
 	mkdir -p "$(BIN_INSTALL_DIR)/"
 	for b in $(BINARIES) ; do \
 	    cp $$b "$(BINDIR)/$$( basename $$b .native )" ; \
 	done
 	mkdir -p $(SHAREDIR)/frogutils/
 	cp data/*.toml $(SHAREDIR)/frogutils/
+
+install_lib: all
 	ocamlfind install frogutils META $(INSTALL_TARGETS) _build/src/*.{cmi,cmt}
+
+install: install_bin install_lib
 
 uninstall:
 	ocamlfind remove frogutils
