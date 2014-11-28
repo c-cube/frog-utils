@@ -83,7 +83,6 @@ let make_job ~file job f =
       f (add_res oc)
     )
 
-(* TODO: function to open already existing job file (for "resume") *)
 let append_job ~file f =
   let flags = [Unix.O_APPEND; Unix.O_WRONLY; Unix.O_SYNC] in
   Lwt_io.with_file ~flags~perm:0o644 ~mode:Lwt_io.output file
@@ -98,9 +97,15 @@ let read_json_stream filename =
   let read_thread =
     Lwt_preemptive.detach
     (fun s ->
-      let str = Yojson.Safe.stream_from_file s in
-      Stream.iter (fun json -> push (Some json)) str;
-      push None
+      try
+        let str = Yojson.Safe.stream_from_file s in
+        Stream.iter (fun json -> push (Some json)) str;
+        push None
+      with e ->
+        push None;
+        Lwt_log.ign_error_f
+          "reading json file %s: %s" filename (Printexc.to_string e);
+        ()
     )
     filename
   in
