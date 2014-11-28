@@ -21,8 +21,8 @@ sat = "# No proof found"
 [zenon]
 
 cmd = "zenon -itptp $file"
-unsat = "(* PROOF-FOUND *)"
-sat = "(* NO-PROOF *)"
+unsat = "(\\\\* PROOF-FOUND \\\\*)"
+sat = "(\\\\* NO-PROOF \\\\*)"
 
 [zip]
 
