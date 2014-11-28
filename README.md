@@ -86,7 +86,9 @@ Example:
 
 ```sh
     # I have 10 cores, let's prove stuff with E
-    frogmap -j 10 -o bench.json 'frogtptp -run eprover -timeout 5' $TPTP/Problems/*/*.p
+    frogmap -j 10 -o bench.json \
+      'frogtptp -run eprover -timeout 5' \
+      $TPTP/Problems/*/*.p
 
     # gosh, I have to reboot!
     sleep 500; reboot
