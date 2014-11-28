@@ -44,8 +44,8 @@ let debug fmt =
 module Prover = struct
   type t = {
     cmd : string;  (* string that possible contains $file, $memory and $timeout *)
-    unsat : string; (* regex for "unsat" *)
-    sat : string;
+    unsat : string option; (* regex for "unsat" *)
+    sat : string option;
     unknown : string option;
     timeout : string option;
   }
@@ -78,8 +78,8 @@ module Prover = struct
         failwith ("could not find prover " ^ name ^ " in config")
     in
     let cmd = Conf.get_string d "cmd" in
-    let unsat = Conf.get_string d "unsat" in
-    let sat = Conf.get_string d "sat" in
+    let unsat = try Some (Conf.get_string d "unsat") with Not_found -> None in
+    let sat = try Some (Conf.get_string d "sat") with Not_found -> None in
     let unknown = try Some (Conf.get_string d "unknown") with Not_found -> None in
     let timeout = try Some (Conf.get_string d "timeout") with Not_found -> None in
     { cmd; unsat; sat; unknown; timeout; }
@@ -148,11 +148,21 @@ type file_summary = {
 
 let compile_re ~msg re =
   try
-    Re.compile (Re.no_case (Re_posix.re re))
+    Some (Re.compile (Re.no_case (Re_posix.re re)))
   with e ->
-    let err = Printf.sprintf "could not compile regex %s: %s"
-      msg (Printexc.to_string e) in
-    failwith err
+    Printf.eprintf "could not compile regex %s: %s"
+      msg (Printexc.to_string e);
+    None
+
+let execp_re_maybe maybe_re s = match maybe_re with
+  | None -> false
+  | Some re -> Re.execp re s
+
+module Opt = struct
+  let (>>=) o f = match o with
+    | None -> None
+    | Some x -> f x
+end
 
 (* compute summary of this file *)
 let make_summary prover job results =
@@ -163,16 +173,17 @@ let make_summary prover job results =
     num_error=0;
     total_time=0.;
   } in
-  let re_sat = compile_re ~msg:"sat" prover.Prover.sat in
-  let re_unsat = compile_re ~msg:"unsat" prover.Prover.unsat in
+  let re_sat = Opt.(prover.Prover.sat >>= compile_re ~msg:"sat") in
+  let re_unsat = Opt.(prover.Prover.unsat >>= compile_re ~msg:"unsat") in
+  let re_unknown = Opt.(prover.Prover.unknown >>= compile_re ~msg:"unknown") in
   StrMap.iter
     (fun file res ->
       if res.St.res_errcode <> 0
         then s.num_error <- s.num_error + 1;
-      if Re.execp re_sat res.St.res_out then (
+      if execp_re_maybe re_sat res.St.res_out then (
         s.total_time <- s.total_time +. res.St.res_time;
         s.set_sat <- StrMap.add file res.St.res_time s.set_sat
-      ) else if Re.execp re_unsat res.St.res_out then (
+      ) else if execp_re_maybe re_unsat res.St.res_out then (
         s.total_time <- s.total_time +. res.St.res_time;
         s.set_unsat <- StrMap.add file res.St.res_time s.set_unsat
       );
