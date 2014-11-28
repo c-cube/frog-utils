@@ -62,7 +62,7 @@ module Prover = struct
         | _ -> raise Not_found
       ) s
     in
-    add_str "ulimit -t \\$(( $time + 1 )) -v \\$(( 1000000 * $memory )); ";
+    add_str "ulimit -t $time -v \\$(( 1000000 * $memory )); ";
     begin match tptp with
       | None -> ()
       | Some s -> add_str ("TPTP="^ s ^ " ")
@@ -146,6 +146,14 @@ type file_summary = {
   mutable total_time : float; (* of successfully solved problems *)
 }
 
+let compile_re ~msg re =
+  try
+    Re.compile (Re.no_case (Re_posix.re re))
+  with e ->
+    let err = Printf.sprintf "could not compile regex %s: %s"
+      msg (Printexc.to_string e) in
+    failwith err
+
 (* compute summary of this file *)
 let make_summary prover job results =
   let s = {
@@ -155,8 +163,8 @@ let make_summary prover job results =
     num_error=0;
     total_time=0.;
   } in
-  let re_sat = Re.compile (Re.no_case (Re_posix.re prover.Prover.sat)) in
-  let re_unsat = Re.compile (Re.no_case (Re_posix.re prover.Prover.unsat)) in
+  let re_sat = compile_re ~msg:"sat" prover.Prover.sat in
+  let re_unsat = compile_re ~msg:"unsat" prover.Prover.unsat in
   StrMap.iter
     (fun file res ->
       if res.St.res_errcode <> 0
