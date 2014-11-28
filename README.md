@@ -98,7 +98,7 @@ Example:
     frogmap -j 30 -resume bench.json
 
     # then: basic statistics on the results
-    frogtptp -analyse eprover,bench.json
+    frogtptp -analyse eprover bench.json
 ```
 
 runs the [E prover](http://eprover.org) (named `eprover`) on all files in
