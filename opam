@@ -17,12 +17,12 @@ depends: [
     "lwt"
     "base-unix"
     "yojson"
-    "toml"
+    "toml" { = "1.0.0" }
     "re"
     "ppx_deriving"
     "ppx_deriving_yojson"
 ]
-available: ["ocaml-version" >= "4.02.1"]
+available: [ "ocaml-version" >= "4.02.1" ]
 tags: ["lock" "batch"]
 post-messages: [
     "Config files can be found in %{share}%/frogutils/ . Tools provide a -help option."
