@@ -27,7 +27,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 (** {1 Config File} *)
 
 type table = {
-  tbl : TomlType.tomlTable;
+  mutable tbl : Toml.Value.table;
   parent : t;
 }
 and t =
@@ -37,7 +37,7 @@ and t =
 let empty = Empty
 
 let create () = Table {
-  tbl=Hashtbl.create 16;
+  tbl=Toml.Table.empty;
   parent=Empty;
 }
 
@@ -61,7 +61,7 @@ let interpolate_home s =
 (* try to parse a config file *)
 let parse_or_empty file =
   try
-    Table {tbl=Toml.from_filename file; parent=Empty}
+    Table {tbl=Toml.Parser.from_filename file; parent=Empty}
   with Sys_error msg ->
     Printf.eprintf "error trying to read config: %s\n" msg;
     empty
@@ -88,29 +88,31 @@ let rec get_or ?default getter conf name =
       end
   | Table {tbl; parent} ->
       try
-        getter tbl name
-      with Not_found ->
+        getter (Toml.Table.find (Toml.key name) tbl)
+      with Not_found | Toml.Value.To.Bad_type _ ->
         get_or ?default getter parent name
 
 type 'a getter = ?default:'a -> t -> string -> 'a
 
 let get_table ?default conf name =
-  let getter tbl s =
-    Table {tbl=Toml.get_table tbl s; parent=Empty;}
+  let getter x =
+    Table {tbl=Toml.Value.To.table x; parent=Empty;}
   in
   get_or ?default getter conf name
 
 let get_bool ?default conf name =
-  get_or ?default Toml.get_bool conf name
+  get_or ?default Toml.Value.To.bool conf name
 
 let get_int ?default conf name =
-  get_or ?default Toml.get_int conf name
+  get_or ?default Toml.Value.To.int conf name
 
 let get_string ?default conf name =
-  get_or ?default Toml.get_string conf name
+  get_or ?default Toml.Value.To.string conf name
 
 let get_float ?default conf name =
-  get_or ?default Toml.get_float conf name
+  get_or ?default Toml.Value.To.float conf name
 
 let get_string_list ?default conf name =
-  get_or ?default Toml.get_string_list conf name
+  get_or ?default
+    (fun s -> Toml.Value.To.Array.string (Toml.Value.To.array s))
+    conf name
