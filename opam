@@ -21,6 +21,7 @@ depends: [
     "re"
     "ppx_deriving"
     "ppx_deriving_yojson"
+    "cmdliner"
 ]
 available: ["ocaml-version" >= "4.02.1"]
 tags: ["lock" "batch"]
