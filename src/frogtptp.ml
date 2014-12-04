@@ -343,17 +343,21 @@ type params = {
 }
 
 let main params =
-  let config = FrogConfig.parse_files params.config_files FrogConfig.empty in
-  match params.cmd with
-  | Run (prog,args) ->
-      run
-        ?timeout:params.conf.timeout
-        ?memory:params.conf.memory
-        ~config prog args
-  | Analyse l ->
-      analyse ~config l
-  | ListProvers ->
-      list_provers ~config
+  try
+    let config = FrogConfig.parse_files params.config_files FrogConfig.empty in
+    match params.cmd with
+    | Run (prog,args) ->
+        run
+          ?timeout:params.conf.timeout
+          ?memory:params.conf.memory
+          ~config prog args
+    | Analyse l ->
+        analyse ~config l
+    | ListProvers ->
+        list_provers ~config
+  with FrogConfig.Error msg ->
+    print_endline msg;
+    exit 1
 
 (** {2 Main} *)
 

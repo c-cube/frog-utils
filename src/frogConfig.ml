@@ -26,6 +26,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 (** {1 Config File} *)
 
+exception Error of string
+
 type table = {
   mutable tbl : Toml.Value.table;
   parent : t;
@@ -67,11 +69,14 @@ let parse_or_empty file =
     empty
 
 let parse_files l conf =
+  let module P = Toml.Parser in
   let conf' =  List.fold_left
     (fun parent file ->
-      match parse_or_empty file with
-      | Empty -> parent
-      | Table {tbl; _} -> Table {tbl; parent; }
+      try
+        match parse_or_empty file with
+        | Empty -> parent
+        | Table {tbl; _} -> Table {tbl; parent; }
+      with P.Error (msg, _) -> raise (Error msg)
     ) Empty l
   in
   match conf with
