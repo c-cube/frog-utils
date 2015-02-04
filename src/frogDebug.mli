@@ -1,3 +1,4 @@
+
 (*
 copyright (c) 2013-2015, simon cruanes
 all rights reserved.
@@ -23,4 +24,9 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *)
 
+(** {1 Debug function} *)
 
+val set_debug : bool -> unit
+(** Enable or disable debug *)
+
+val debug : ('a, Format.formatter, unit, unit) format4 -> 'a

@@ -1,3 +1,4 @@
+
 (*
 copyright (c) 2013-2015, simon cruanes
 all rights reserved.
@@ -23,4 +24,33 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *)
 
+(** {1 Deal with TPTP provers} *)
 
+module StrMap : module type of Map.Make(String)
+
+module Prover : sig
+  type t = {
+    cmd : string;
+    unsat : string option;
+    sat : string option;
+    unknown : string option;
+    timeout : string option;
+  }
+  val make_command :
+    ?tptp:string -> t -> timeout:int -> memory:int -> file:string -> string
+  val get_str_ : FrogConfig.t -> string -> string option
+  val build_from_config : FrogConfig.t -> string -> t
+  val find_config : FrogConfig.t -> string -> t
+  val of_config : FrogConfig.t -> t StrMap.t
+end
+
+val run_exec : ?timeout:int -> ?memory:int -> config:FrogConfig.t ->
+               string -> string -> 'a
+(** [run_exec ~config prover file] runs the prover named [prover] on the
+    given [file]. How to run the prover is provided by [config].
+    This uses {!Unix.execv} and therefore doesn't return. *)
+
+val run_cmd :?timeout:int -> ?memory:int -> config:FrogConfig.t ->
+               string -> string -> (string * string array)
+(** Same as {!run_exec}, but rather than executing the command, only
+    returns a pair [(command, args)] that can be executed (starts with "sh") *)

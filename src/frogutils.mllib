@@ -3,3 +3,5 @@ FrogLockClient
 FrogLockDaemon
 FrogMapState
 FrogConfig
+FrogTPTP
+FrogDebug

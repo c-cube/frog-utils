@@ -26,80 +26,14 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 (** {1 Manage TPTP provers} *)
 
+module StrMap = Map.Make(String)
+module St = FrogMapState
+module Prover = FrogTPTP.Prover
+module Conf = FrogConfig
 
 (** {2 Description of a prover} *)
 
-module Conf = FrogConfig
-module StrMap = Map.Make(String)
-module St = FrogMapState
-
-let debug_ = ref false
-let debug fmt =
-  if !debug_
-  then Printf.kfprintf
-    (fun _ -> output_char stdout '\n'; flush stdout)
-    stdout fmt
-  else Printf.ifprintf stdout fmt
-
-module Prover = struct
-  type t = {
-    cmd : string;  (* string that possible contains $file, $memory and $timeout *)
-    unsat : string option; (* regex for "unsat" *)
-    sat : string option;
-    unknown : string option;
-    timeout : string option;
-  }
-
-  (* command ready to run in a shell *)
-  let make_command ?tptp p ~timeout ~memory ~file =
-    let buf = Buffer.create 32 in
-    let add_str s =
-    Buffer.add_substitute buf
-      (function
-        | "memory" -> string_of_int memory
-        | "timeout" | "time" -> string_of_int timeout
-        | "file" -> file
-        | _ -> raise Not_found
-      ) s
-    in
-    add_str "ulimit -t $time -v \\$(( 1000000 * $memory )); ";
-    begin match tptp with
-      | None -> ()
-      | Some s -> add_str ("TPTP="^ s ^ " ")
-    end;
-    add_str p.cmd;
-    Buffer.contents buf
-
-  (* recover description of prover from config file *)
-  let build_from_config config name =
-    let d =
-      try Conf.get_table config name
-      with Not_found ->
-        failwith ("could not find prover " ^ name ^ " in config")
-    in
-    let cmd = Conf.get_string d "cmd" in
-    let unsat = try Some (Conf.get_string d "unsat") with Not_found -> None in
-    let sat = try Some (Conf.get_string d "sat") with Not_found -> None in
-    let unknown = try Some (Conf.get_string d "unknown") with Not_found -> None in
-    let timeout = try Some (Conf.get_string d "timeout") with Not_found -> None in
-    { cmd; unsat; sat; unknown; timeout; }
-
-  let find_config config name =
-    (* check that the prover is listed *)
-    let provers = Conf.get_string_list ~default:[] config "provers" in
-    if not (List.mem name provers)
-      then failwith ("prover " ^ name ^ " not listed in config");
-    build_from_config config name
-
-  (* make a list of provers from the given config *)
-  let of_config config =
-    let provers = Conf.get_string_list ~default:[] config "provers" in
-    List.fold_left
-      (fun map p_name ->
-        let prover = build_from_config config p_name in
-        StrMap.add p_name prover map
-      ) StrMap.empty provers
-end
+let debug fmt = FrogDebug.debug fmt
 
 let re_not_comma = Re_posix.compile_pat "[^,]+"
 
@@ -117,26 +51,6 @@ let split_comma s =
     List.rev !l
   with Not_found ->
     List.rev !l
-
-let run ?timeout ?memory ~config prog file =
-  let p = Prover.find_config config prog in
-  let tptp = match Conf.get_string ~default:"" config "TPTP" with
-    | "" -> None
-    | s -> Some s
-  in
-  let timeout = match timeout with
-    | Some t -> t
-    | None -> Conf.get_int ~default:30 config "timeout"
-  in
-  let memory = match memory with
-    | Some m -> m
-    | None -> Conf.get_int ~default:1000 config "memory"
-  in
-  debug "tptp: %s, timeout: %d, memory: %d" ([%show:string option] tptp) timeout memory;
-  let cmd = Prover.make_command ?tptp p ~timeout ~memory ~file in
-  let cmd = ["/bin/sh"; "-c"; cmd] in
-  debug "run command '%s'" (String.concat " " cmd);
-  Unix.execv "/bin/sh" (Array.of_list cmd)
 
 type file_summary = {
   mutable num_all : int;
@@ -175,7 +89,9 @@ let make_summary prover job results =
   } in
   let re_sat = Opt.(prover.Prover.sat >>= compile_re ~msg:"sat") in
   let re_unsat = Opt.(prover.Prover.unsat >>= compile_re ~msg:"unsat") in
+  (*
   let re_unknown = Opt.(prover.Prover.unknown >>= compile_re ~msg:"unknown") in
+  *)
   StrMap.iter
     (fun file res ->
       if res.St.res_errcode <> 0
@@ -347,7 +263,7 @@ let main params =
     let config = FrogConfig.parse_files params.config_files FrogConfig.empty in
     match params.cmd with
     | Run (prog,args) ->
-        run
+        FrogTPTP.run_exec
           ?timeout:params.conf.timeout
           ?memory:params.conf.memory
           ~config prog args
@@ -389,7 +305,7 @@ let options = Arg.align
   ; "-list", Arg.Unit (fun () -> cmd_ := `List), " list provers"
   ; "-memory", Arg.Set_int memory_, " memory limit (MB)"
   ; "-timeout", Arg.Set_int timeout_, " timeout (s)"
-  ; "-debug", Arg.Set debug_, " enable debug"
+  ; "-debug", Arg.Unit (fun () -> FrogDebug.set_debug true), " enable debug"
   ; "--", Arg.Rest push_arg_, " stop parsing arguments"
   ]
 

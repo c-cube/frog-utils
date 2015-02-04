@@ -1,3 +1,4 @@
+
 (*
 copyright (c) 2013-2015, simon cruanes
 all rights reserved.
@@ -23,4 +24,16 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *)
 
+(** {1 Debug function} *)
+
+let debug_ = ref false
+
+let set_debug b = debug_ := b
+
+let debug fmt =
+  if !debug_
+  then Format.kfprintf
+    (fun _ -> Format.fprintf Format.std_formatter "@.")
+    Format.std_formatter fmt
+  else Format.ifprintf Format.std_formatter fmt
 
