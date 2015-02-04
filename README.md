@@ -61,7 +61,27 @@ apply a command to all the results stored in some `<file.json>` produced by
 ```
 
 will print all number from 1 to 1000 that contains the string 11 in
-their decimal representation. In a slightly inefficient way.
+their decimal representation. In a slightly inefficient way. The command
+is passed the following environment:
+
+- `FROG_OUT`: the command's stdout
+- `FROG_ERR`: the command's stderr
+- `FROG_ARG`: the argument given to the command
+- `FROG_TIME`: number of seconds the command took to complete
+- `FROG_ERRCODE`: exit code of the command
+
+The useful options are:
+
+- `-arg` to disable printing of the commands' output to stdin, e.g. if
+  the command closes its stdin (typically, `echo`)
+- `-c` to run a shell command
+
+Example:
+
+```sh
+    frogiter foo.json -arg -c \
+    'echo on $FROG_ARG, time $FROG_TIME, `wc -l <<< "$FROG_OUT"` lines'
+```
 
 ### Frogtptp
 

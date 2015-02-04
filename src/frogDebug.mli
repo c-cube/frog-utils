@@ -29,4 +29,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 val set_debug : bool -> unit
 (** Enable or disable debug *)
 
+val enable_debug : unit -> unit
+
 val debug : ('a, Format.formatter, unit, unit) format4 -> 'a

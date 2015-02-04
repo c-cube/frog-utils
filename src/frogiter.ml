@@ -41,6 +41,7 @@ type cmd =
   | Shell of string
   | Exec of string * string list
   | Stats
+  [@@deriving show]
 
 type params = {
   format_in : format_in;
@@ -54,17 +55,39 @@ let print_prelude oc res =
   Lwt_io.fprintf oc "# time: %.2f\n" res.S.res_time >>= fun () ->
   Lwt.return_unit
 
+let escape_quote s =
+  let buf = Buffer.create (String.length s) in
+  String.iter
+    (function
+      | '\'' -> Buffer.add_string buf "\'"
+      | c -> Buffer.add_char buf c
+    ) s;
+  Buffer.contents buf
+
 (* run command on the given result *)
 let run_cmd params res =
-  let cmd = match params.cmd, params.format_in with
-    | Shell c, AsArg -> Lwt_process.shell (c ^ " '" ^ res.S.res_out ^ "'")
-    | Shell c, _ -> Lwt_process.shell c
-    | Exec (p, args), AsArg -> (p, Array.of_list (p::args @ [res.S.res_out]))
-    | Exec (p, args), _ -> (p, Array.of_list (p::args))
-    | Stats, _ -> assert false
+  let cmd = match params.cmd with
+    | Shell c ->
+        Lwt_process.shell ("set -e; set -o pipefail; " ^ escape_quote c)
+    | Exec (p, args)  -> (p, Array.of_list (p::args))
+    | Stats -> assert false
   in
-  Lwt_process.with_process_out
-    ~stdout:`Keep ~stderr:`Keep cmd
+  (* give additional info through parameters *)
+  let env = Unix.environment () |> Array.to_list in
+  let env =
+    [ "FROG_ERRCODE=" ^ res.S.res_err
+    ; "FROG_TIME=" ^ string_of_float res.S.res_time
+    ; "FROG_ERR=" ^ res.S.res_err
+    ; "FROG_OUT=" ^ res.S.res_out
+    ; "FROG_ARG=" ^ res.S.res_arg
+    ] @ env
+    |> Array.of_list
+  in
+  FrogDebug.debug "run sub-process %s" ([%show: string*string array] cmd);
+  (* spawn process *)
+  Lwt.catch
+  (fun () -> Lwt_process.with_process_out
+    ~stdout:`Keep ~stderr:`Keep ~env cmd
     (fun p ->
       begin match params.format_in with
       | OutOnly ->
@@ -76,7 +99,12 @@ let run_cmd params res =
       end >>= fun () ->
       Lwt_io.close p#stdin >>= fun () ->
       p#status >>= fun _ ->
+      FrogDebug.debug "process finished";
       Lwt.return_unit
+    )
+  ) (fun e ->
+      Lwt_io.eprintlf "error on command %s: %s"
+        (show_cmd params.cmd) (Printexc.to_string e)
     )
 
 (* print some statistics *)
@@ -91,7 +119,8 @@ let show_stats filename =
       num + 1, sum_len_out + String.length res.S.res_out
     ) map (0,0)
   in
-  Lwt_io.printlf "%d arguments dealt with, total length of outputs %d (avg output len %.2f)"
+  Lwt_io.printlf
+    "%d arguments dealt with, total length of outputs %d (avg output len %.2f)"
     num sum_len_out (if num=0 then 0. else foi sum_len_out /. foi num)
 
 let main params =
@@ -121,16 +150,19 @@ let push_ s = match !file_ with
 let set_format_in_ x () = format_in_ := x
 
 let usage = "iter [options] <file> [--] <cmd>\n\
-  call the command <cmd> on every result in <file>, piping the result's output\n\
+  call the command <cmd> on every result in <file>, \
+  piping the result's output\n\
   into <cmd>'s input"
 
 let options = Arg.align
   [ "-prelude", Arg.Unit (set_format_in_ Prelude),
       " pipe additional info about the result into the command"
   ; "-arg", Arg.Unit (set_format_in_ AsArg),
-      " give res.output as a CLI argument to <cmd>"
+      " give res.output only through environment, not stdin"
+  ; "-debug", Arg.Unit FrogDebug.enable_debug, " enable debug"
   ; "-stats", Arg.Set stats_, " print statistics about the file"
-  ; "-c", Arg.String (fun s -> shell_cmd_ := Some s), " invoke command in a shell"
+  ; "-c", Arg.String (fun s -> shell_cmd_ := Some s),
+      " invoke command in a shell"
   ; "--", Arg.Rest push_, " start parsing command"
   ]
 
