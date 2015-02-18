@@ -28,8 +28,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 module S = FrogMapState
 
-let (>>=) = Lwt.(>>=)
-
 type cmd =
   | Resume of string   (* resume filename *)
   | Run of string * string list (* run command *)
@@ -56,19 +54,16 @@ let run_cmd ?timeout cmd arg =
   let start = Unix.gettimeofday () in
   Lwt_process.with_process_full ?timeout cmd'
     (fun p ->
-      Lwt_io.close p#stdin >>= fun () ->
-      let out = Lwt_io.read p#stdout
-      and err = Lwt_io.read p#stderr
-      and errcode = Lwt.map
+      let%lwt () = Lwt_io.close p#stdin
+      and res_out = Lwt_io.read p#stdout
+      and res_err = Lwt_io.read p#stderr
+      and res_errcode = Lwt.map
         (function
           | Unix.WEXITED e -> e
           | Unix.WSIGNALED _
           | Unix.WSTOPPED _  -> 128
         ) p#status
       in
-      out >>= fun res_out ->
-      err >>= fun res_err ->
-      errcode >>= fun res_errcode ->
       let res_time = Unix.gettimeofday() -. start in
       Lwt_log.ign_debug_f "process '%s' on '%s': done (%.2fs)" cmd arg res_time;
       Lwt.return {S.res_arg=arg; res_time; res_errcode; res_out; res_err; }
@@ -80,36 +75,36 @@ let nb_sec_hour = 60 * nb_sec_minute
 let nb_sec_day = 24 * nb_sec_hour
 
 let time_string f =
-    let n = int_of_float f in
-    let aux n div = n / div, n mod div in
-    let n_day, n = aux n nb_sec_day in
-    let n_hour, n = aux n nb_sec_hour in
-    let n_min, n = aux n nb_sec_minute in
-    let print_aux s n = if n <> 0 then (string_of_int n) ^ s else "" in
-    (print_aux "d" n_day) ^
-    (print_aux "h" n_hour) ^
-    (print_aux "m" n_min) ^
-    (string_of_int n) ^ "s"
+  let n = int_of_float f in
+  let aux n div = n / div, n mod div in
+  let n_day, n = aux n nb_sec_day in
+  let n_hour, n = aux n nb_sec_hour in
+  let n_min, n = aux n nb_sec_minute in
+  let print_aux s n = if n <> 0 then (string_of_int n) ^ s else "" in
+  (print_aux "d" n_day) ^
+  (print_aux "h" n_hour) ^
+  (print_aux "m" n_min) ^
+  (string_of_int n) ^ "s"
 
 let make_progress_thread n =
   let cur = ref 0 in
   let start = Unix.gettimeofday () in
   let rec loop () =
-      let time_elapsed = Unix.gettimeofday () -. start in
-      let len_bar = 30 in
-      let bar = String.init len_bar (fun i -> if i * n <= len_bar * !cur then '#' else ' ') in
-      let percent = if n=0 then 100 else (!cur * 100) / n in
-      Lwt_io.printf "\r... %5d/%d | %3d%% [%6s: %s]"
-        !cur n percent (time_string time_elapsed) bar
-      >>= fun () ->
-      Lwt_io.flush Lwt_io.stdout >>= fun () -> (
-      if !cur = n
-      then (Lwt_io.printl "" >>= fun () -> Lwt_io.flush Lwt_io.stdout)
-      else (
-        Lwt_unix.sleep 0.2 >>= fun () ->
-        loop ()
-        )
-      )
+    let time_elapsed = Unix.gettimeofday () -. start in
+    let len_bar = 30 in
+    let bar = String.init len_bar (fun i -> if i * n <= len_bar * !cur then '#' else ' ') in
+    let percent = if n=0 then 100 else (!cur * 100) / n in
+    let%lwt () = Lwt_io.printf "\r... %5d/%d | %3d%% [%6s: %s]"
+      !cur n percent (time_string time_elapsed) bar
+    in
+    let%lwt () = Lwt_io.flush Lwt_io.stdout in
+    if !cur = n
+    then
+      let%lwt () = Lwt_io.printl "" in
+      Lwt_io.flush Lwt_io.stdout
+    else
+      let%lwt () = Lwt_unix.sleep 0.2 in
+      loop ()
   in
   (fun () -> incr cur), (loop ())
 
@@ -128,7 +123,7 @@ let map_args ?timeout ~progress ~j cmd yield_res args =
       Lwt_pool.use pool
         (fun () ->
           Lwt_log.ign_debug_f "run on %s..." arg;
-          run_cmd ?timeout cmd arg >>= fun res ->
+          let%lwt res = run_cmd ?timeout cmd arg in
           send_done ();
           Lwt_log.ign_debug_f "... %s: done (errcode %d)" arg res.S.res_errcode;
           yield_res res  (* output result *)
@@ -146,11 +141,12 @@ module StrSet = Set.Make(String)
 (* resume job from the given file *)
 let resume ?timeout ~progress ~j file =
   (* get the job and the set of executed tasks *)
-  S.fold_state
-    (fun (job,set) res -> job, StrSet.add res.S.res_arg set)
-    (fun job -> job, StrSet.empty)
-    file
-  >>= fun (job, done_tasks) ->
+  let%lwt (job, done_tasks) =
+    S.fold_state
+      (fun (job,set) res -> job, StrSet.add res.S.res_arg set)
+      (fun job -> job, StrSet.empty)
+      file
+  in
   let remaining_tasks = List.filter
     (fun arg -> not (StrSet.mem arg done_tasks))
     job.S.arguments
@@ -159,8 +155,8 @@ let resume ?timeout ~progress ~j file =
   Lwt_log.ign_debug_f "change directory to %s" job.S.cwd;
   Sys.chdir job.S.cwd;
   (* execute remaining tasks *)
-  Lwt_io.printlf "resume: %d remaining tasks (%d done)"
-    (List.length remaining_tasks) (StrSet.cardinal done_tasks) >>= fun () ->
+  let%lwt () = Lwt_io.printlf "resume: %d remaining tasks (%d done)"
+    (List.length remaining_tasks) (StrSet.cardinal done_tasks) in
   S.append_job ~file
     (fun yield_res ->
       map_args ?timeout ~progress ~j job.S.cmd yield_res remaining_tasks
@@ -168,12 +164,13 @@ let resume ?timeout ~progress ~j file =
 
 let run_map params cmd args =
   (* chose output file *)
-  begin match params.filename with
+  let%lwt file = match params.filename with
     | None -> S.make_fresh_file ?dir:params.dir "frogmapXXXXX.json"
     | Some f -> Lwt.return f
-  end >>= fun file ->
-  Lwt_io.printlf "run command '%s' on %d arguments, parallelism %d, output to %s"
-    cmd (List.length args) params.parallelism_level file >>= fun () ->
+  in
+  let%lwt () = Lwt_io.printlf
+    "run command '%s' on %d arguments, parallelism %d, output to %s"
+    cmd (List.length args) params.parallelism_level file in
   let job = {S.cmd = cmd; arguments=args; cwd= Sys.getcwd(); } in
   (* open file *)
   S.make_job ~file job
@@ -259,13 +256,16 @@ let read_params () =
   match !resume_, !cmd_ with
     | Some f, _ -> mk_params (Resume f)
     | None, Some c ->
-        begin match !file_args_ with
-          | None -> Lwt.return (List.rev !args_)
-          | Some f -> read_file_args f
-        end >>= fun args ->
-        mk_params (Run (c, args))
+      let%lwt args =  match !file_args_ with
+        | None -> Lwt.return (List.rev !args_)
+        | Some f -> read_file_args f
+      in
+      mk_params (Run (c, args))
     | None, None -> Arg.usage options usage; exit 1
 
 let () =
   Arg.parse options push_ usage;
-  Lwt_main.run (read_params () >>= main)
+  Lwt_main.run (
+    let%lwt params = read_params () in
+    main params
+  )

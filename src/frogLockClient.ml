@@ -28,8 +28,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 module M = FrogLockMessages
 
-let (>>=) = Lwt.(>>=)
-
 type remote_daemon = {
   ic : Lwt_io.input_channel;
   oc : Lwt_io.output_channel;
@@ -53,62 +51,58 @@ let acquire ?cwd ?user ?info ?(tags=[]) {ic; oc} f =
   (* send "acquire" *)
   let pid = Unix.getpid() in
   let msg = M.Acquire {M.info; user; query_time; tags; cwd; pid} in
-  M.print oc msg >>= fun () ->
+  let%lwt () = M.print oc msg in
   (* expect "go" *)
-  M.parse ic >>= function
+  let%lwt res = M.parse ic in
+  match res with
   | M.Reject ->
     Lwt_log.ign_debug ~section "lock: rejected (daemon too busy?)";
     f false
   | M.Go ->
     Lwt_log.ign_debug ~section "acquired lock";
-    Lwt.finalize
-      (fun () -> f true)
-      (fun () ->
-        (* eventually, release *)
-        Lwt_log.ign_debug ~section "release lock";
-        M.print oc M.Release
-      )
+    f true
+    [@finally
+      (* eventually, release *)
+      Lwt_log.ign_debug ~section "release lock";
+      M.print oc M.Release
+    ]
   | msg -> Lwt.fail (M.Unexpected msg)
 
 (* try to connect; if it fails, spawn daemon and retry *)
 let connect_or_spawn ?log_file ?(retry=1.) port f =
-  Lwt.catch
-    (fun () -> connect port f)
-    (fun _e ->
-      (* launch daemon and re-connect *)
-      Lwt_log.ign_info ~section "could not connect; launch daemon...";
-      FrogLockDaemon.fork_and_spawn ?log_file port >>= function
-      | `child thread ->
-          thread >>= fun() ->
-          Lwt.fail Exit
-      | `parent ->
-          Lwt_unix.sleep retry >>= fun () ->
-          Lwt_log.ign_info ~section "retry to connect to daemon...";
-          connect port f
-    )
+  try%lwt
+    connect port f
+  with _ ->
+    (* launch daemon and re-connect *)
+    Lwt_log.ign_info ~section "could not connect; launch daemon...";
+    match%lwt FrogLockDaemon.fork_and_spawn ?log_file port with
+    | `child thread ->
+        let%lwt () = thread in
+        Lwt.fail Exit
+    | `parent ->
+        let%lwt () = Lwt_unix.sleep retry in
+        Lwt_log.ign_info ~section "retry to connect to daemon...";
+        connect port f
 
 let get_status port =
-  Lwt.catch
-    (fun () ->
-      connect port
-        (fun daemon ->
-          M.print daemon.oc M.Status >>= fun () ->
-          M.parse daemon.ic >>= function
-          | M.StatusAnswer ans ->
-              Lwt.return (Some ans)
-          | m ->
-              Lwt.fail (M.Unexpected m)
-        )
-    ) (fun _ -> Lwt.return_none)
+  try%lwt
+    connect port
+      (fun daemon ->
+        let%lwt () = M.print daemon.oc M.Status
+        and res = M.parse daemon.ic in
+        match res with
+        | M.StatusAnswer ans ->
+            Lwt.return (Some ans)
+        | m ->
+            Lwt.fail (M.Unexpected m)
+      )
+  with _  ->
+    Lwt.return_none
 
 (* connect to daemon (if any) and tell it to stop *)
 let stop_accepting port =
-  Lwt.catch
-    (fun () ->
-      connect port
-        (fun {oc;_} -> M.print oc M.StopAccepting)
-    )
-    (fun e ->
-      Lwt_log.ign_error_f ~section "error: %s" (Printexc.to_string e);
-      Lwt.return_unit
-    )
+  try%lwt
+    connect port (fun {oc;_} -> M.print oc M.StopAccepting)
+  with e ->
+    Lwt_log.ign_error_f ~section "error: %s" (Printexc.to_string e);
+    Lwt.return_unit

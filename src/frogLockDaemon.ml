@@ -27,7 +27,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 (** {1 Daemon} *)
 
 module M = FrogLockMessages
-let (>>=) = Lwt.(>>=)
 
 let section = Lwt_log.Section.make "FrogLockDaemon"
 
@@ -70,7 +69,8 @@ let start_scheduler ~state () =
   let inbox = state.scheduler in
   (* listen for new messages. [task] is the current running task, if any *)
   let rec listen () =
-    Lwt_mvar.take inbox >>= function
+    let%lwt res = Lwt_mvar.take inbox in
+    match res with
     | `Register task' ->
         Queue.push task' state.queue;
         begin match state.current with
@@ -118,7 +118,7 @@ let start_scheduler ~state () =
         current_start=Unix.gettimeofday();
       } in
       state.current <- Some cur;
-      Lwt_mvar.put task.box () >>= fun () ->
+      let%lwt () = Lwt_mvar.put task.box () in
       listen ()
     )
   in
@@ -131,22 +131,22 @@ let is_release_msg = function
 let handle_acquire ~state id (ic,oc) query =
   let task = {box=Lwt_mvar.create_empty (); id; query} in
   (* acquire lock *)
-  Lwt_mvar.put state.scheduler (`Register task) >>= fun () ->
-  Lwt_mvar.take task.box >>= fun () ->
+  let%lwt () = Lwt_mvar.put state.scheduler (`Register task) in
+  let%lwt () = Lwt_mvar.take task.box in
   let release_ () =
     (* release lock *)
     Lwt_log.ign_debug_f ~section "task %d: released" id;
     state.num_clients <- state.num_clients - 1;
     Lwt_mvar.put state.scheduler (`Done task)
   in
-  Lwt.catch
-    (fun () ->
-      (* start task *)
-      Lwt_log.ign_debug_f ~section "task %d: send 'go'" id;
-      M.print oc M.Go >>= fun () ->
-      M.expect ic is_release_msg >>= fun _ ->
-      release_ ()
-    ) (fun _ -> release_ ())
+  try%lwt
+    (* start task *)
+    Lwt_log.ign_debug_f ~section "task %d: send 'go'" id;
+    let%lwt () = M.print oc M.Go in
+    let%lwt _ = M.expect ic is_release_msg in
+    release_ ()
+  with _ ->
+    release_ ()
 
 let stop_accepting ~state =
   Lwt_log.ign_info ~section "stop accepting jobs...";
@@ -169,7 +169,8 @@ let handle_status ~state oc =
   [cond_stop] condition to stop the server
   [ic,oc] connection to client *)
 let handle_client ~state ic oc =
-  M.parse ic >>= function
+  let%lwt res = M.parse ic in
+  match res with
   | M.Acquire _ when not state.accept ->
       Lwt_log.ign_info ~section "ignore query (not accepting)";
       M.print oc M.Reject
@@ -207,7 +208,7 @@ let spawn port =
   in
   (* stop *)
   Lwt_log.ign_debug ~section "daemon started";
-  run_scheduler >>= fun () ->
+  let%lwt () = run_scheduler in
   Lwt_log.ign_debug ~section "daemon's server is stopping";
   Lwt_io.shutdown_server server;
   Lwt.return_unit
@@ -217,25 +218,20 @@ let spawn port =
 let setup_loggers  ?log_file () =
   let syslog = Lwt_log.syslog ~facility:`User () in
   Lwt_log.default := syslog;
-  begin match log_file with
+  let%lwt () =  match log_file with
     | None -> Lwt.return_unit
     | Some file_name ->
-        (* also redirect to the given file *)
-        Lwt.catch
-          (fun () ->
-            Lwt_log.file ~mode:`Append ~perm:0o666 ~file_name ()
-            >>= fun log' ->
-            let all_log = Lwt_log.broadcast [log'; syslog] in
-            Lwt_log.default := all_log;
-            Lwt.return_unit
-          )
-          (fun e ->
-            Lwt_io.eprintlf "error opening log file %s" file_name >>= fun () ->
-            Lwt_log.ign_error_f "could not open file %s: %s"
-              file_name (Printexc.to_string e);
-            Lwt.return_unit
-          )
-  end >>= fun () ->
+      try%lwt
+        let%lwt log' = Lwt_log.file ~mode:`Append ~perm:0o666 ~file_name () in
+        let all_log = Lwt_log.broadcast [log'; syslog] in
+        Lwt_log.default := all_log;
+        Lwt.return_unit
+      with e ->
+        let%lwt _ = Lwt_io.eprintlf "error opening log file %s" file_name in
+        Lwt_log.ign_error_f "could not open file %s: %s"
+          file_name (Printexc.to_string e);
+        Lwt.return_unit
+  in
   Lwt_io.close Lwt_io.stderr
 
 (* fork and spawn a daemon on the given port *)
@@ -244,15 +240,15 @@ let fork_and_spawn ?log_file port =
   | 0 -> (* child, will be the daemon *)
     Lwt_daemon.daemonize ~syslog:false ~directory:"/tmp"
       ~stdin:`Close ~stdout:`Close ~stderr:`Keep ();
-    setup_loggers ?log_file () >>= fun () ->
+    let%lwt () = setup_loggers ?log_file () in
     Lwt_log.Section.set_level section Lwt_log.Info;
     Lwt_log.ign_debug ~section "loggers are setup";
-    let thread = Lwt.catch
-      (fun () -> spawn port)
-      (fun e ->
+    let thread =
+      try%lwt
+        spawn port
+      with e ->
         Lwt_log.ign_error_f ~section "daemon: error: %s" (Printexc.to_string e);
         Lwt.return_unit
-      )
     in
     Lwt.return (`child thread)
   | _ -> Lwt.return `parent

@@ -29,8 +29,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 module S = FrogMapState
 
-let (>>=) = Lwt.(>>=)
-
 (* what kind of input to give to the command, for every result? *)
 type format_in =
   | OutOnly  (* pass result.res_out to command *)
@@ -51,9 +49,8 @@ type params = {
 
 (* print metadata of result on the given chan *)
 let print_prelude oc res =
-  Lwt_io.fprintf oc "# argument: %s\n" res.S.res_arg >>= fun () ->
-  Lwt_io.fprintf oc "# time: %.2f\n" res.S.res_time >>= fun () ->
-  Lwt.return_unit
+  let%lwt () = Lwt_io.fprintf oc "# argument: %s\n" res.S.res_arg in
+  Lwt_io.fprintf oc "# time: %.2f\n" res.S.res_time
 
 let escape_quote s =
   let buf = Buffer.create (String.length s) in
@@ -85,33 +82,32 @@ let run_cmd params res =
   in
   FrogDebug.debug "run sub-process %s" ([%show: string*string array] cmd);
   (* spawn process *)
-  Lwt.catch
-  (fun () -> Lwt_process.with_process_out
-    ~stdout:`Keep ~stderr:`Keep ~env cmd
-    (fun p ->
-      begin match params.format_in with
-      | OutOnly ->
-          Lwt_io.write p#stdin res.S.res_out
-      | Prelude ->
-          print_prelude p#stdin res >>= fun () ->
-          Lwt_io.write p#stdin res.S.res_out
-      | AsArg -> Lwt.return_unit
-      end >>= fun () ->
-      Lwt_io.close p#stdin >>= fun () ->
-      p#status >>= fun _ ->
-      FrogDebug.debug "process finished";
-      Lwt.return_unit
-    )
-  ) (fun e ->
-      Lwt_io.eprintlf "error on command %s: %s"
-        (show_cmd params.cmd) (Printexc.to_string e)
-    )
+  try%lwt
+    Lwt_process.with_process_out
+      ~stdout:`Keep ~stderr:`Keep ~env cmd
+      (fun p ->
+        let%lwt () = match params.format_in with
+        | OutOnly ->
+            Lwt_io.write p#stdin res.S.res_out
+        | Prelude ->
+            let%lwt () = print_prelude p#stdin res in
+            Lwt_io.write p#stdin res.S.res_out
+        | AsArg -> Lwt.return_unit
+        in
+        let%lwt () = Lwt_io.close p#stdin
+        and _ = p#status in
+        FrogDebug.debug "process finished";
+        Lwt.return_unit
+      )
+  with e ->
+    Lwt_io.eprintlf "error on command %s: %s"
+      (show_cmd params.cmd) (Printexc.to_string e)
 
 (* print some statistics *)
 let show_stats filename =
-  S.read_state filename >>= fun (job, map) ->
-  Lwt_io.printlf "job: run '%s' on %d arguments"
-    job.S.cmd (List.length job.S.arguments)  >>= fun () ->
+  let%lwt (job, map) = S.read_state filename in
+  let%lwt() = Lwt_io.printlf "job: run '%s' on %d arguments"
+    job.S.cmd (List.length job.S.arguments) in
   (* compute basic statistics *)
   let foi = float_of_int in
   let num, sum_len_out = S.StrMap.fold

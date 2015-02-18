@@ -48,9 +48,6 @@ type result = {
 
 type yield_res = result -> unit Lwt.t
 
-let (>>=) = Lwt.(>>=)
-let (>|=) = Lwt.(>|=)
-
 (* create a new file in the given directory with the given "name pattern" *)
 let make_fresh_file ?dir pattern =
   let dir = match dir with
@@ -68,7 +65,7 @@ let print_job oc job =
 (* given a handle to the result file, adds the result to it *)
 let add_res oc res =
   let s = Yojson.Safe.to_string (result_to_yojson res) in
-  Lwt_io.write_line oc s >>= fun () ->
+  let%lwt () = Lwt_io.write_line oc s in
   Lwt_io.flush oc
 
 (* TODO: locking *)
@@ -78,7 +75,7 @@ let make_job ~file job f =
   Lwt_io.with_file ~flags~perm:0o644 ~mode:Lwt_io.output file
     (fun oc ->
       (* print header *)
-      print_job oc job >>= fun () ->
+      let%lwt () = print_job oc job in
       (* call f with a yield_res function*)
       f (add_res oc)
     )
@@ -114,25 +111,23 @@ let read_json_stream filename =
   stream
 
 let fold_state_s f init filename =
-  Lwt.catch
-    (fun () ->
-      let stream = read_json_stream filename in
-      (* parse job header *)
-      Lwt_stream.next stream >|= job_of_yojson >>= function
-      | `Error e -> Lwt.fail (Failure e)
-      | `Ok job ->
-          init job >>= fun acc ->
-          Lwt_stream.fold_s
-            (fun json acc ->
-              match result_of_yojson json with
-              | `Error e -> Lwt.fail (Failure e)
-              | `Ok res -> f acc res
-            ) stream acc
-    )
-    (function
-      | Failure _ as e -> Lwt.fail e
-      | e -> Lwt.fail (Failure (Printexc.to_string e))
-    )
+  try%lwt
+    let stream = read_json_stream filename in
+    (* parse job header *)
+    let%lwt res = Lwt_stream.next stream in
+    match job_of_yojson res with
+    | `Error e -> Lwt.fail (Failure e)
+    | `Ok job ->
+        let%lwt acc = init job in
+        Lwt_stream.fold_s
+          (fun json acc ->
+            match result_of_yojson json with
+            | `Error e -> Lwt.fail (Failure e)
+            | `Ok res -> f acc res
+          ) stream acc
+  with
+    | Failure _ as e -> Lwt.fail e
+    | e -> Lwt.fail (Failure (Printexc.to_string e))
 
 let fold_state f init filename =
   fold_state_s

@@ -25,9 +25,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 (** {1 Scheduling script} *)
 
-let (>>=) = Lwt.(>>=)
-let (>|=) = Lwt.(>|=)
-
 let section = Lwt_log.Section.make "FrogLock"
 
 let () =
@@ -84,7 +81,7 @@ let run_command params =
           (* close stdin so that interactive commands fail *)
           Lwt_process.with_process_none ~stdin:`Close ~stdout:`Keep cmd
             (fun process ->
-              process#status >>= fun status ->
+              let%lwt status = process#status in
               (* measure time elapsed since we started the process *)
               let stop = Unix.gettimeofday () in
               let time = stop -. start in
@@ -112,54 +109,53 @@ let print_status params =
     | l -> ", tags {" ^ String.concat ", " l ^ "}"
   in
   let now = Unix.gettimeofday() in
-  Lwt.catch
-    (fun () ->
-      FrogLockClient.get_status params.port >>= function
-      | None ->
-        Lwt_log.info_f ~section "daemon not running"
-      | Some {M.current=c; waiting} ->
-          begin match c with
-            | None -> Lwt.return_unit
-            | Some c ->
-                let time = Unix.gettimeofday() -. c.M.current_start in
-                let job = c.M.current_job in
-                Lwt_io.printlf "current job (user %s, pid %d, cwd %s, issued %.2fs ago%s, running for %.2fs): %s"
-                  (maybe_str job.M.user)
-                  job.M.pid (maybe_str job.M.cwd)
-                  (now -. job.M.query_time)
-                  (tags2str job.M.tags)
-                  time (maybe_str job.M.info)
-          end >>= fun () ->
-          Lwt_list.iter_s
-            (fun wjob ->
-              let job = wjob.M.waiting_job in
-              Lwt_io.printlf "waiting job n°%d (user %s, pid %d, cwd %s, issued %.2fs ago%s): %s"
-                wjob.M.waiting_id
-                (maybe_str job.M.user)
-                job.M.pid (maybe_str job.M.cwd)
-                (now -. job.M.query_time)
-                (tags2str job.M.tags)
-                (maybe_str job.M.info)
-            ) waiting
-    )
-    (fun e ->
-      Lwt_log.ign_error_f ~section "error: %s" (Printexc.to_string e);
-      Lwt.return_unit
-    )
+  try%lwt
+    let%lwt res = FrogLockClient.get_status params.port in
+    match res with
+    | None ->
+      Lwt_log.info_f ~section "daemon not running"
+    | Some {M.current=c; waiting} ->
+      let%lwt () = match c with
+        | None -> Lwt.return_unit
+        | Some c ->
+          let time = Unix.gettimeofday() -. c.M.current_start in
+          let job = c.M.current_job in
+          Lwt_io.printlf
+            "current job (user %s, pid %d, cwd %s, issued %.2fs ago%s, running for %.2fs): %s"
+            (maybe_str job.M.user)
+            job.M.pid (maybe_str job.M.cwd)
+            (now -. job.M.query_time)
+            (tags2str job.M.tags)
+            time (maybe_str job.M.info)
+      in
+      Lwt_list.iter_s
+        (fun wjob ->
+           let job = wjob.M.waiting_job in
+           Lwt_io.printlf "waiting job n°%d (user %s, pid %d, cwd %s, issued %.2fs ago%s): %s"
+             wjob.M.waiting_id
+             (maybe_str job.M.user)
+             job.M.pid (maybe_str job.M.cwd)
+             (now -. job.M.query_time)
+             (tags2str job.M.tags)
+             (maybe_str job.M.info)
+        ) waiting
+  with e ->
+     Lwt_log.ign_error_f ~section "error: %s" (Printexc.to_string e);
+     Lwt.return_unit
 
 let main params =
   Lwt_main.run
     (
       Lwt_log.default := Lwt_log.channel ~close_mode:`Keep ~channel:Lwt_io.stdout ();
-      if params.debug then (
-        Lwt_log.add_rule "*" Lwt_log.Debug
-      );
+      if params.debug
+        then Lwt_log.add_rule "*" Lwt_log.Debug;
       match params.cmd with
       | PrintStatus -> print_status params
       | StopAccepting -> FrogLockClient.stop_accepting params.port
       | Exec _
       | Shell _ ->
-          run_command params >>= function
+          let%lwt res = run_command params in
+          match res with
           | None -> Lwt.return_unit
           | Some res ->
             (* TODO: print more details, like return code *)

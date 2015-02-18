@@ -28,9 +28,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 [@@@warning "-39"]
 
-let (>>=) = Lwt.(>>=)
-let (>|=) = Lwt.(>|=)
-
 type job = {
   info : string option;
   user : string option;
@@ -84,10 +81,9 @@ let register_exn_printers () =
   ()
 
 let expect ic p =
-  Lwt_io.read_line ic >>= fun s ->
-  Lwt.wrap (fun () -> Yojson.Safe.from_string s)
-  >|= of_yojson
-  >>= function
+  let%lwt s = Lwt_io.read_line ic in
+  let%lwt res = Lwt.wrap (fun () -> Yojson.Safe.from_string s) in
+  match of_yojson res with
   | `Ok m when p m -> Lwt.return m
   | `Ok _ -> Lwt.fail (InvalidMessage ("unexpected " ^ s))
   | `Error msg -> Lwt.fail (InvalidMessage (msg ^ ": " ^ s))
