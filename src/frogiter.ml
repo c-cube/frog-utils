@@ -132,48 +132,53 @@ let main params =
 
 (** {2 Main} *)
 
-
-
-let format_in_ = ref OutOnly
-let cmd_ = ref []
-let shell_cmd_ = ref None
-let file_ = ref None
-let stats_ = ref false
-
-let push_ s = match !file_ with
-  | None -> file_ := Some s
-  | Some _ -> cmd_ := s :: !cmd_
-let set_format_in_ x () = format_in_ := x
-
-let usage = "iter [options] <file> [--] <cmd>\n\
-  call the command <cmd> on every result in <file>, \
-  piping the result's output\n\
-  into <cmd>'s input"
-
-let options = Arg.align
-  [ "-prelude", Arg.Unit (set_format_in_ Prelude),
-      " pipe additional info about the result into the command"
-  ; "-arg", Arg.Unit (set_format_in_ AsArg),
-      " give res.output only through environment, not stdin"
-  ; "-debug", Arg.Unit FrogDebug.enable_debug, " enable debug"
-  ; "-stats", Arg.Set stats_, " print statistics about the file"
-  ; "-c", Arg.String (fun s -> shell_cmd_ := Some s),
-      " invoke command in a shell"
-  ; "--", Arg.Rest push_, " start parsing command"
-  ]
-
-let () =
-  Arg.parse options push_ usage;
+let frogiter file cmd prelude arg debug shell stats =
+  if debug then FrogDebug.enable_debug ();
+  let format_in = if prelude then Prelude else if arg then AsArg else OutOnly in
   let mk_params filename cmd =
-    {format_in= !format_in_; cmd; filename}
+    {format_in = format_in; cmd; filename}
   in
-  let params = match !file_, !shell_cmd_, List.rev !cmd_ with
-    | Some filename, _, _ when !stats_ -> mk_params filename Stats
-    | Some filename, Some cmd, _ ->
+  let params = match file, shell, cmd with
+    | filename, _, _ when stats -> mk_params filename Stats
+    | filename, Some cmd, _ ->
         mk_params filename (Shell cmd)
-    | Some filename, None, prog::args ->
+    | filename, None, prog::args ->
         mk_params filename (Exec (prog,args))
-    | _ ->
-        failwith "file and command are required"  (* TODO print usage? *)
+    | _ -> assert false
   in
   Lwt_main.run (main params)
+
+let frogiter_t =
+    let file =
+        let doc = "Result file (typically, the output of frogmap)."in
+        Cmdliner.Arg.(required & pos 0 (some file) None & info [] ~docv:"FILE" ~doc)
+    in
+    let cmd =
+        let doc = "Commandtorunon every output result in argument file" in
+        Cmdliner.Arg.(non_empty & pos_right 0 string [] & info [] ~docv:"CMD"~doc)
+    in
+    let prelude =
+        let doc = "Pipe additional info about the result into the command" in
+        Cmdliner.Arg.(value & flag & info ["p"; "prelude"] ~doc)
+    in
+    let arg =
+        let doc = "Give res.output only through environment, not stdin" in
+        Cmdliner.Arg.(value & flag & info ["arg"] ~doc)
+    in
+    let debug =
+        let doc = "Enable debug" in
+        Cmdliner.Arg.(value & flag & info ["d"; "debug"] ~doc)
+    in
+    let shell =
+        let doc = "Invoke commandin a shell" in
+        Cmdliner.Arg.(value & opt (some string) None & info ["c"; "shell"] ~docv:"CMD" ~doc)
+    in
+    let stats =
+        let doc = "Print statistics about the file" in
+        Cmdliner.Arg.(value & flag & info ["s"; "stats"] ~doc)
+    in
+    let doc = "Call the command on every result in file, piping the result's output into the command's input" in
+    Cmdliner.Term.(pure frogiter $ file $ cmd $ prelude $ arg $ debug $ shell $ stats),
+    Cmdliner.Term.info "iter" ~doc
+
+

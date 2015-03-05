@@ -25,7 +25,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *)
 
 
-let () =
+let froghop () =
   print_endline "the frog hops.";
   Unix.sleep 5;
   print_endline "happy?"
+
+let froghtop_t =
+    Cmdliner.Term.(pure froghop $ pure ()),
+    Cmdliner.Term.info "hop"

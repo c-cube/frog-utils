@@ -242,30 +242,44 @@ let read_file_args file =
       Lwt_stream.to_list lines
     )
 
-let read_params () =
+let read_params cmds file file_args dir j timeout progress resume =
+  let cmd, args = match cmds with x :: r -> Some x, r | [] -> None, [] in
   let mk_params cmd =
     Lwt.return {
       cmd;
-      filename= !file_;
-      dir= !dir_;
-      parallelism_level= !j_;
-      timeout = !timeout_;
-      progress = !progress_;
+      filename= file;
+      dir= dir;
+      parallelism_level= j;
+      timeout = timeout;
+      progress = progress;
     }
   in
-  match !resume_, !cmd_ with
+  match resume, cmd with
     | Some f, _ -> mk_params (Resume f)
     | None, Some c ->
-      let%lwt args =  match !file_args_ with
-        | None -> Lwt.return (List.rev !args_)
+      let%lwt args =  match file_args with
+        | None -> Lwt.return args
         | Some f -> read_file_args f
       in
       mk_params (Run (c, args))
-    | None, None -> Arg.usage options usage; exit 1
+    | None, None -> raise Exit
 
-let () =
+let frogmap cmds file file_args dir j timeout progress resume =
   Arg.parse options push_ usage;
   Lwt_main.run (
-    let%lwt params = read_params () in
+    let%lwt params = read_params cmds file file_args dir j timeout progress resume in
     main params
   )
+
+let frogmap_exec =
+    let cmd =
+        let doc = "Command (and arguments)" in
+        Cmdliner.Arg.(value & pos_right 0 string [] & info [] ~docv:"CMD" ~doc)
+    in
+    let file =
+        let doc = "Output file" in
+        ()
+    in
+    assert false
+
+

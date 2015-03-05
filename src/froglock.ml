@@ -166,46 +166,58 @@ let main params =
 
 (** {2 Main} *)
 
-let port_ = ref 12000
-let cmd_ = ref []
-let debug_ = ref false
-let shell_ = ref None
-let status_ = ref false
-let stop_accepting_ = ref false
-let tags_ = ref []
-
-let push_cmd_ s = cmd_ := s :: !cmd_
-let set_shell_ s = shell_ := Some s
-let add_tag_ s = tags_ := s :: !tags_
-
-let options = ref
-  [ "-port", Arg.Set_int port_, " local port for the daemon"
-  ; "-debug", Arg.Set debug_, " enable debug"
-  ; "-c", Arg.String set_shell_, " use a shell command"
-  ; "-tag", Arg.String add_tag_, " add a user-defined tag to a job"
-  ; "-status", Arg.Set status_, " report status of the daemon (if any)"
-  ; "-stop", Arg.Set stop_accepting_,
-      " tell the daemon (if any) to stop accepting new jobs"
-  ; "--", Arg.Rest push_cmd_, " start parsing command"
-  ]
-
-let usage_ = "lock [options] <cmd> <args>"
-
 (* TODO: option to specify estimated completion time *)
 (* TODO: dynamic plugins, that can add their own options to [options] *)
 
-let () =
-  Arg.parse (Arg.align !options) push_cmd_ usage_;
+let froglock port cmd shell tags debug status stop_accepting =
   let mk_params cmd =
-    { debug= !debug_; port= !port_; tags= !tags_; cmd; }
+    { debug = debug; port = port; tags = tags; cmd; }
   in
-  let params = match !shell_, List.rev !cmd_ with
-    | _ when !status_ -> mk_params PrintStatus
-    | _ when !stop_accepting_ -> mk_params StopAccepting
-    | None, [] ->
-        Arg.usage (Arg.align !options) usage_;
-        exit 0
+  let params = match shell, cmd with
+    | _ when status -> mk_params PrintStatus
+    | _ when stop_accepting -> mk_params StopAccepting
+    | None, [] -> raise Exit
     | Some c, _ -> mk_params (Shell c)
     | None, head::args -> mk_params (Exec (head,args))
   in
   main params
+
+let froglock_t =
+    let port =
+        let doc = "Local port for the daemon" in
+        Cmdliner.Arg.(value & opt int 12000 & info ["p"; "port"] ~docv:"PORT" ~doc)
+    in
+    let cmd =
+        let doc = "Command to execute" in
+        Cmdliner.Arg.(value & pos_all string [] & info [] ~docv:"CMD" ~doc)
+    in
+    let shell =
+        let doc = "Use a shellcommand (overrides the positional arguments)" in
+        Cmdliner.Arg.(value & opt (some string) None & info ["c"; "shell"] ~docv:"CMD" ~doc)
+    in
+    let tags =
+        let doc = "Add a user-defined tag to a job" in
+        Cmdliner.Arg.(value & opt_all string [] & info ["t"; "tag"] ~docv:"TAG" ~doc)
+    in
+    let debug =
+        let doc = "Enable debug" in
+        Cmdliner.Arg.(value & flag & info ["d"; "debug"] ~doc)
+    in
+    let status =
+        let doc = "Report status of the daemon (if any)" in
+        Cmdliner.Arg.(value & flag & info ["s"; "status"] ~doc)
+    in
+    let stop_accepting =
+        let doc = "Tell the daemon tostop accepting new jobs" in
+        Cmdliner.Arg.(value & flag & info ["s"; "stop"] ~doc)
+    in
+    let doc = "Execute commands after acquiring a global lock." in
+    let man = [
+        `S "DESCRIPTION";
+        `P "Executesthe given command after acquiring a global lock. If another command already
+            has the lock, wait for it to be released.";
+    ] in
+    Cmdliner.Term.(pure froglock $ port $ cmd $ shell $ tags $ debug$ status $ stop_accepting),
+    Cmdliner.Term.info "lock" ~doc ~man
+
+
