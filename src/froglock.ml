@@ -166,6 +166,30 @@ let main params =
 
 (** {2 Main} *)
 
+(*
+let parse () =
+  let open Cmdliner in
+  let mk_params cmd port debug tags = { cmd; port; tags; debug; } in
+
+  let port =
+    let doc = "local port for the daemon" in
+    Arg.(opt ?vopt:None & int & 12000 & info ["-p"; "--port"] ~doc)
+  in
+
+  let lock_cmd =
+    let info = Term.(info "acquire a lock to run the command") in
+    Term.(pure (mk_params Lock) $ port $ debug $ tags)
+
+  in
+
+
+  match Term.eval_choice lock_cmd [ status_cmd; stop_cmd ] with
+  | `Ok params -> main params
+  | `Error e ->
+      print_endline e;
+      exit 1
+*)
+
 (* TODO: option to specify estimated completion time *)
 (* TODO: dynamic plugins, that can add their own options to [options] *)
 
