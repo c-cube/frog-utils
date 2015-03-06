@@ -271,15 +271,39 @@ let frogmap cmds file file_args dir j timeout progress resume =
     main params
   )
 
-let frogmap_exec =
+let frogmap_t =
     let cmd =
         let doc = "Command (and arguments)" in
         Cmdliner.Arg.(value & pos_right 0 string [] & info [] ~docv:"CMD" ~doc)
     in
     let file =
         let doc = "Output file" in
-        ()
+        Cmdliner.Arg.(required & pos 0 (some file) None & info [] ~docv:"FILE" ~doc)
     in
-    assert false
+    let file_args =
+        let doc = "Read arguments from file" in
+        Cmdliner.Arg.(value & opt (some string) None & info ["F"] ~docv:"ARG" ~doc)
+    in
+    let dir =
+        let doc = "Directory where to put the state file" in
+        Cmdliner.Arg.(value & opt (some dir) None & info ["d"; "dir"] ~docv:"DIR" ~doc)
+    in
+    let j =
+        let doc = "Numebr of parralel process to use" in
+        Cmdliner.Arg.(value & opt int 1 & info ["j"] ~docv:"N" ~doc)
+    in
+    let timeout =
+        let doc = "Timeout" in
+        Cmdliner.Arg.(value & opt (some int) None & info ["t"; "timeout"] ~docv:"TIME" ~doc)
+    in
+    let progress =
+        let doc = "Enable/diable progress bar" in
+        Cmdliner.Arg.(value & opt bool true & info ["p"; "progress"] ~docv:"BOOL" ~doc)
+    in
+    let resume =
+        let doc = "Resume given file" in
+        Cmdliner.Arg.(value & flag & info [] ~doc)
+    in
+    Cmdliner.Term.(pure frogmap $ cmd $ file $ file_args $ dir $ j $ timeout $ progress $ resume)
 
 

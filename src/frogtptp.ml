@@ -312,12 +312,12 @@ let options = Arg.align
 let some_if_pos_ i =
   if i>0 then Some i else None
 
-let () =
+let frogtptp cmd args config memory timeout =
   Arg.parse options push_arg_ usage;
-  let config_files = List.map Conf.interpolate_home !config_ in
-  let conf = {memory=some_if_pos_ !memory_; timeout= some_if_pos_ !timeout_;} in
+  let config_files = List.map Conf.interpolate_home config in
+  let conf = {memory = some_if_pos_ memory; timeout = some_if_pos_ timeout;} in
   let mk_params cmd = {cmd; config_files; conf; } in
-  let params = match !cmd_, List.rev !args_ with
+  let params = match cmd, args with
   | `Analyse l, _ -> mk_params (Analyse l)
   | `Run prog, [arg] -> mk_params (Run (prog,arg))
   | `Run _, ([] | _::_::_)
@@ -328,3 +328,15 @@ let () =
       exit 1
   in
   main params
+
+let mk_params =
+    let aux config memory timeout =
+        let config_files = List.map Conf.interpolate_home config in
+        let conf = {memory = some_if_pos_ memory; timeout = some_if_pos_ timeout;} in
+        Cmdliner.Term.pure (function cmd -> {cmd; config_files; conf;})
+    in
+    let conf =
+        let doc = "Use given config file" in
+        Cmdliner.Arg.(value & opt_all non_dir_file [] & info ["c"; "config"] ~doc)
+    in
+    assert false
