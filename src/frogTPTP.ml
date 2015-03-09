@@ -46,15 +46,13 @@ module Prover = struct
     let add_str s =
     Buffer.add_substitute buf
       (function
-        (* Memory limit is given in MB *)
-        | "memory" -> string_of_int (memory * 1_000_000)
-        (* Gives a bit of time fro the prover to stop himself before killing him *)
-        | "timeout" | "time" -> string_of_int (timeout + 1)
+        | "memory" -> string_of_int memory
+        | "timeout" | "time" -> string_of_int timeout
         | "file" -> file
         | _ -> raise Not_found
       ) s
     in
-    add_str "ulimit -t $time -v $memory; ";
+    add_str "ulimit -t \\$(( 1 + $time)) -v \\$(( 1000000 * $memory )); ";
     begin match tptp with
       | None -> ()
       | Some s -> add_str ("TPTP="^ s ^ " ")
