@@ -92,7 +92,9 @@ let print_axes config v =
 
 let draw_graph config format filename args =
   let v = A.init ["Cairo"; format; filename] in
+  A.Viewport.set_color v A.Color.blue;
   List.iter (print_time config v) args;
+  A.Viewport.set_color v A.Color.black;
   print_labels config v;
   print_axes config v;
   A.show v;
