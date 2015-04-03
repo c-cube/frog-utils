@@ -13,6 +13,7 @@ following ones:
 - `frogmap`: run a command on many inputs (files?), with parallelization.
 - `frogiter`: run a command on every result obtained with `frogmap`.
 - `frogtptp`: run a TPTP prover (more specific!) and analyse its output.
+- `frogplot`: prints the cumulative times of TPTP provers
 
 ### Froglock
 
@@ -103,6 +104,15 @@ The commands are:
   No other option might follow `-analyse`.
   This is still work in progress.
 
+### Frogplot
+
+Frogplot takes the output file of a run of `frogtptp` and
+prints the cumulative time of the provers on the `unsat` results.
+More specifically, it takes the list of run times for `unsat` results,
+sort it in increasing order, then plots the sum of these times.
+
+
+
 Example:
 
 ```sh
@@ -119,11 +129,15 @@ Example:
 
     # then: basic statistics on the results
     frogtptp -analyse eprover bench.json
+
+    # print the cumulative times
+    frogplot -o plot.png eprover,bench.json
 ```
 
 runs the [E prover](http://eprover.org) (named `eprover`) on all files in
 a [TPTP](http://www.cs.miami.edu/~tptp/) archive, resumes the computation
-after a reboot, and finally prints some basic statistics about the results.
+after a reboot, prints some basic statistics about the results,
+and finally plots the cumulative times in a file `plot.png`.
 
 A sample config file for `frogtptp` can be found in `data/frogtptp.toml`. Its
 format is [toml](https://github.com/toml-lang/toml), a simple textual
