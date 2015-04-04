@@ -24,12 +24,12 @@ it terminates one waiting command is started and takes ownership of the "lock".
 This works by connecting to a daemon on a given port, starting it if required.
 The daemon will stop if its queue is empty.
 
-`froglock -status` can be used to display the current queue of tasks (including
+`froglock status` can be used to display the current queue of tasks (including
 the one that owns the lock). It prints nothing if no task is launched.
 
 There is one "lock" per TCP port on the machine (although only ports > 1024
 should be used, otherwise only root will be able to use `froglock`). The
-port can be changed with `-port <n>`.
+port can be changed with `--port <n>`.
 
 ### Frogmap
 
@@ -41,7 +41,7 @@ Parallelism (on a single computer) can be achieved with `-j <n>` where
 
 If `frogmap` is killed or stopped for any other reason before it could
 process every argument, it is possible to resume the computation
-from where it left: `frogmap -resume <state_file.json>`.
+from where it left: `frogmap resume <state_file.json>`.
 
 Results stored in a file `<file.json>` can be analysed either using the module
 `FrogMapState` (in the library `frogutils`, see `src/frogMapState.mli`) or with
@@ -72,7 +72,7 @@ is passed the following environment:
 
 The useful options are:
 
-- `-arg` to disable printing of the commands' output to stdin, e.g. if
+- `-f arg` to disable printing of the commands' output to stdin, e.g. if
   the command closes its stdin (typically, `echo`)
 - `-c` to run a shell command
 
@@ -90,17 +90,17 @@ would probably work almost as-is with SMT solvers too).
 
 The commands are:
 
-- `frogtptp -run <prover_name> file.p` runs a theorem prover on the TPTP file.
+- `frogtptp run <prover_name> file.p` runs a theorem prover on the TPTP file.
   `<prover_name>` is the name of a prover as listed in the config file
   `$HOME/.frogtptp.toml` (or with the `-config` flag).
   Other options specify the memory limit and timeout for the prover.
-- `frogtptp -list` lists the known provers (those detailed
+- `frogtptp list` lists the known provers (those detailed
   in the config file).
-- `frogtptp -analyse <prover> <file.json>` analyses a single output file
+- `frogtptp analyse <prover>=<file.json>` analyses a single output file
   as obtained from `frogmap 'frogtptp -run <prover>' file1 file2 ...`.
-  `frogtptp -analyse <prover1> <file1.json> <prover2> <file2.json> ...`
+  `frogtptp analyse <prover1>=<file1.json>,<prover2>=<file2.json> ...`
   will do the same but also compare the performance of the different provers.
-  No other option might follow `-analyse`.
+  No other option might follow `analyse`.
   This is still work in progress.
 
 Example:
@@ -108,17 +108,17 @@ Example:
 ```sh
     # I have 10 cores, let's prove stuff with E
     frogmap -j 10 -o bench.json \
-      'frogtptp -run eprover -timeout 5' \
+      'frogtptp run eprover -t 5' \
       $TPTP/Problems/*/*.p
 
     # gosh, I have to reboot!
     sleep 500; reboot
 
     # resume where I left. But now I have 30 cores!
-    frogmap -j 30 -resume bench.json
+    frogmap resume -j 30 bench.json
 
     # then: basic statistics on the results
-    frogtptp -analyse eprover bench.json
+    frogtptp analyse eprover=bench.json
 ```
 
 runs the [E prover](http://eprover.org) (named `eprover`) on all files in
