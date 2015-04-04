@@ -277,66 +277,80 @@ let main params =
 
 (** {2 Main} *)
 
-let cmd_ = ref `NoCmd
-let config_ = ref ["$HOME/.frogtptp.toml"; (* "/etc/frogtptp.toml" *) ]
-let args_ = ref []
-let timeout_ = ref ~-1
-let memory_ = ref ~-1
-
-(* TODO: only one -analyse flag, but with a "prover=file,prover=file,..." argument *)
-
-let add_analyse_ x =
-  match !cmd_ with
-  | `Analyse l -> cmd_ := `AnalyseFst (x, l)
-  | `AnalyseFst (p, l) -> cmd_ := `Analyse( (p,x) :: l)
-  | `NoCmd -> cmd_ := `AnalyseFst (x, [])
-  | `Run _ -> failwith "-analyse must not be used with -run"
-  | `List -> failwith "-analyse must not be used with -list"
-
-let set_run_ p = cmd_ := `Run p
-let push_config_ s = config_ := s :: !config_
-
-let usage = "frogtptp cmd args"
-let push_arg_ s = args_ := s :: !args_
-let options = Arg.align
-  [ "-analyse", Arg.Rest add_analyse_, " analyse pairs of \"prover\" \"output_file\""
-  ; "-run", Arg.String set_run_, " run given prover"
-  ; "-config", Arg.String push_config_, " use given config file"
-  ; "-list", Arg.Unit (fun () -> cmd_ := `List), " list provers"
-  ; "-memory", Arg.Set_int memory_, " memory limit (MB)"
-  ; "-timeout", Arg.Set_int timeout_, " timeout (s)"
-  ; "-debug", Arg.Unit (fun () -> FrogDebug.set_debug true), " enable debug"
-  ; "--", Arg.Rest push_arg_, " stop parsing arguments"
-  ]
-
 let some_if_pos_ i =
   if i>0 then Some i else None
 
-let frogtptp cmd args config memory timeout =
-  Arg.parse options push_arg_ usage;
-  let config_files = List.map Conf.interpolate_home config in
-  let conf = {memory = some_if_pos_ memory; timeout = some_if_pos_ timeout;} in
-  let mk_params cmd = {cmd; config_files; conf; } in
-  let params = match cmd, args with
-  | `Analyse l, _ -> mk_params (Analyse l)
-  | `Run prog, [arg] -> mk_params (Run (prog,arg))
-  | `Run _, ([] | _::_::_)
-  | `List, _ -> mk_params ListProvers
-  | `AnalyseFst _, _
-  | `NoCmd, _ ->
-      Arg.usage options usage;
-      exit 1
+let config_term =
+  let open Cmdliner in
+  let aux config debug =
+    if debug then FrogDebug.set_debug true;
+    config
   in
-  main params
+  let config =
+    let doc = "Use the given config files. Defaults to '.frogtptp.toml'.If one ormore config files is
+               given, only those files are taken into account (instead of the default one)." in
+    Arg.(value & opt_all non_dir_file [Conf.interpolate_home "$HOME/.frogtptp.toml"] & info ["c"; "config"] ~doc)
+  in
+  let debug =
+    let doc = "Enable debug (verbose) output" in
+    Arg.(value & flag & info ["d"; "debug"] ~doc)
+  in
+  Term.(pure aux $ config $ debug)
 
-let mk_params =
-    let aux config memory timeout =
-        let config_files = List.map Conf.interpolate_home config in
-        let conf = {memory = some_if_pos_ memory; timeout = some_if_pos_ timeout;} in
-        Cmdliner.Term.pure (function cmd -> {cmd; config_files; conf;})
-    in
-    let conf =
-        let doc = "Use given config file" in
-        Cmdliner.Arg.(value & opt_all non_dir_file [] & info ["c"; "config"] ~doc)
-    in
-    assert false
+let limit_term =
+  let open Cmdliner in
+  let aux memory timeout = {memory = some_if_pos_ memory; timeout = some_if_pos_ timeout;} in
+  let memory =
+    let doc = "Memory limit" in
+    Arg.(value & opt int (~- 1) & info ["m"; "memory"] ~doc)
+  in
+  let timeout =
+    let doc = "Time limit" in
+    Arg.(value & opt int (~- 1) & info ["t"; "timeout"] ~doc)
+  in
+  Term.(pure aux $ memory $ timeout)
+
+let analyze_term =
+  let open Cmdliner in
+  let aux config_files conf l = main { config_files; conf; cmd = Analyse l } in
+  let args =
+    let doc = "List of pairs of prover and corresponding output file to analyse" in
+    Arg.(non_empty & pos 0 (list (pair ~sep:'=' string non_dir_file)) [] & info [] ~doc)
+  in
+  let doc = "Analyze the results of provers run previously" in
+  Term.(pure aux $ config_term $ limit_term $ args),
+  Term.info ~doc "analyze"
+
+let run_term =
+  let open Cmdliner in
+  let aux config_files conf cmd args = main {config_files; conf; cmd = Run (cmd, String.concat " " args) } in
+  let cmd =
+    let doc = "Prover to be run" in
+    Arg.(required & pos 0 (some string) None & info [] ~doc)
+  in
+  let args =
+    let doc = "Arguments to be passed to the prover" in
+    Arg.(value & pos_right 0 string [] & info [] ~doc)
+  in
+  let doc = "Run the prover on the given arguments" in
+  Term.(pure aux $ config_term $ limit_term $ cmd $ args),
+  Term.info ~doc "run"
+
+let list_term =
+  let open Cmdliner in
+  let aux config_files conf = main { config_files; conf; cmd = ListProvers } in
+  let doc = "List the known provers,given the config files specified (see 'config' option)" in
+  Term.(pure aux $ config_term $ limit_term),
+  Term.info ~doc "list"
+
+let help_term =
+  let open Cmdliner in
+  let doc = "help !" in
+  Term.(ret (pure (fun () -> `Help (`Pager, None)) $ pure ())),
+  Term.info "frogtptp"~version:"dev" ~doc
+
+let () =
+  match Cmdliner.Term.eval_choice help_term [run_term;list_term;analyze_term] with
+  | `Version | `Help | `Error `Parse | `Error `Term | `Error `Exn -> exit 2
+  | `Ok () -> ()
+

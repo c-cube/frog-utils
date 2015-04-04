@@ -194,6 +194,7 @@ let main params =
 
 (** {2 Main} *)
 
+(*
 let cmd_ = ref None
 let j_ = ref 1
 let args_ = ref []
@@ -234,6 +235,7 @@ let options = Arg.align
   ; "-F", Arg.String set_file_args_, " read arguments from file"
   ; "--", Arg.Rest push_, " arguments to the command"
   ]
+*)
 
 let read_file_args file =
   Lwt_io.with_file ~mode:Lwt_io.input file
@@ -247,7 +249,7 @@ let read_params cmds file file_args dir j timeout progress resume =
   let mk_params cmd =
     Lwt.return {
       cmd;
-      filename= file;
+      filename= Some file;
       dir= dir;
       parallelism_level= j;
       timeout = timeout;
@@ -255,55 +257,86 @@ let read_params cmds file file_args dir j timeout progress resume =
     }
   in
   match resume, cmd with
-    | Some f, _ -> mk_params (Resume f)
-    | None, Some c ->
+    | true, _ -> mk_params (Resume file)
+    | false, Some c ->
       let%lwt args =  match file_args with
         | None -> Lwt.return args
         | Some f -> read_file_args f
       in
       mk_params (Run (c, args))
-    | None, None -> raise Exit
+    | false, None -> raise Exit
 
-let frogmap cmds file file_args dir j timeout progress resume =
-  Arg.parse options push_ usage;
-  Lwt_main.run (
-    let%lwt params = read_params cmds file file_args dir j timeout progress resume in
-    main params
-  )
+let opts =
+  let open Cmdliner in
+  let aux dir j timeout progress file cmd =
+    let%lwt cmd = cmd in
+    Lwt.return { cmd; filename = Some file; dir; parallelism_level = j; timeout; progress }
+  in
+  let dir =
+    let doc = "Directory where to put the state file" in
+    Arg.(value & opt (some dir) None & info ["d"; "dir"] ~docv:"DIR" ~doc)
+  in
+  let j =
+    let doc = "Numebr of parralel process to use" in
+    Arg.(value & opt int 1 & info ["j"] ~docv:"N" ~doc)
+  in
+  let timeout =
+    let doc = "Timeout" in
+    Arg.(value & opt (some float) None & info ["t"; "timeout"] ~docv:"TIME" ~doc)
+  in
+  let progress =
+    let doc = "Enable/diable progress bar" in
+    Arg.(value & opt bool true & info ["p"; "progress"] ~docv:"BOOL" ~doc)
+  in
+  Term.(pure aux $ dir $ j $ timeout $ progress)
 
-let frogmap_t =
-    let cmd =
-        let doc = "Command (and arguments)" in
-        Cmdliner.Arg.(value & pos_right 0 string [] & info [] ~docv:"CMD" ~doc)
-    in
-    let file =
-        let doc = "Output file" in
-        Cmdliner.Arg.(required & pos 0 (some file) None & info [] ~docv:"FILE" ~doc)
-    in
-    let file_args =
-        let doc = "Read arguments from file" in
-        Cmdliner.Arg.(value & opt (some string) None & info ["F"] ~docv:"ARG" ~doc)
-    in
-    let dir =
-        let doc = "Directory where to put the state file" in
-        Cmdliner.Arg.(value & opt (some dir) None & info ["d"; "dir"] ~docv:"DIR" ~doc)
-    in
-    let j =
-        let doc = "Numebr of parralel process to use" in
-        Cmdliner.Arg.(value & opt int 1 & info ["j"] ~docv:"N" ~doc)
-    in
-    let timeout =
-        let doc = "Timeout" in
-        Cmdliner.Arg.(value & opt (some int) None & info ["t"; "timeout"] ~docv:"TIME" ~doc)
-    in
-    let progress =
-        let doc = "Enable/diable progress bar" in
-        Cmdliner.Arg.(value & opt bool true & info ["p"; "progress"] ~docv:"BOOL" ~doc)
-    in
-    let resume =
-        let doc = "Resume given file" in
-        Cmdliner.Arg.(value & flag & info [] ~doc)
-    in
-    Cmdliner.Term.(pure frogmap $ cmd $ file $ file_args $ dir $ j $ timeout $ progress $ resume)
+let resume_term =
+  let open Cmdliner in
+  let cmd f = Lwt.return (Resume f) in
+  let aux params = Lwt_main.run (Lwt.bind params main) in
+  let file =
+    let doc = "Task file to be resumed" in
+    Arg.(required & pos 0 (some non_dir_file) None & info [] ~doc)
+  in
+  let doc = "Resume an interupted task using its output file." in
+  Term.(pure aux $ (opts $ pure "" $ (pure cmd $ file))),
+  Term.info ~doc "resume"
 
+let term =
+  let params cmd file_args =
+    match cmd with
+      | [] -> assert false
+      | prog :: args ->
+        let%lwt args = match file_args with
+          | None -> Lwt.return args
+          | Some f -> read_file_args f
+        in
+        Lwt.return (Run (prog, args))
+  in
+  let aux params = Lwt_main.run (Lwt.bind params main) in
+  let file =
+    let doc = "Output file" in
+    Cmdliner.Arg.(required & pos 0 (some string) None & info [] ~docv:"FILE" ~doc)
+  in
+  let cmd =
+    let doc = "Command (and arguments)" in
+    Cmdliner.Arg.(non_empty & pos_right 0 string [] & info [] ~docv:"CMD" ~doc)
+  in
+  let file_args =
+    let doc = "Read arguments from file" in
+    Cmdliner.Arg.(value & opt (some string) None & info ["F"] ~docv:"ARG" ~doc)
+  in
+  let doc = "Maps the given commands on the given inputs. Also allows to parallelize
+               the given task using multipls threads." in
+  let man = [
+    `S "DESCRIPTION";
+    `P "Maps the command on the inputs given.";
+  ] in
+  Cmdliner.Term.(pure aux $ (opts $ file $ (pure params $ cmd $ file_args))),
+  Cmdliner.Term.info ~doc ~man "frogmap"
+
+let () =
+  match Cmdliner.Term.eval_choice term [resume_term] with
+  | `Version | `Help | `Error `Parse | `Error `Term | `Error `Exn -> exit 2
+  | `Ok () -> ()
 

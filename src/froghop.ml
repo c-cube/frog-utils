@@ -30,6 +30,13 @@ let froghop () =
   Unix.sleep 5;
   print_endline "happy?"
 
-let froghtop_t =
-    Cmdliner.Term.(pure froghop $ pure ()),
-    Cmdliner.Term.info "hop"
+let term =
+  let doc = "Try it and see what happens !" in
+  Cmdliner.Term.(pure froghop $ pure ()),
+  Cmdliner.Term.info ~doc "froghop"
+
+let () =
+  match Cmdliner.Term.eval term with
+  | `Version | `Help | `Error `Parse | `Error `Term | `Error `Exn -> exit 2
+  | `Ok () -> ()
+
