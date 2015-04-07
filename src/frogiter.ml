@@ -64,8 +64,17 @@ let escape_quote s =
 let run_cmd params res =
   let cmd = match params.cmd with
     | Shell c ->
-        Lwt_process.shell ("set -e; set -o pipefail; " ^ escape_quote c)
-    | Exec (p, args)  -> (p, Array.of_list (p::args))
+      let c' = match params.format_in with
+        | AsArg -> c ^ " " ^ res.S.res_out
+        | _ -> c
+      in
+      Lwt_process.shell ("set -e; set -o pipefail; " ^ escape_quote c')
+    | Exec (p, args)  ->
+      let args = match params.format_in with
+        | AsArg -> args @ [res.S.res_out]
+        | _ -> args
+      in
+      (p, Array.of_list (p::args))
   in
   (* give additional info through parameters *)
   let env = Unix.environment () |> Array.to_list in
