@@ -193,39 +193,69 @@ let shell_term =
     let doc = "The command to be executed" in
     Arg.(required & pos 0 (some string) None & info [] ~docv:"CMD" ~doc)
   in
-  let doc = "Execute a shell command" in
+  let doc = "Execute a shell command after acquiring a global lock" in
+  let man = [
+    `S "DESCRIPTION";
+    `P "Executes the given shell command after acquiring a global lock.
+        If another command already has the lock, wait for it to be released.";
+  ] in
   Term.(pure main $ (common_opts $ (pure aux $ cmd))),
-  Term.info ~doc "shell"
+  Term.info ~doc ~man "shell"
 
 let status_term =
   let open Cmdliner in
   let doc = "Print the status of the deamon, then exit." in
+  let man = [
+    `S "DESCRIPTION";
+    `P "Asks the daemon to prints its status, including
+        the commands waiting to run.
+        and statistics about the command currently running."
+  ] in
   Term.(pure main $ (common_opts $ pure PrintStatus)),
   Term.info ~doc "status"
 
 let stop_term =
   let open Cmdliner in
   let doc = "Tell the daemon to stop accepting new jobs" in
+  let man = [
+    `S "DESCRIPTION";
+    `P "Send a message to the daemon, telling it to stop accepting new jobs.
+        Jobs already waiting to be run are not affected.";
+  ] in
   Term.(pure main $ (common_opts $ pure StopAccepting)),
   Term.info ~doc "stop"
 
-let run_term =
+let exec_term =
   let aux = function cmd :: args -> Exec (cmd, args) | _ -> assert false in
-    let cmd =
-        let doc = "Command to execute" in
-        Cmdliner.Arg.(non_empty & pos_all string [] & info [] ~docv:"CMD" ~doc)
-    in
-    let doc = "Execute commands after acquiring a global lock." in
-    let man = [
-        `S "DESCRIPTION";
-        `P "Executes the given command after acquiring a global lock. If another command already
+  let cmd =
+    let doc = "Command to execute" in
+    Cmdliner.Arg.(non_empty & pos_all string [] & info [] ~docv:"CMD" ~doc)
+  in
+  let doc = "Execute commands after acquiring a global lock." in
+  let man = [
+    `S "DESCRIPTION";
+    `P "Executes the given command after acquiring a global lock. If another command already
             has the lock, wait for it to be released.";
-    ] in
-    Cmdliner.Term.(pure main $ (common_opts $ (pure aux $ cmd))),
-    Cmdliner.Term.info "froglock" ~doc ~man
+  ] in
+  Cmdliner.Term.(pure main $ (common_opts $ (pure aux $ cmd))),
+  Cmdliner.Term.info "exec" ~doc ~man
+
+let term =
+  let open Cmdliner in
+  let aux () = `Help (`Pager, None) in
+  let doc = "Execute commands after acquiring a global lock." in
+  let man = [
+    `S "DESCRIPTION";
+    `P "This tool uses a daemon to enforce a global lock on commands, so that no two commands
+        executed through this tool will run at the same time. The daemon listens on a specific
+        port, which can be specified in the options. If no daemon listens on the given port,
+        one will be automatically launched.";
+  ] in
+  Term.(ret (pure aux $ pure ())),
+  Term.info ~man ~doc "froglock"
 
 let () =
-  match Cmdliner.Term.eval_choice run_term [shell_term; status_term; stop_term] with
+  match Cmdliner.Term.eval_choice term [exec_term; shell_term; status_term; stop_term] with
   | `Version | `Help | `Error `Parse | `Error `Term | `Error `Exn -> exit 2
   | `Ok () -> ()
 

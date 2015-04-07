@@ -16,7 +16,7 @@ following ones:
 
 ### Froglock
 
-The basic usage is `froglock <cmd>` or `froglock -- <cmd>`. This
+The basic usage is `froglock exec <cmd>` or `froglock exec -- <cmd>`. This
 has the same behavior as `<cmd>`, except for one point: at any given
 time, on a given computer, at most one command launched from `froglock <cmd>`
 runs. Until it terminates, the other commands aren't started yet; once
@@ -33,8 +33,9 @@ port can be changed with `--port <n>`.
 
 ### Frogmap
 
-`frogmap` applies a command `<cmd>` (shell command) to a list of elements,
-and stores the result of `<cmd> <arg>` for every such element `<arg>`.
+`frogmap exec <cmd> <args...>` applies a command `<cmd>` (shell command) to a
+list of elements, and stores the result of `<cmd> <arg>` for every such
+element `<arg>`.
 
 Parallelism (on a single computer) can be achieved with `-j <n>` where
 `<n>` is the number of parallel invocations of `<cmd>`
@@ -54,10 +55,10 @@ apply a command to all the results stored in some `<file.json>` produced by
 `frogmap`. Example:
 
 ```sh
-    frogmap -o foo.json -j 20 'sleep 3; echo ' `seq 1 1000`
+    frogmap exec -o foo.json -j 20 'sleep 3; echo ' `seq 1 1000`
 
     # later...
-    frogiter foo.json -c 'grep 11'
+    frogiter shell foo.json 'grep 11'
 ```
 
 will print all number from 1 to 1000 that contains the string 11 in
@@ -74,12 +75,11 @@ The useful options are:
 
 - `-f arg` to disable printing of the commands' output to stdin, e.g. if
   the command closes its stdin (typically, `echo`)
-- `-c` to run a shell command
 
 Example:
 
 ```sh
-    frogiter foo.json -arg -c \
+    frogiter shell foo.json \
     'echo on $FROG_ARG, time $FROG_TIME, `wc -l <<< "$FROG_OUT"` lines'
 ```
 
@@ -107,7 +107,7 @@ Example:
 
 ```sh
     # I have 10 cores, let's prove stuff with E
-    frogmap -j 10 -o bench.json \
+    frogmap exec -j 10 -o bench.json \
       'frogtptp run eprover -t 5' \
       $TPTP/Problems/*/*.p
 

@@ -150,7 +150,9 @@ let opts =
   in
   let format_in =
     let doc = "Choose the input format with which to give info about the result to the command.
-               $(docv) may be " ^ (Arg.doc_alts_enum format_in_list) in
+               $(docv) may be " ^ (Arg.doc_alts_enum format_in_list) ^ ". See frogiter --help
+               for more explanations."
+    in
     Arg.(value & opt format_conv OutOnly & info ["f"; "format"] ~doc)
   in
   let debug =
@@ -170,23 +172,52 @@ let shell_term =
   Term.(pure main $ (opts $ input_file $ (pure cmd $ arg))),
   Term.info ~doc "shell"
 
-let term =
+let exec_term =
   let open Cmdliner in
-  let aux cmd args = Exec (cmd, args) in
-  let cmd =
-    let doc = "Command to be used" in
-    Arg.(required & pos 1 (some string) None & info [] ~docv:"CMD" ~doc)
-  in
-  let args =
+  let aux = function cmd :: args -> Exec (cmd, args) | [] -> assert false in
+  let cmds =
     let doc = "Command to run on every output result in argument file" in
-    Arg.(non_empty & pos_right 1 string [] & info [] ~docv:"CMD"~doc)
+    Arg.(non_empty & pos_right 0 string [] & info [] ~docv:"CMD"~doc)
   in
   let doc = "Call the command on every result in file, piping the result's output into the command's input" in
-  Term.(pure main $ (opts $ input_file $ (pure aux $ cmd $ args))),
-  Term.info "frogiter" ~doc
+  Term.(pure main $ (opts $ input_file $ (pure aux $ cmds))),
+  Term.info "exec" ~doc
+
+let term =
+  let open Cmdliner in
+  let aux () = `Help (`Pager, None) in
+  let doc = "Call the command on every result in file, piping the result's output into the command's input" in
+  let man = [
+    `S "DESCRIPTION";
+    `P "This commands allows to run bash commands on every results in an output file produced by
+        the '$(b,frogmap)' command.";
+    `S "COMMANDS";
+    `S "OPTIONS";
+    `S "RESULTS FORMAT";
+    `P "There are three input format available for
+        the command given to frogiter (which we will call the processor command), in order to get the
+        output of the commands that were run with frogmap (which we will call the mapped command).";
+    `I ("$(b,out)", "The result outputted by the mapped command on stdout is given to
+                     the processor command through its stdin.");
+    `I ("$(b,cli)", "The result outputted by the mapped command is given to the processor command
+                     as CLI argument.");
+    `I ("$(b,prelude)", "Gives to the processor command the following lines on stdin :
+                         '# argument: <mapped command args>', '# time: <mapped command time>' and
+                         the complete output of the mapped command (which may span multiple lines).");
+    `S "ENVIRONMENT VARIABLES";
+    `P "The following environment variables will be set up prior to calling the processor command.";
+    `I ("$(b,FROG_OUT)", "the mapped command's result on stdout.");
+    `I ("$(b,FROG_ERR)", "the mapped command's result on stderr.");
+    `I ("$(b,FROG_ARG)", "the argument of the mapped command (i.e the element
+                     of the mapped list on which the mapped command was applied)");
+    `I ("$(b,FROG_TIME)", "number of seconds the mapped command took to complete");
+    `I ("$(b,FROG_ERRCODE)", "the exit code of the mapped function");
+  ] in
+  Term.(ret (pure aux $ pure ())),
+  Term.info ~man ~doc"frogiter"
 
 let () =
-  match Cmdliner.Term.eval_choice term [stats_term; shell_term] with
+  match Cmdliner.Term.eval_choice term [exec_term; stats_term; shell_term] with
   | `Version | `Help | `Error `Parse | `Error `Term | `Error `Exn -> exit 2
   | `Ok res -> Lwt_main.run res
 

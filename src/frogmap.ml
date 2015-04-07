@@ -270,14 +270,14 @@ let opts =
   let open Cmdliner in
   let aux dir j timeout progress file cmd =
     let%lwt cmd = cmd in
-    Lwt.return { cmd; filename = Some file; dir; parallelism_level = j; timeout; progress }
+    Lwt.return { cmd; filename = file; dir; parallelism_level = j; timeout; progress }
   in
   let dir =
     let doc = "Directory where to put the state file" in
     Arg.(value & opt (some dir) None & info ["d"; "dir"] ~docv:"DIR" ~doc)
   in
   let j =
-    let doc = "Numebr of parralel process to use" in
+    let doc = "Number of parralel process to use" in
     Arg.(value & opt int 1 & info ["j"] ~docv:"N" ~doc)
   in
   let timeout =
@@ -296,47 +296,70 @@ let resume_term =
   let aux params = Lwt_main.run (Lwt.bind params main) in
   let file =
     let doc = "Task file to be resumed" in
-    Arg.(required & pos 0 (some non_dir_file) None & info [] ~doc)
+    Arg.(required & pos 0 (some non_dir_file) None & info [] ~docv:"FILE" ~doc)
   in
-  let doc = "Resume an interupted task using its output file." in
-  Term.(pure aux $ (opts $ pure "" $ (pure cmd $ file))),
-  Term.info ~doc "resume"
+  let doc = "Resume an previous instance of frogmap using its output file." in
+  let man = [
+    `S "DESCRIPTION";
+    `P "Resume an instance of frogmap, using the output file of the previous instance
+        in order to continue where the previous instance was stopped. Tasks that will thus be run are
+        those that were running and those that were waiting to be run when the previous instance stopped.";
+    `P "Options such as parralelisme degree, timeout,... are $(b,NOT) stored in the output file, and thus can be modified
+        from one execution to another.";
+  ] in
+  Term.(pure aux $ (opts $ pure None $ (pure cmd $ file))),
+  Term.info ~man ~doc "resume"
 
-let term =
-  let params cmd file_args =
-    match cmd with
-      | [] -> assert false
-      | prog :: args ->
-        let%lwt args = match file_args with
-          | None -> Lwt.return args
-          | Some f -> read_file_args f
-        in
-        Lwt.return (Run (prog, args))
+let exec_term =
+  let open Cmdliner in
+  let params cmd args file_args =
+    let%lwt args = match file_args with
+      | None -> Lwt.return args
+      | Some f -> read_file_args f
+    in
+    Lwt.return (Run (cmd, args))
   in
   let aux params = Lwt_main.run (Lwt.bind params main) in
   let file =
     let doc = "Output file" in
-    Cmdliner.Arg.(required & pos 0 (some string) None & info [] ~docv:"FILE" ~doc)
+    Arg.(value & opt (some string) None & info ["o"; "output"] ~docv:"FILE" ~doc)
   in
   let cmd =
-    let doc = "Command (and arguments)" in
-    Cmdliner.Arg.(non_empty & pos_right 0 string [] & info [] ~docv:"CMD" ~doc)
+    let doc = "Command to be mapped" in
+    Arg.(required & pos 0 (some string) None & info [] ~docv:"CMD" ~doc)
+  in
+  let args =
+    let doc = "Arguments on which to map the given command" in
+    Arg.(non_empty & pos_right 0 string [] & info [] ~docv:"ARGS" ~doc)
   in
   let file_args =
     let doc = "Read arguments from file" in
-    Cmdliner.Arg.(value & opt (some string) None & info ["F"] ~docv:"ARG" ~doc)
+    Arg.(value & opt (some string) None & info ["F"] ~docv:"FILE" ~doc)
   in
-  let doc = "Maps the given commands on the given inputs. Also allows to parallelize
-               the given task using multipls threads." in
+  let doc = "Maps the command on the inputs given." in
   let man = [
     `S "DESCRIPTION";
-    `P "Maps the command on the inputs given.";
+    `P "Maps the given commands on the given inputs. Also allows to parallelize
+        the given task using multipls threads.";
   ] in
-  Cmdliner.Term.(pure aux $ (opts $ file $ (pure params $ cmd $ file_args))),
-  Cmdliner.Term.info ~doc ~man "frogmap"
+  Term.(pure aux $ (opts $ file $ (pure params $ cmd $ args $ file_args))),
+  Term.info ~doc ~man "exec"
+
+let term =
+  let open Cmdliner in
+  let aux () = `Help (`Pager, None) in
+  let doc = "Maps the given commands on the given inputs." in
+  let man = [
+    `S "DESCRIPTION";
+    `P "Maps the given command on a list of inputs, and store the results in
+        a file (in json format). The file can later be analysed using the 'frogiter' command.
+        Also allows to parallelize the given task using multipls threads.";
+  ] in
+  Term.(ret (pure aux $ pure ())),
+  Term.info "frogmap" ~doc
 
 let () =
-  match Cmdliner.Term.eval_choice term [resume_term] with
+  match Cmdliner.Term.eval_choice term [exec_term; resume_term] with
   | `Version | `Help | `Error `Parse | `Error `Term | `Error `Exn -> exit 2
   | `Ok () -> ()
 

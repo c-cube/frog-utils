@@ -287,7 +287,7 @@ let config_term =
     config
   in
   let config =
-    let doc = "Use the given config files. Defaults to '.frogtptp.toml'.If one ormore config files is
+    let doc = "Use the given config files. Defaults to '~/.frogtptp.toml'. If one or more config files is
                given, only those files are taken into account (instead of the default one)." in
     Arg.(value & opt_all non_dir_file [Conf.interpolate_home "$HOME/.frogtptp.toml"] & info ["c"; "config"] ~doc)
   in
@@ -318,6 +318,11 @@ let analyze_term =
     Arg.(non_empty & pos 0 (list (pair ~sep:'=' string non_dir_file)) [] & info [] ~doc)
   in
   let doc = "Analyze the results of provers run previously" in
+  let man = [
+    `S "DESCRIPTION";
+    `P "Analyse the prover's results and prints statistics about them.
+        TODO: more detailed explication.";
+  ] in
   Term.(pure aux $ config_term $ limit_term $ args),
   Term.info ~doc "analyze"
 
@@ -333,21 +338,53 @@ let run_term =
     Arg.(value & pos_right 0 string [] & info [] ~doc)
   in
   let doc = "Run the prover on the given arguments" in
+  let man = [
+    `S "DESCRIPTION";
+    `P "This tool allows to run provers with pre-set options and uniform options
+        for time and memory limits. Provers to be run must be present in one of the
+        configuration files specified with the options.";
+  ] in
   Term.(pure aux $ config_term $ limit_term $ cmd $ args),
-  Term.info ~doc "run"
+  Term.info ~man ~doc "run"
 
 let list_term =
   let open Cmdliner in
   let aux config_files conf = main { config_files; conf; cmd = ListProvers } in
   let doc = "List the known provers,given the config files specified (see 'config' option)" in
+  let man = [
+    `S "DESCRIPTION";
+    `P "Prints on stdout the list of known provers according to the configuration
+        files specified with the options.";
+    `P "The list conatins one line for each prover, and is of the form : '<name>: cmd=<cmd>'.";
+  ] in
   Term.(pure aux $ config_term $ limit_term),
-  Term.info ~doc "list"
+  Term.info ~man ~doc "list"
 
 let help_term =
   let open Cmdliner in
-  let doc = "help !" in
+  let doc = "Offers various utilities to test automated theorem provers." in
+  let man = [
+    `S "DESCRIPTION";
+    `P "$(b,frogtptp) offers various utilities to simplify benchmarks of automated theorem provers.
+        It includes a command to run proverrs with preset options, an analyser of benchmarks results,
+        and an utility producing graphs of the provers' results (coming very soon).";
+    `S "COMMANDS";
+    `S "OPTIONS";
+    `S "CONFIGURATION FILE";
+    `P "Configuration files for $(b,frogtptp) follows the toml language. It should contain the following:
+        default timeouts and memory limits, a list of known provers, and a section for each of these provers.";
+    `P "This tool will only look for prover sections which are in the list of known provers, so if there is a section
+        about a prover that is not in the list, it will simply be ignored.";
+    `P "Each prover section must provide a '$(b,cmd)' parameter, which is the command to be called when running
+        the prover. Two additionnal parameters may be specified: $(b,sat) and $(b,unsat), which are regular expression
+        that will be used to decide the satisfiability status of the input problem according to the prover, by matching
+        it against the stdout output of the prover. In the command, the following expressions will be substituted:";
+    `I ("$(b,\\${timeout})", "will be substituted with the given timeout (in seconds).");
+    `I ("$(b,\\${memory})", "will be substituted wiuth the given memory limit (in Mo).");
+    `I ("$(b,\\${file})", "will be substituted with the the path of the input problem file.");
+  ] in
   Term.(ret (pure (fun () -> `Help (`Pager, None)) $ pure ())),
-  Term.info "frogtptp"~version:"dev" ~doc
+  Term.info ~version:"dev" ~man ~doc "frogtptp"
 
 let () =
   match Cmdliner.Term.eval_choice help_term [run_term;list_term;analyze_term] with
