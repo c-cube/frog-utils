@@ -25,7 +25,18 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *)
 
 
-let () =
+let froghop () =
   print_endline "the frog hops.";
   Unix.sleep 5;
   print_endline "happy?"
+
+let term =
+  let doc = "Try it and see what happens !" in
+  Cmdliner.Term.(pure froghop $ pure ()),
+  Cmdliner.Term.info ~doc "froghop"
+
+let () =
+  match Cmdliner.Term.eval term with
+  | `Version | `Help | `Error `Parse | `Error `Term | `Error `Exn -> exit 2
+  | `Ok () -> ()
+

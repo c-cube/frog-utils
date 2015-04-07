@@ -194,6 +194,7 @@ let main params =
 
 (** {2 Main} *)
 
+(*
 let cmd_ = ref None
 let j_ = ref 1
 let args_ = ref []
@@ -234,6 +235,7 @@ let options = Arg.align
   ; "-F", Arg.String set_file_args_, " read arguments from file"
   ; "--", Arg.Rest push_, " arguments to the command"
   ]
+*)
 
 let read_file_args file =
   Lwt_io.with_file ~mode:Lwt_io.input file
@@ -242,30 +244,113 @@ let read_file_args file =
       Lwt_stream.to_list lines
     )
 
-let read_params () =
+let read_params cmds file file_args dir j timeout progress resume =
+  let cmd, args = match cmds with x :: r -> Some x, r | [] -> None, [] in
   let mk_params cmd =
     Lwt.return {
       cmd;
-      filename= !file_;
-      dir= !dir_;
-      parallelism_level= !j_;
-      timeout = !timeout_;
-      progress = !progress_;
+      filename= Some file;
+      dir= dir;
+      parallelism_level= j;
+      timeout = timeout;
+      progress = progress;
     }
   in
-  match !resume_, !cmd_ with
-    | Some f, _ -> mk_params (Resume f)
-    | None, Some c ->
-      let%lwt args =  match !file_args_ with
-        | None -> Lwt.return (List.rev !args_)
+  match resume, cmd with
+    | true, _ -> mk_params (Resume file)
+    | false, Some c ->
+      let%lwt args =  match file_args with
+        | None -> Lwt.return args
         | Some f -> read_file_args f
       in
       mk_params (Run (c, args))
-    | None, None -> Arg.usage options usage; exit 1
+    | false, None -> raise Exit
+
+let opts =
+  let open Cmdliner in
+  let aux dir j timeout progress file cmd =
+    let%lwt cmd = cmd in
+    Lwt.return { cmd; filename = file; dir; parallelism_level = j; timeout; progress }
+  in
+  let dir =
+    let doc = "Directory where to put the state file" in
+    Arg.(value & opt (some dir) None & info ["d"; "dir"] ~docv:"DIR" ~doc)
+  in
+  let j =
+    let doc = "Number of parralel process to use" in
+    Arg.(value & opt int 1 & info ["j"] ~docv:"N" ~doc)
+  in
+  let timeout =
+    let doc = "Timeout" in
+    Arg.(value & opt (some float) None & info ["t"; "timeout"] ~docv:"TIME" ~doc)
+  in
+  let progress =
+    let doc = "Enable/diable progress bar" in
+    Arg.(value & opt bool true & info ["p"; "progress"] ~docv:"BOOL" ~doc)
+  in
+  Term.(pure aux $ dir $ j $ timeout $ progress)
+
+let resume_term =
+  let open Cmdliner in
+  let cmd f = Lwt.return (Resume f) in
+  let aux params = Lwt_main.run (Lwt.bind params main) in
+  let file =
+    let doc = "Task file to be resumed" in
+    Arg.(required & pos 0 (some non_dir_file) None & info [] ~docv:"FILE" ~doc)
+  in
+  let doc = "Resume an previous instance of frogmap using its output file." in
+  let man = [
+    `S "DESCRIPTION";
+    `P "Resume an instance of frogmap, using the output file of the previous instance
+        in order to continue where the previous instance was stopped. Tasks that will thus be run are
+        those that were running and those that were waiting to be run when the previous instance stopped.";
+    `P "Options such as parralelisme degree, timeout,... are $(b,NOT) stored in the output file, and thus can be modified
+        from one execution to another.";
+  ] in
+  Term.(pure aux $ (opts $ pure None $ (pure cmd $ file))),
+  Term.info ~man ~doc "resume"
+
+let term =
+  let open Cmdliner in
+  let params cmd args file_args =
+    let%lwt args = match file_args with
+      | None -> Lwt.return args
+      | Some f -> read_file_args f
+    in
+    Lwt.return (Run (cmd, args))
+  in
+  let aux params = Lwt_main.run (Lwt.bind params main) in
+  let file =
+    let doc = "Output file" in
+    Arg.(value & opt (some string) None & info ["o"; "output"] ~docv:"FILE" ~doc)
+  in
+  let cmd =
+    let doc = "Command to be mapped" in
+    Arg.(required & pos 0 (some string) None & info [] ~docv:"CMD" ~doc)
+  in
+  let args =
+    let doc = "Arguments on which to map the given command" in
+    Arg.(non_empty & pos_right 0 string [] & info [] ~docv:"ARGS" ~doc)
+  in
+  let file_args =
+    let doc = "Read arguments from file" in
+    Arg.(value & opt (some string) None & info ["F"] ~docv:"FILE" ~doc)
+  in
+  let doc = "Maps the given commands on the given inputs." in
+  let man = [
+    `S "SYNOPSIS";
+    `I ("$(b,frogmap COMMAND)", "Call the command");
+    `I ("$(b,frogmap [OPTIONS] -- CMD [ARGS [ARGS...]])", "Mapp the command on the list of arguments.");
+    `S "DESCRIPTION";
+    `P "Maps the given command on a list of inputs, and store the results in
+        a file (in json format). The file can later be analysed using the 'frogiter' command.
+        Also allows to parallelize the given task using multipls threads.";
+  ] in
+  Term.(pure aux $ (opts $ file $ (pure params $ cmd $ args $ file_args))),
+  Term.info ~man ~doc "frogmap"
 
 let () =
-  Arg.parse options push_ usage;
-  Lwt_main.run (
-    let%lwt params = read_params () in
-    main params
-  )
+  match Cmdliner.Term.eval_choice term [resume_term] with
+  | `Version | `Help | `Error `Parse | `Error `Term | `Error `Exn -> exit 2
+  | `Ok () -> ()
+

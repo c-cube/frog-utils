@@ -23,6 +23,7 @@ depends: [
     "ppx_deriving_yojson"
     "cairo"
     "archimedes"
+    "cmdliner"
 ]
 available: [ "ocaml-version" >= "4.02.1" ]
 tags: ["lock" "batch"]

@@ -38,7 +38,6 @@ type format_in =
 type cmd =
   | Shell of string
   | Exec of string * string list
-  | Stats
   [@@deriving show]
 
 type params = {
@@ -65,9 +64,17 @@ let escape_quote s =
 let run_cmd params res =
   let cmd = match params.cmd with
     | Shell c ->
-        Lwt_process.shell ("set -e; set -o pipefail; " ^ escape_quote c)
-    | Exec (p, args)  -> (p, Array.of_list (p::args))
-    | Stats -> assert false
+      let c' = match params.format_in with
+        | AsArg -> c ^ " " ^ res.S.res_out
+        | _ -> c
+      in
+      Lwt_process.shell ("set -e; set -o pipefail; " ^ escape_quote c')
+    | Exec (p, args)  ->
+      let args = match params.format_in with
+        | AsArg -> args @ [res.S.res_out]
+        | _ -> args
+      in
+      (p, Array.of_list (p::args))
   in
   (* give additional info through parameters *)
   let env = Unix.environment () |> Array.to_list in
@@ -120,60 +127,114 @@ let show_stats filename =
     num sum_len_out (if num=0 then 0. else foi sum_len_out /. foi num)
 
 let main params =
-  match params.cmd with
-  | Stats -> show_stats params.filename
-  | Shell _
-  | Exec _ ->
-      FrogMapState.fold_state_s
-        (fun () res ->
-          run_cmd params res
-        ) (fun _job -> Lwt.return_unit)
-        params.filename
+  FrogMapState.fold_state_s
+    (fun () res ->
+       run_cmd params res
+    ) (fun _job -> Lwt.return_unit)
+    params.filename
 
 (** {2 Main} *)
+let format_in_list = [
+  "out", OutOnly;
+  "prelude", Prelude;
+  "cli", AsArg;
+]
+let format_conv = Cmdliner.Arg.enum format_in_list
 
+let input_file =
+  let open Cmdliner in
+  let doc = "Result file (typically, the output of frogmap)."in
+  Arg.(required & pos 0 (some file) None & info [] ~docv:"FILE" ~doc)
 
+let stats_term =
+  let doc = "Print statistics about the file." in
+  Cmdliner.Term.(pure show_stats $ input_file),
+  Cmdliner.Term.info ~doc "stats"
 
-let format_in_ = ref OutOnly
-let cmd_ = ref []
-let shell_cmd_ = ref None
-let file_ = ref None
-let stats_ = ref false
+let opts =
+  let open Cmdliner in
+  let aux debug format_in filename cmd =
+    if debug then FrogDebug.enable_debug ();
+    { format_in; cmd; filename }
+  in
+  let format_in =
+    let doc = "Choose the input format with which to give info about the result to the command.
+               $(docv) may be " ^ (Arg.doc_alts_enum format_in_list) ^ ". See frogiter --help
+               for more explanations."
+    in
+    Arg.(value & opt format_conv OutOnly & info ["f"; "format"] ~doc)
+  in
+  let debug =
+    let doc = "Enable debug" in
+    Arg.(value & flag & info ["d"; "debug"] ~doc)
+  in
+  Term.(pure aux $ debug $ format_in)
 
-let push_ s = match !file_ with
-  | None -> file_ := Some s
-  | Some _ -> cmd_ := s :: !cmd_
-let set_format_in_ x () = format_in_ := x
+(*
+let shell_term =
+  let open Cmdliner in
+  let cmd arg = Shell arg in
+  let arg =
+    let doc = "Command to be used" in
+    Arg.(required & pos 1 (some string) None & info [] ~docv:"CMD" ~doc)
+  in
+  let doc = "Invoke command in a shell" in
+  Term.(pure main $ (opts $ input_file $ (pure cmd $ arg))),
+  Term.info ~doc "shell"
+*)
 
-let usage = "iter [options] <file> [--] <cmd>\n\
-  call the command <cmd> on every result in <file>, \
-  piping the result's output\n\
-  into <cmd>'s input"
-
-let options = Arg.align
-  [ "-prelude", Arg.Unit (set_format_in_ Prelude),
-      " pipe additional info about the result into the command"
-  ; "-arg", Arg.Unit (set_format_in_ AsArg),
-      " give res.output only through environment, not stdin"
-  ; "-debug", Arg.Unit FrogDebug.enable_debug, " enable debug"
-  ; "-stats", Arg.Set stats_, " print statistics about the file"
-  ; "-c", Arg.String (fun s -> shell_cmd_ := Some s),
-      " invoke command in a shell"
-  ; "--", Arg.Rest push_, " start parsing command"
-  ]
+let term =
+  let open Cmdliner in
+  let aux shell cmds =
+    if shell then
+      Shell (String.concat " " cmds)
+    else match cmds with
+      | cmd :: args -> Exec (cmd, args)
+      | [] -> assert false
+  in
+  let shell =
+    let doc = "Invoke command in a shell instead." in
+    Arg.(value & flag & info ["c"; "shell"] ~doc)
+  in
+  let cmds =
+    let doc = "Command (with arguments) to run on every output result in argument file" in
+    Arg.(non_empty & pos_right 0 string [] & info [] ~docv:"CMD" ~doc)
+  in
+  let doc = "Call the command on every result in file, piping the result's output into the command's input" in
+  let man = [
+    `S "SYNOPSIS";
+    `I ("$(b,frogiter COMMAND)", "Call one of the commands");
+    `I ("$(b,frogiter [OPTIONS] -- FILE CMD [CMD [CMD ...]])", "Call the command on every result output in the file.");
+    `S "DESCRIPTION";
+    `P "This commands allows to run bash commands on every results in an output file produced by
+        the '$(b,frogmap)' command.";
+    `S "COMMANDS";
+    `S "OPTIONS";
+    `S "RESULTS FORMAT";
+    `P "There are three input format available for
+        the command given to frogiter (which we will call the processor command), in order to get the
+        output of the commands that were run with frogmap (which we will call the mapped command).";
+    `I ("$(b,out)", "The result outputted by the mapped command on stdout is given to
+                     the processor command through its stdin.");
+    `I ("$(b,cli)", "The result outputted by the mapped command is given to the processor command
+                     as CLI argument.");
+    `I ("$(b,prelude)", "Gives to the processor command the following lines on stdin :
+                         '# argument: <mapped command args>', '# time: <mapped command time>' and
+                         the complete output of the mapped command (which may span multiple lines).");
+    `S "ENVIRONMENT VARIABLES";
+    `P "The following environment variables will be set up prior to calling the processor command.";
+    `I ("$(b,FROG_OUT)", "the mapped command's result on stdout.");
+    `I ("$(b,FROG_ERR)", "the mapped command's result on stderr.");
+    `I ("$(b,FROG_ARG)", "the argument of the mapped command (i.e the element
+                     of the mapped list on which the mapped command was applied)");
+    `I ("$(b,FROG_TIME)", "number of seconds the mapped command took to complete");
+    `I ("$(b,FROG_ERRCODE)", "the exit code of the mapped function");
+  ] in
+  Term.(pure main $ (opts $ input_file $ (pure aux $ shell $ cmds))),
+  Term.info ~man ~doc "frogiter"
 
 let () =
-  Arg.parse options push_ usage;
-  let mk_params filename cmd =
-    {format_in= !format_in_; cmd; filename}
-  in
-  let params = match !file_, !shell_cmd_, List.rev !cmd_ with
-    | Some filename, _, _ when !stats_ -> mk_params filename Stats
-    | Some filename, Some cmd, _ ->
-        mk_params filename (Shell cmd)
-    | Some filename, None, prog::args ->
-        mk_params filename (Exec (prog,args))
-    | _ ->
-        failwith "file and command are required"  (* TODO print usage? *)
-  in
-  Lwt_main.run (main params)
+  match Cmdliner.Term.eval_choice term [stats_term] with
+  | `Version | `Help | `Error `Parse | `Error `Term | `Error `Exn -> exit 2
+  | `Ok res -> Lwt_main.run res
+
