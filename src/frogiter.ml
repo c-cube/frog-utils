@@ -138,7 +138,7 @@ let input_file =
   Arg.(required & pos 0 (some file) None & info [] ~docv:"FILE" ~doc)
 
 let stats_term =
-  let doc = "Print statisticsabout the file." in
+  let doc = "Print statistics about the file." in
   Cmdliner.Term.(pure show_stats $ input_file),
   Cmdliner.Term.info ~doc "stats"
 
@@ -150,7 +150,7 @@ let opts =
   in
   let format_in =
     let doc = "Choose the input format with which to give info about the result to the command.
-               $(docv) may be %a" ^ (Arg.doc_alts_enum format_in_list) in
+               $(docv) may be " ^ (Arg.doc_alts_enum format_in_list) in
     Arg.(value & opt format_conv OutOnly & info ["f"; "format"] ~doc)
   in
   let debug =
@@ -166,7 +166,7 @@ let shell_term =
     let doc = "Command to be used" in
     Arg.(required & pos 1 (some string) None & info [] ~docv:"CMD" ~doc)
   in
-  let doc = "Invoke commandin a shell" in
+  let doc = "Invoke command in a shell" in
   Term.(pure main $ (opts $ input_file $ (pure cmd $ arg))),
   Term.info ~doc "shell"
 
@@ -183,7 +183,7 @@ let term =
   in
   let doc = "Call the command on every result in file, piping the result's output into the command's input" in
   Term.(pure main $ (opts $ input_file $ (pure aux $ cmd $ args))),
-  Term.info "iter" ~doc
+  Term.info "frogiter" ~doc
 
 let () =
   match Cmdliner.Term.eval_choice term [stats_term; shell_term] with
