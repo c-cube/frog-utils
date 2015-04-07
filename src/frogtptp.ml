@@ -324,7 +324,7 @@ let analyze_term =
         TODO: more detailed explication.";
   ] in
   Term.(pure aux $ config_term $ limit_term $ args),
-  Term.info ~doc "analyze"
+  Term.info ~man ~doc "analyse"
 
 let run_term =
   let open Cmdliner in

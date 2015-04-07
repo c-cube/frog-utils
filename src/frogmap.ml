@@ -310,7 +310,7 @@ let resume_term =
   Term.(pure aux $ (opts $ pure None $ (pure cmd $ file))),
   Term.info ~man ~doc "resume"
 
-let exec_term =
+let term =
   let open Cmdliner in
   let params cmd args file_args =
     let%lwt args = match file_args with
@@ -336,30 +336,21 @@ let exec_term =
     let doc = "Read arguments from file" in
     Arg.(value & opt (some string) None & info ["F"] ~docv:"FILE" ~doc)
   in
-  let doc = "Maps the command on the inputs given." in
-  let man = [
-    `S "DESCRIPTION";
-    `P "Maps the given commands on the given inputs. Also allows to parallelize
-        the given task using multipls threads.";
-  ] in
-  Term.(pure aux $ (opts $ file $ (pure params $ cmd $ args $ file_args))),
-  Term.info ~doc ~man "exec"
-
-let term =
-  let open Cmdliner in
-  let aux () = `Help (`Pager, None) in
   let doc = "Maps the given commands on the given inputs." in
   let man = [
+    `S "SYNOPSIS";
+    `I ("$(b,frogmap COMMAND)", "Call the command");
+    `I ("$(b,frogmap [OPTIONS] -- CMD [ARGS [ARGS...]])", "Mapp the command on the list of arguments.");
     `S "DESCRIPTION";
     `P "Maps the given command on a list of inputs, and store the results in
         a file (in json format). The file can later be analysed using the 'frogiter' command.
         Also allows to parallelize the given task using multipls threads.";
   ] in
-  Term.(ret (pure aux $ pure ())),
-  Term.info "frogmap" ~doc
+  Term.(pure aux $ (opts $ file $ (pure params $ cmd $ args $ file_args))),
+  Term.info ~man ~doc "frogmap"
 
 let () =
-  match Cmdliner.Term.eval_choice term [exec_term; resume_term] with
+  match Cmdliner.Term.eval_choice term [resume_term] with
   | `Version | `Help | `Error `Parse | `Error `Term | `Error `Exn -> exit 2
   | `Ok () -> ()
 

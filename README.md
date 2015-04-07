@@ -16,10 +16,10 @@ following ones:
 
 ### Froglock
 
-The basic usage is `froglock exec <cmd>` or `froglock exec -- <cmd>`. This
-has the same behavior as `<cmd>`, except for one point: at any given
-time, on a given computer, at most one command launched from `froglock <cmd>`
-runs. Until it terminates, the other commands aren't started yet; once
+The basic usage is `froglock -- <cmd>`. This has the same behavior
+as `<cmd>`, except for one point: at any given time, on a given
+computer, at most one command launched from `froglock -- <cmd>` runs.
+Until it terminates, the other commands aren't started yet; once
 it terminates one waiting command is started and takes ownership of the "lock".
 This works by connecting to a daemon on a given port, starting it if required.
 The daemon will stop if its queue is empty.
@@ -33,7 +33,7 @@ port can be changed with `--port <n>`.
 
 ### Frogmap
 
-`frogmap exec <cmd> <args...>` applies a command `<cmd>` (shell command) to a
+`frogmap -- <cmd> <args...>` applies a command `<cmd>` (shell command) to a
 list of elements, and stores the result of `<cmd> <arg>` for every such
 element `<arg>`.
 
@@ -55,10 +55,10 @@ apply a command to all the results stored in some `<file.json>` produced by
 `frogmap`. Example:
 
 ```sh
-    frogmap exec -o foo.json -j 20 'sleep 3; echo ' `seq 1 1000`
+    frogmap -o foo.json -j 20 'sleep 3; echo ' `seq 1 1000`
 
     # later...
-    frogiter shell foo.json 'grep 11'
+    frogiter -c foo.json 'grep 11'
 ```
 
 will print all number from 1 to 1000 that contains the string 11 in
@@ -70,11 +70,6 @@ is passed the following environment:
 - `FROG_ARG`: the argument given to the command
 - `FROG_TIME`: number of seconds the command took to complete
 - `FROG_ERRCODE`: exit code of the command
-
-The useful options are:
-
-- `-f arg` to disable printing of the commands' output to stdin, e.g. if
-  the command closes its stdin (typically, `echo`)
 
 Example:
 
@@ -107,7 +102,7 @@ Example:
 
 ```sh
     # I have 10 cores, let's prove stuff with E
-    frogmap exec -j 10 -o bench.json \
+    frogmap -j 10 -o bench.json \
       'frogtptp run eprover -t 5' \
       $TPTP/Problems/*/*.p
 

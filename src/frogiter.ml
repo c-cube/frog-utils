@@ -170,6 +170,7 @@ let opts =
   in
   Term.(pure aux $ debug $ format_in)
 
+(*
 let shell_term =
   let open Cmdliner in
   let cmd arg = Shell arg in
@@ -180,23 +181,30 @@ let shell_term =
   let doc = "Invoke command in a shell" in
   Term.(pure main $ (opts $ input_file $ (pure cmd $ arg))),
   Term.info ~doc "shell"
-
-let exec_term =
-  let open Cmdliner in
-  let aux = function cmd :: args -> Exec (cmd, args) | [] -> assert false in
-  let cmds =
-    let doc = "Command to run on every output result in argument file" in
-    Arg.(non_empty & pos_right 0 string [] & info [] ~docv:"CMD"~doc)
-  in
-  let doc = "Call the command on every result in file, piping the result's output into the command's input" in
-  Term.(pure main $ (opts $ input_file $ (pure aux $ cmds))),
-  Term.info "exec" ~doc
+*)
 
 let term =
   let open Cmdliner in
-  let aux () = `Help (`Pager, None) in
+  let aux shell cmds =
+    if shell then
+      Shell (String.concat " " cmds)
+    else match cmds with
+      | cmd :: args -> Exec (cmd, args)
+      | [] -> assert false
+  in
+  let shell =
+    let doc = "Invoke command in a shell instead." in
+    Arg.(value & flag & info ["c"; "shell"] ~doc)
+  in
+  let cmds =
+    let doc = "Command (with arguments) to run on every output result in argument file" in
+    Arg.(non_empty & pos_right 0 string [] & info [] ~docv:"CMD" ~doc)
+  in
   let doc = "Call the command on every result in file, piping the result's output into the command's input" in
   let man = [
+    `S "SYNOPSIS";
+    `I ("$(b,frogiter COMMAND)", "Call one of the commands");
+    `I ("$(b,frogiter [OPTIONS] -- FILE CMD [CMD [CMD ...]])", "Call the command on every result output in the file.");
     `S "DESCRIPTION";
     `P "This commands allows to run bash commands on every results in an output file produced by
         the '$(b,frogmap)' command.";
@@ -222,11 +230,11 @@ let term =
     `I ("$(b,FROG_TIME)", "number of seconds the mapped command took to complete");
     `I ("$(b,FROG_ERRCODE)", "the exit code of the mapped function");
   ] in
-  Term.(ret (pure aux $ pure ())),
-  Term.info ~man ~doc"frogiter"
+  Term.(pure main $ (opts $ input_file $ (pure aux $ shell $ cmds))),
+  Term.info ~man ~doc "frogiter"
 
 let () =
-  match Cmdliner.Term.eval_choice term [exec_term; stats_term; shell_term] with
+  match Cmdliner.Term.eval_choice term [stats_term] with
   | `Version | `Help | `Error `Parse | `Error `Term | `Error `Exn -> exit 2
   | `Ok res -> Lwt_main.run res
 
