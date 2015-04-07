@@ -98,15 +98,8 @@ The commands are:
   will do the same but also compare the performance of the different provers.
   No other option might follow `analyse`.
   This is still work in progress.
-
-### Frogplot
-
-Frogplot takes the output file of a run of `frogtptp` and
-prints the cumulative time of the provers on the `unsat` results.
-More specifically, it takes the list of run times for `unsat` results,
-sort it in increasing order, then plots the sum of these times.
-
-
+- `frogtptp plot -o out <prover>=<file.json>` prints the cumulative time
+  of the provers on the `unsat` results.
 
 Example:
 
@@ -126,7 +119,7 @@ Example:
     frogtptp analyse eprover=bench.json
 
     # print the cumulative times
-    frogplot -o plot.png eprover,bench.json
+    frogtptp plot -o plot.png eprover=bench.json
 ```
 
 runs the [E prover](http://eprover.org) (named `eprover`) on all files in
