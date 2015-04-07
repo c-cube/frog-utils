@@ -157,7 +157,6 @@ let style =
   parse, print
 
 let axis_sect = "AXIS OPTIONS"
-let common_sect = "COMMON OPTIONS"
 
 let axis_args axis_name dist label =
   let open Cmdliner in
@@ -192,54 +191,45 @@ let axis_args axis_name dist label =
 
 let graph_args =
   let open Cmdliner in
-  let docs = common_sect in
   let x_axis = axis_args "x" 100. "Number of problems proved" in
   let y_axis = axis_args "y" 200. "Cumulative time (in seconds)" in
   let mark =
     let doc = "Style to use for plotting" in
-    Arg.(value & opt style (`Markers "+") & info ["s"; "style"] ~docs ~doc)
+    Arg.(value & opt style (`Markers "+") & info ["s"; "style"] ~doc)
   in
   let filter =
     let doc = "Set if you want to filter the list of points drawed. One in every $(docv) point is drawn." in
-    Arg.(value & opt int 3 & info ["f"; "filter"] ~docs ~docv:"N" ~doc)
+    Arg.(value & opt int 3 & info ["f"; "filter"]  ~docv:"N" ~doc)
   in
   let last =
     let doc = "Prevents the last $(docv) points from begin filtered by the 'filter' option" in
-    Arg.(value & opt int 10 & info ["l"; "last"] ~docv:"N" ~docs ~doc)
+    Arg.(value & opt int 10 & info ["l"; "last"] ~docv:"N" ~doc)
   in
   Term.(pure mk_graph_config $ x_axis $ y_axis $ mark $ last $ filter)
 
-let main () =
+let term =
   let open Cmdliner in
-  let docs = common_sect in
   let config =
     let doc = "Config file" in
-    Arg.(value & opt_all config_file [] & info ["c"; "config"] ~docv:"FILE" ~docs ~doc)
+    Arg.(value & opt_all config_file [] & info ["c"; "config"] ~docv:"FILE" ~doc)
   in
   let args =
-    let doc = "List of pairs of provers and result files." in
-    Arg.(non_empty & pos_all (pair string non_dir_file) [] & info [] ~docs ~doc)
+    let doc = "Pairs of provers and result files." in
+    Arg.(non_empty & pos_all (pair ~sep:'=' string non_dir_file) [] & info [] ~docv:"PROVER=FILE" ~doc)
   in
   let format =
     let doc = "Format of the output file" in
-    Arg.(value & opt string "PNG" & info ["f"; "format"] ~docs ~doc)
+    Arg.(value & opt string "PNG" & info ["f"; "format"] ~doc)
   in
   let out =
     let doc = "Output file" in
-    Arg.(required & opt (some string) None & info ["o"; "out"] ~docs ~doc)
+    Arg.(required & opt (some string) None & info ["o"; "out"] ~doc)
   in
+  let doc = "Draw cumulative time graph of provers." in
   let man = [
-    `S common_sect; `P "Common options for frogplot.";
-    `S axis_sect; `P "Options for the drawing og axes.";
+    `S "OPTIONS";
+    `S axis_sect; `P "Options for the drawing of axes.";
   ] in
-  let t_info = Term.info ~man "frogplot" in
-  match Term.(eval (pure main $ graph_args $ config $ format $ out $ args, t_info)) with
-  | `Version | `Help | `Error `Parse | `Error `Term | `Error `Exn -> raise Exit
-  | `Ok () -> ()
-;;
-
-try
-  main ()
-with
-| Exit -> exit 2
+  Term.(pure main $ graph_args $ config $ format $ out $ args),
+  Term.info ~man ~doc "plot"
 

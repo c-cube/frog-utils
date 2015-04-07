@@ -387,7 +387,7 @@ let help_term =
   Term.info ~version:"dev" ~man ~doc "frogtptp"
 
 let () =
-  match Cmdliner.Term.eval_choice help_term [run_term;list_term;analyze_term] with
+  match Cmdliner.Term.eval_choice help_term [run_term;list_term;analyze_term; FrogPlot.term] with
   | `Version | `Help | `Error `Parse | `Error `Term | `Error `Exn -> exit 2
   | `Ok () -> ()
 
