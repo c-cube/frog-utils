@@ -10,6 +10,48 @@ module Opt = struct
     | Some x -> f x
 end
 
+(* Colors *)
+exception Unknown_color
+
+let to_color s =
+  match String.lowercase s with
+  | "black" -> A.Color.black
+  | "red" -> A.Color.red
+  | "green" -> A.Color.green
+  | "blue" -> A.Color.blue
+  | "yellow" -> A.Color.yellow
+  | "magenta" -> A.Color.magenta
+  | "cyan" -> A.Color.cyan
+  | "white" -> A.Color.white
+  | _ -> raise Unknown_color
+
+let color_conv =
+  let parse s =
+    try
+      `Ok (to_color s)
+    with Unknown_color -> `Error "Not a valid color"
+  in
+  let print fmt c =
+    let r, g, b = A.Color.get_rgb c in
+    Format.fprintf fmt "rgb:%f,%f,%f" r g b
+  in
+  parse, print
+
+type color_list = {
+  mutable index : int;
+  color_set : A.Color.t array;
+}
+
+let mk_color_list colors = {
+  index = 0;
+  color_set = Array.of_list colors;
+}
+
+let next_color cl =
+  let c = cl.color_set.(cl.index) in
+  cl.index <- (cl.index + 1) mod (Array.length cl.color_set);
+  c
+
 (* Options for drawing graph *)
 type axis_config = {
   show : bool;
@@ -36,10 +78,11 @@ type graph_config = {
   filter : int;
   x_axis : axis_config;
   y_axis : axis_config;
+  colors : color_list;
 }
 
-let mk_graph_config x_axis y_axis style count filter =
-  { style; count; filter; x_axis; y_axis; }
+let mk_graph_config x_axis y_axis style count filter colors =
+  { style; count; filter; x_axis; y_axis; colors = mk_color_list colors }
 
 (* Misc functions *)
 let fold_sum l =
@@ -79,8 +122,9 @@ let print_time config v (l, name) =
     with Failure "hd" ->
       0., 0.
   in
+  A.Viewport.set_color v (next_color config.colors);
   A.List.xy_pairs ~style:config.style v l;
-  A.Viewport.text v (n +. 5.) last ~pos:A.Backend.RT name
+  A.Viewport.text v (n +. 1.) last ~pos:A.Backend.RT name
 
 let print_labels config v =
   A.Viewport.xlabel v config.x_axis.legend;
@@ -92,9 +136,9 @@ let print_axes config v =
 
 let draw_graph config format filename args =
   let v = A.init ["Cairo"; format; filename] in
-  A.Viewport.set_color v A.Color.blue;
+  let c = A.Viewport.get_color v in
   List.iter (print_time config v) args;
-  A.Viewport.set_color v A.Color.black;
+  A.Viewport.set_color v c;
   print_labels config v;
   print_axes config v;
   A.show v;
@@ -205,7 +249,11 @@ let graph_args =
     let doc = "Prevents the last $(docv) points from begin filtered by the 'filter' option" in
     Arg.(value & opt int 10 & info ["l"; "last"] ~docv:"N" ~doc)
   in
-  Term.(pure mk_graph_config $ x_axis $ y_axis $ mark $ last $ filter)
+  let colors =
+    let doc = "List of colors to use while drawing the graphs" in
+    Arg.(value & opt (list color_conv) A.Color.([blue; red; green; magenta; cyan]) & info ["colors"] ~docv:"COLORS" ~doc)
+  in
+  Term.(pure mk_graph_config $ x_axis $ y_axis $ mark $ last $ filter $ colors)
 
 let term =
   let open Cmdliner in
