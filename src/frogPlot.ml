@@ -124,7 +124,7 @@ let print_time config v (l, name) =
   in
   A.Viewport.set_color v (next_color config.colors);
   A.List.xy_pairs ~style:config.style v l;
-  A.Viewport.text v (n +. 1.) last ~pos:A.Backend.RT name
+  A.Viewport.text v (n +. 5.) last ~pos:A.Backend.RT name
 
 let print_labels config v =
   A.Viewport.xlabel v config.x_axis.legend;
