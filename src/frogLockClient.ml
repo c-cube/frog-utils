@@ -45,12 +45,12 @@ let connect port f =
     )
 
 (* given the channels to the daemon, acquire lock, call [f], release lock *)
-let acquire ?cwd ?user ?info ?(tags=[]) {ic; oc} f =
+let acquire ?cwd ?user ?info ?(priority=1) ?(tags=[]) {ic; oc} f =
   Lwt_log.ign_debug "acquiring lock...";
   let query_time = Unix.gettimeofday() in
   (* send "acquire" *)
   let pid = Unix.getpid() in
-  let msg = M.Acquire {M.info; user; query_time; tags; cwd; pid} in
+  let msg = M.Acquire {M.info; user; priority; query_time; tags; cwd; pid} in
   let%lwt () = M.print oc msg in
   (* expect "go" *)
   let%lwt res = M.parse ic in

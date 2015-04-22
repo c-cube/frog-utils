@@ -47,6 +47,7 @@ type parameters = {
   port : int;
   cmd : cmd;
   debug : bool;
+  priority : int;
   tags : string list; (* user-defined tags *)
 }
 
@@ -65,7 +66,7 @@ let run_command params =
   let cwd = Sys.getcwd () in
   FrogLockClient.connect_or_spawn ~log_file:"/tmp/froglock.log" params.port
     (fun daemon ->
-      FrogLockClient.acquire ~cwd ?user ~info ~tags:params.tags daemon
+      FrogLockClient.acquire ~cwd ?user ~info ~priority:params.priority ~tags:params.tags daemon
         (function
         | true ->
           let cmd, cmd_string = match params.cmd with
@@ -171,7 +172,7 @@ let main params =
 
 let common_opts =
   let open Cmdliner in
-  let aux port debug tags cmd = { port; debug; tags; cmd }  in
+  let aux port debug tags priority cmd = { port; debug; tags; priority; cmd }  in
   let port =
     let doc = "Local port for the daemon" in
     Arg.(value & opt int 12000 & info ["p"; "port"] ~docv:"PORT" ~doc)
@@ -184,7 +185,12 @@ let common_opts =
     let doc = "Add a user-defined tag to a job" in
     Arg.(value & opt_all string [] & info ["t"; "tag"] ~docv:"TAG" ~doc)
   in
-  Term.(pure aux $ port $ debug $ tags)
+  let prio =
+    let doc = "Priority of the job. Higher priority jobs will be run before
+               lower priority jobs." in
+    Arg.(value & opt int 10 & info ["prio"] ~docv:"PRIO" ~doc)
+  in
+  Term.(pure aux $ port $ debug $ tags $ prio)
 
 (*
 let shell_term =

@@ -31,6 +31,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 type job = {
   info : string option;
   user : string option;
+  priority : int;
   query_time : float; (* time at which the query was issued *)
   cwd : string option; (* working dir *)
   tags : string list;

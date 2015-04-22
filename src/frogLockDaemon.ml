@@ -36,6 +36,11 @@ type acquire_task = {
   query : M.job;
 }
 
+module Q = Heap.Make(struct
+    type t = acquire_task
+    let leq t t' = M.(t.query.priority > t'.query.priority)
+  end)
+
 (* internal message between client handlers and the scheduler *)
 type scheduler_msg =
   [ `Register of acquire_task
@@ -47,7 +52,7 @@ type state = {
   mutable cur_id : int;
   mutable accept : bool;
   mutable current : M.current_job option;
-  queue : acquire_task Queue.t;
+  mutable queue : Q.t;
   scheduler : scheduler_msg Lwt_mvar.t;
 }
 
@@ -56,9 +61,16 @@ let make_state () = {
   cur_id=0;
   accept=true;
   current= None;
-  queue=Queue.create ();
+  queue= Q.empty;
   scheduler = Lwt_mvar.create_empty ();
 }
+
+let push_task t st = st.queue <- Q.add st.queue t
+
+let take_task st =
+  let q, t = Q.take_exn st.queue in
+  st.queue <- q;
+  t
 
 let maybe_str = function
   | None -> "<none>"
@@ -72,7 +84,7 @@ let start_scheduler ~state () =
     let%lwt res = Lwt_mvar.take inbox in
     match res with
     | `Register task' ->
-        Queue.push task' state.queue;
+        push_task task' state;
         begin match state.current with
         | None -> run_next ()
         | Some _ -> listen ()
@@ -92,7 +104,7 @@ let start_scheduler ~state () =
         end
   (* run task *)
   and run_next () =
-    if Queue.is_empty state.queue
+    if Q.is_empty state.queue
     then if state.num_clients = 0
       then (
         (* only exit if no clients are connected, to avoid the
@@ -106,7 +118,7 @@ let start_scheduler ~state () =
     else (
       (* start the given process *)
       assert (state.current = None);
-      let task = Queue.take state.queue in
+      let task = take_task state in
       Lwt_log.ign_info_f ~section "start task %d (user %s, pid %d): %s"
         task.id
         (maybe_str task.query.M.user)
@@ -155,7 +167,7 @@ let stop_accepting ~state =
 
 let handle_status ~state oc =
   let module M = M in
-  let waiting = Queue.fold
+  let waiting = Q.fold
     (fun acc task ->
       { M.waiting_id=task.id; waiting_job=task.query; } :: acc
     ) [] state.queue

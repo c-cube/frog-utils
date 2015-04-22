@@ -3,6 +3,7 @@ B _build/src
 S src/lib
 B _build/src/lib
 PKG lwt
+PKG lwt.ppx
 PKG lwt.unix
 PKG unix
 PKG yojson
