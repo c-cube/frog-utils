@@ -18,7 +18,7 @@ clean:
 INSTALL_TARGETS=$(addprefix _build/src/, $(LIBS))
 
 install_bin: all
-	mkdir -p "$(BIN_INSTALL_DIR)/"
+	mkdir -p "$(BINDIR)/"
 	for b in $(BINARIES) ; do \
 	    cp $$b "$(BINDIR)/$$( basename $$b .native )" ; \
 	done
@@ -28,12 +28,18 @@ install_bin: all
 install_lib: all
 	ocamlfind install frogutils META $(INSTALL_TARGETS) _build/src/*.{cmi,cmt}
 
-install: install_bin install_lib
+install_man: all
+	for b in $(BINARIES) ; do \
+		./$$b --help=groff > $(MANDIR)/man1/$$( basename $$b .native ).1 ; \
+	done
+
+install: install_bin install_lib install_man
 
 uninstall:
 	ocamlfind remove frogutils
 	for b in $(BINARIES) ; do \
-	    rm "$(BINDIR)/$$( basename $b .native )" ; \
+	    rm "$(BINDIR)/$$( basename $$b .native )" ; \
+			rm "$(MANDIR)/man1/$$( basename $$b .native ).1" ; \
 	done
 	rm -r "$(SHAREDIR)/frogutils/"
 	rm $(addprefix "$(BINDIR)/", $(BINARIES)) || true

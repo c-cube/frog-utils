@@ -11,8 +11,8 @@ license: "BSD-2-clause"
 build: [
   [make]
 ]
-install: [make "BINDIR=%{bin}%" "SHAREDIR=%{share}%" "install"]
-remove: ["ocamlfind" "remove" "frogutils"]
+install: [make "MANDIR=%{man}%" "BINDIR=%{bin}%" "SHAREDIR=%{share}%" "install"]
+remove: [make "MANDIR=%{man}%" "BINDIR=%{bin}%" "SHAREDIR=%{share}%" "uninstall"]
 depends: [
     "ocamlfind" {build}
     "lwt"
@@ -29,5 +29,5 @@ depends: [
 available: [ "ocaml-version" >= "4.02.1" ]
 tags: ["lock" "batch"]
 post-messages: [
-    "Config files can be found in %{share}%/frogutils/ . Tools provide a -help option."
+    "Config files can be found in %{share}%/frogutils/ .Tools provide a --help option as well as man pages."
 ]
