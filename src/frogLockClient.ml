@@ -54,23 +54,25 @@ let acquire ?cwd ?user ?info ?(cores=0) ?(priority=1) ?(tags=[]) {ic; oc} f =
   let query_time = Unix.gettimeofday() in
   (* send "acquire" *)
   let pid = Unix.getpid() in
-  let msg = M.Acquire {M.info; user; priority; query_time; tags; cwd; pid; cores} in
+  let id = FrogLockDaemon.job_id () in
+  let msg = M.Acquire {M.id; info; user; priority; query_time; tags; cwd; pid; cores} in
   let%lwt () = M.print oc msg in
   (* expect "go" *)
-  let%lwt res = M.parse ic in
-  match res with
-  | M.Reject ->
-    Lwt_log.ign_debug ~section "lock: rejected (daemon too busy?)";
-    f false
-  | M.Go ->
-    Lwt_log.ign_debug ~section "acquired lock";
-    f true
-    [@finally
-      (* eventually, release *)
+  let rec aux () =
+    let%lwt res = M.parse ic in
+    match res with
+    | M.Reject id' when id' = id ->
+      Lwt_log.ign_debug ~section "lock: rejected (daemon too busy?)";
+      f false
+    | M.Go id' when id' = id ->
+      Lwt_log.ign_debug ~section "acquired lock";
+      let%lwt res = f true in
       Lwt_log.ign_debug ~section "release lock";
-      M.print oc M.Release
-    ]
-  | msg -> Lwt.fail (M.Unexpected msg)
+      let%lwt () = M.print oc (M.Release id) in
+      Lwt.return res
+    | _ -> aux ()
+  in
+  aux ()
 
 (* try to connect; if it fails, spawn daemon and retry *)
 let connect_or_spawn ?log_file ?(retry=1.) port f =

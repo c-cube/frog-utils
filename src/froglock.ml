@@ -134,10 +134,9 @@ let print_status params =
             ) l
       in
       Lwt_list.iter_s
-        (fun wjob ->
-           let job = wjob.M.waiting_job in
+        (fun job ->
            Lwt_io.printlf "waiting job n°%d (cores %d, user %s, pid %d, cwd %s, issued %.2fs ago%s): %s"
-             wjob.M.waiting_id
+             (job.M.id :> int)
              job.M.cores
              (maybe_str job.M.user)
              job.M.pid (maybe_str job.M.cwd)

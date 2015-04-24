@@ -26,6 +26,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 (** {1 Daemon} *)
 
+val job_id : unit -> FrogLockMessages.id
+(** Return a new id for jobs. *)
+
 val spawn : int -> unit Lwt.t
 (** Spawn on the given port. Can fail. *)
 
