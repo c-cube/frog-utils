@@ -34,7 +34,7 @@ val connect : int -> (remote_daemon -> 'a Lwt.t) -> 'a Lwt.t
 (** Connect the the remote daemon *)
 
 val acquire : ?cwd:string -> ?user:string -> ?info:string ->
-              ?priority: int -> ?tags:string list ->
+              ?cores:int -> ?priority: int -> ?tags:string list ->
               remote_daemon -> (bool -> 'a Lwt.t) -> 'a Lwt.t
 (** [acquire daemon f] acquires the lock on the remote [daemon], then
     calls [f true] and returns the result of [f true].
@@ -45,7 +45,7 @@ val acquire : ?cwd:string -> ?user:string -> ?info:string ->
 
 val connect_or_spawn : ?log_file:string -> ?retry:float ->
                        int -> (remote_daemon -> 'a Lwt.t) -> 'a Lwt.t
-(** Similar to {!connect}, but if it could connect it launches the daemon
+(** Similar to {!connect}, but if it couldn't connect it launches the daemon
     and waits {!retry} seconds before retrying. *)
 
 val get_status : int -> FrogLockMessages.status_answer option Lwt.t

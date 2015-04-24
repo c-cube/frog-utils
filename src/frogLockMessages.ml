@@ -28,41 +28,47 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 [@@@warning "-39"]
 
+(** Description of a froglock job.
+
+    Some fields have default values for backward compatibility (old client, new server);
+    The flag [{strict=false}] ensures backward compatibility (new client, old server).
+*)
 type job = {
-  info : string option;
-  user : string option;
-  priority : int;
-  query_time : float; (* time at which the query was issued *)
-  cwd : string option; (* working dir *)
-  tags : string list;
-  pid : int;
+  info        [@key "info"] : string option;
+  user        [@key "user"] : string option;
+  priority    [@key "priority"] : int [@default 10];
+  query_time  [@key "query_time"] : float; (* time at which the query was issued *)
+  cwd         [@key "cwd"] : string option; (* working dir *)
+  tags        [@key "tags"] : string list;
+  pid         [@key "pid"] : int;
+  cores       [@key "cores"] : int [@default 0];
 }
-[@@deriving yojson,show]
+[@@deriving yojson {strict=false},show]
 
 type current_job = {
-  current_job : job;
-  current_id : int;
-  current_start : float;  (* time at which task started *)
+  current_job   [@key "current_job"] : job;
+  current_id    [@key "current_id"] : int;
+  current_start [@key "current_start"] : float;  (* time at which task started *)
 } [@@deriving yojson,show]
 
 type waiting_job = {
-  waiting_job : job;
-  waiting_id : int;
+  waiting_job [@key "waiting_job"] : job;
+  waiting_id  [@key "waiting_id"] : int;
 } [@@deriving yojson,show]
 
 type status_answer = {
-  current : current_job option;
-  waiting : waiting_job list;
+  current [@key "current"] : current_job list;
+  waiting [@key "waiting"] : waiting_job list;
 } [@@deriving yojson,show]
 
 type t =
-  | Acquire of job
-  | Release
-  | Go (* acquisition succeeded *)
-  | Status
-  | StatusAnswer of status_answer
-  | StopAccepting (* from now on, no more accepts *)
-  | Reject  (* request not accepted *)
+  | Acquire       [@name "acquire"] of job
+  | Release       [@name "release"]
+  | Go            [@name "go"] (* acquisition succeeded *)
+  | Status        [@name "status"]
+  | StatusAnswer  [@name "statusanswer"] of status_answer
+  | StopAccepting [@name "stopaccepting"] (* from now on, no more accepts *)
+  | Reject        [@name "reject"]  (* request not accepted *)
   [@@deriving yojson, show]
 
 [@@@warning "+39"]

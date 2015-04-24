@@ -48,6 +48,7 @@ type parameters = {
   cmd : cmd;
   debug : bool;
   priority : int;
+  cores : int;
   tags : string list; (* user-defined tags *)
 }
 
@@ -66,7 +67,7 @@ let run_command params =
   let cwd = Sys.getcwd () in
   FrogLockClient.connect_or_spawn ~log_file:"/tmp/froglock.log" params.port
     (fun daemon ->
-      FrogLockClient.acquire ~cwd ?user ~info ~priority:params.priority ~tags:params.tags daemon
+      FrogLockClient.acquire ~cwd ?user ~info ~cores:params.cores ~priority:params.priority ~tags:params.tags daemon
         (function
         | true ->
           let cmd, cmd_string = match params.cmd with
@@ -115,25 +116,29 @@ let print_status params =
     match res with
     | None ->
       Lwt_log.info_f ~section "daemon not running"
-    | Some {M.current=c; waiting} ->
-      let%lwt () = match c with
-        | None -> Lwt.return_unit
-        | Some c ->
-          let time = Unix.gettimeofday() -. c.M.current_start in
-          let job = c.M.current_job in
-          Lwt_io.printlf
-            "current job (user %s, pid %d, cwd %s, issued %.2fs ago%s, running for %.2fs): %s"
-            (maybe_str job.M.user)
-            job.M.pid (maybe_str job.M.cwd)
-            (now -. job.M.query_time)
-            (tags2str job.M.tags)
-            time (maybe_str job.M.info)
+    | Some {M.current=l; waiting} ->
+      let%lwt () = match l with
+        | [] -> Lwt.return_unit
+        | _ ->
+          Lwt_list.iter_s (fun c ->
+              let time = Unix.gettimeofday() -. c.M.current_start in
+              let job = c.M.current_job in
+              Lwt_io.printlf
+                "current job (cores %d, user %s, pid %d, cwd %s, issued %.2fs ago%s, running for %.2fs): %s"
+                job.M.cores
+                (maybe_str job.M.user)
+                job.M.pid (maybe_str job.M.cwd)
+                (now -. job.M.query_time)
+                (tags2str job.M.tags)
+                time (maybe_str job.M.info)
+            ) l
       in
       Lwt_list.iter_s
         (fun wjob ->
            let job = wjob.M.waiting_job in
-           Lwt_io.printlf "waiting job n°%d (user %s, pid %d, cwd %s, issued %.2fs ago%s): %s"
+           Lwt_io.printlf "waiting job n°%d (cores %d, user %s, pid %d, cwd %s, issued %.2fs ago%s): %s"
              wjob.M.waiting_id
+             job.M.cores
              (maybe_str job.M.user)
              job.M.pid (maybe_str job.M.cwd)
              (now -. job.M.query_time)
@@ -172,7 +177,7 @@ let main params =
 
 let common_opts =
   let open Cmdliner in
-  let aux port debug tags priority cmd = { port; debug; tags; priority; cmd }  in
+  let aux port debug tags priority cores cmd = { port; debug; tags; priority; cores; cmd }  in
   let port =
     let doc = "Local port for the daemon" in
     Arg.(value & opt int 12000 & info ["p"; "port"] ~docv:"PORT" ~doc)
@@ -190,7 +195,11 @@ let common_opts =
                lower priority jobs." in
     Arg.(value & opt int 10 & info ["prio"] ~docv:"PRIO" ~doc)
   in
-  Term.(pure aux $ port $ debug $ tags $ prio)
+  let cores =
+    let doc = "Number of cores to lock fro this task (default= all)." in
+    Arg.(value & opt int 0 & info["j"; "cores"] ~docv:"CORES" ~doc)
+  in
+  Term.(pure aux $ port $ debug $ tags $ prio $ cores)
 
 (*
 let shell_term =

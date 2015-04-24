@@ -28,6 +28,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 module M = FrogLockMessages
 
+let main_config_file = "/etc/froglock.conf"
 let section = Lwt_log.Section.make "FrogLockDaemon"
 
 type acquire_task = {
@@ -38,7 +39,9 @@ type acquire_task = {
 
 module Q = Heap.Make(struct
     type t = acquire_task
-    let leq t t' = M.(t.query.priority > t'.query.priority)
+    let leq t t' =
+      M.(t.query.priority > t'.query.priority) ||
+      M.(t.query.priority = t'.query.priority && t.query.cores < t'.query.cores)
   end)
 
 (* internal message between client handlers and the scheduler *)
@@ -48,20 +51,25 @@ type scheduler_msg =
   ]
 
 type state = {
+  mutable max_cores : int;
   mutable num_clients : int;
   mutable cur_id : int;
   mutable accept : bool;
-  mutable current : M.current_job option;
+  mutable current : M.current_job list;
   mutable queue : Q.t;
   scheduler : scheduler_msg Lwt_mvar.t;
 }
 
-let make_state () = {
-  num_clients=0;
-  cur_id=0;
-  accept=true;
-  current= None;
-  queue= Q.empty;
+let make_state config_files =
+  let config = FrogConfig.parse_files config_files
+    (FrogConfig.parse_or_empty main_config_file) in
+  {
+  max_cores = FrogConfig.get_int (*~default:1*) config "cores";
+  num_clients = 0;
+  cur_id = 0;
+  accept = true;
+  current = [];
+  queue = Q.empty;
   scheduler = Lwt_mvar.create_empty ();
 }
 
@@ -76,6 +84,18 @@ let maybe_str = function
   | None -> "<none>"
   | Some s -> s
 
+let used_cores st =
+  List.fold_left (fun cores job ->
+      let j = M.(job.current_job.cores) in
+      cores + (if j <= 0 then st.max_cores else j)) 0 st.current
+
+let cores_needed st =
+  match Q.find_min st.queue with
+  | None -> 0
+  | Some t ->
+    let j = t.query.M.cores in
+    if j <= 0 then st.max_cores else j
+
 (* scheduler: receives requests from several clients, and pings them back *)
 let start_scheduler ~state () =
   let inbox = state.scheduler in
@@ -84,55 +104,53 @@ let start_scheduler ~state () =
     let%lwt res = Lwt_mvar.take inbox in
     match res with
     | `Register task' ->
-        push_task task' state;
-        begin match state.current with
-        | None -> run_next ()
-        | Some _ -> listen ()
-        end
+      push_task task' state;
+      run_next ()
     | `Done task' ->
-        begin match state.current with
-        | Some t when t.M.current_id = task'.id ->
-            (* task if finished, run the next one *)
-            Lwt_log.ign_info_f ~section "task %d finished (pid %d) after %.2fs"
-              task'.id t.M.current_job.M.pid
-              (Unix.gettimeofday() -. t.M.current_start);
-            state.current <- None;
-            run_next ()
-        | _ ->
-          Lwt_log.ign_error_f ~section "scheduler: unexpected 'Done' for task %d" task'.id;
-          listen ()
-        end
+      match List.partition (fun t -> t.M.current_id = task'.id) state.current with
+      | [t], l ->
+        (* task if finished, run the next one *)
+        Lwt_log.ign_info_f ~section "task %d finished (pid %d) after %.2fs"
+          task'.id t.M.current_job.M.pid
+          (Unix.gettimeofday() -. t.M.current_start);
+        state.current <- l;
+        run_next ()
+      | [], _ ->
+        Lwt_log.ign_error_f ~section "scheduler: unexpected 'Done' for task %d" task'.id;
+        listen ()
+      | _ -> assert false (* there shouldn't be more than one process with task'.id.... *)
   (* run task *)
   and run_next () =
-    if Q.is_empty state.queue
-    then if state.num_clients = 0
-      then (
-        (* only exit if no clients are connected, to avoid the
-            race condition:
+    if cores_needed state <= state.max_cores - used_cores state then
+      if Q.is_empty state.queue then
+        if used_cores state <= 0 && state.num_clients = 0 then (
+          (* only exit if no clients are connected, to avoid the
+             race condition:
               - client connects
               - queue is empty --> scheduler stops
               - client sends "acquire" and never gets an answer *)
-        Lwt_log.ign_info ~section "no more tasks nor clients, exit";
-        Lwt.return_unit
-      ) else listen ()
-    else (
-      (* start the given process *)
-      assert (state.current = None);
-      let task = take_task state in
-      Lwt_log.ign_info_f ~section "start task %d (user %s, pid %d): %s"
-        task.id
-        (maybe_str task.query.M.user)
-        task.query.M.pid
-        (maybe_str task.query.M.info);
-      let cur = {
-        M.current_job=task.query;
-        current_id=task.id;
-        current_start=Unix.gettimeofday();
-      } in
-      state.current <- Some cur;
-      let%lwt () = Lwt_mvar.put task.box () in
+          Lwt_log.ign_info ~section "no more tasks nor clients, exit";
+          Lwt.return_unit
+        ) else listen ()
+      else (
+        (* start the given process *)
+        let task = take_task state in
+        Lwt_log.ign_info_f ~section "start task %d (user %s, pid %d): %s"
+          task.id
+          (maybe_str task.query.M.user)
+          task.query.M.pid
+          (maybe_str task.query.M.info);
+        let cur = {
+          M.current_job=task.query;
+          current_id=task.id;
+          current_start=Unix.gettimeofday();
+        } in
+        state.current <- cur :: state.current;
+        let%lwt () = Lwt_mvar.put task.box () in
+        run_next ()
+      )
+    else
       listen ()
-    )
   in
   listen ()
 
@@ -207,7 +225,7 @@ let handle_client ~state ic oc =
 let spawn port =
   Lwt_log.ign_info_f ~section "starting daemon on port %d" port;
   let addr = Unix.ADDR_INET (Unix.inet_addr_loopback, port) in
-  let state = make_state () in
+  let state = make_state [] in
   (* scheduler *)
   Lwt_log.ign_info ~section "start scheduler";
   let run_scheduler = start_scheduler ~state () in
@@ -227,7 +245,7 @@ let spawn port =
 
 (* TODO: change log level through connection *)
 
-let setup_loggers  ?log_file () =
+let setup_loggers ?log_file () =
   let syslog = Lwt_log.syslog ~facility:`User () in
   Lwt_log.default := syslog;
   let%lwt () =  match log_file with

@@ -58,6 +58,7 @@ type file_summary = {
   mutable set_sat : float StrMap.t; (* pb -> time *)
   mutable num_error : int;
   mutable total_time : float; (* of successfully solved problems *)
+  mutable run_time : float; (* Total run time of the prover *)
 }
 
 let compile_re ~msg re =
@@ -86,6 +87,7 @@ let make_summary prover job results =
     set_sat=StrMap.empty;
     num_error=0;
     total_time=0.;
+    run_time = 0.;
   } in
   let re_sat = Opt.(prover.Prover.sat >>= compile_re ~msg:"sat") in
   let re_unsat = Opt.(prover.Prover.unsat >>= compile_re ~msg:"unsat") in
@@ -94,6 +96,7 @@ let make_summary prover job results =
   *)
   StrMap.iter
     (fun file res ->
+      s.run_time <- s.run_time +. res.St.res_time;
       if res.St.res_errcode <> 0
         then s.num_error <- s.num_error + 1;
       if execp_re_maybe re_sat res.St.res_out then (
@@ -172,7 +175,7 @@ let analyse_multiple items =
   (* print overall *)
   let first_line = PB.(
     [| text "prover"; text "sat"; text "unsat"; text "total"; text "exclusive";
-       text "%solved"; text "time (s)"; text "avg time (s)"; text "errors" |]
+       text "%solved"; text "time (s)"; text "avg time (s)"; text "errors" ; text "runtime (s)" |]
   ) in
   (* next lines *)
   let next_lines = StrMap.fold
@@ -192,8 +195,9 @@ let analyse_multiple items =
              int_ num_solved_only;
              text (Printf.sprintf "%.0f" percent_solved);
              text (Printf.sprintf "%.2f" s.total_time);
-             text (Printf.sprintf "%.2f" (s.total_time /. float s.num_all));
-             int_ s.num_error |]
+             text (Printf.sprintf "%.2f" (s.total_time /. float (StrMap.cardinal s.set_sat + StrMap.cardinal s.set_unsat)));
+             int_ s.num_error;
+             text (Printf.sprintf "%.2f" s.run_time) |]
       ) :: acc
     ) map []
   in
