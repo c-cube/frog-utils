@@ -20,7 +20,7 @@ sat = "# No proof found"
 
 [zenon]
 
-cmd = "zenon -itptp $file"
+cmd = "zenon -p0 -max-time ${timeout}s -max-size ${$memory}M -itptp $file"
 unsat = "(\\\\* PROOF-FOUND \\\\*)"
 unknown = "(\\\\* NO-PROOF \\\\*)"
 

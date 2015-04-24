@@ -46,14 +46,14 @@ type job = {
 [@@deriving yojson {strict=false},show]
 
 type current_job = {
-  current_job   [@key "current_job"] : job;
-  current_id    [@key "current_id"] : int;
-  current_start [@key "current_start"] : float;  (* time at which task started *)
+  current_job   [@key "job"] : job;
+  current_id    [@key "id"] : int;
+  current_start [@key "start"] : float;  (* time at which task started *)
 } [@@deriving yojson,show]
 
 type waiting_job = {
-  waiting_job [@key "waiting_job"] : job;
-  waiting_id  [@key "waiting_id"] : int;
+  waiting_job [@key "job"] : job;
+  waiting_id  [@key "id"] : int;
 } [@@deriving yojson,show]
 
 type status_answer = {
@@ -62,6 +62,8 @@ type status_answer = {
 } [@@deriving yojson,show]
 
 type t =
+  | Start         [@name "start"]
+  | End           [@name "end"]
   | Acquire       [@name "acquire"] of job
   | Release       [@name "release"]
   | Go            [@name "go"] (* acquisition succeeded *)

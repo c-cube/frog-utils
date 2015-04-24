@@ -39,6 +39,9 @@ type params = {
   parallelism_level : int;
   timeout : float option;
   progress : bool;
+  lock : bool;
+  port : int;
+  priority : int;
 }
 
 (** {2 Processing} *)
@@ -67,6 +70,20 @@ let run_cmd ?timeout cmd arg =
       let res_time = Unix.gettimeofday() -. start in
       Lwt_log.ign_debug_f "process '%s' on '%s': done (%.2fs)" cmd arg res_time;
       Lwt.return {S.res_arg=arg; res_time; res_errcode; res_out; res_err; }
+    )
+
+let with_lock ~daemon ~priority f info =
+  let cwd = Sys.getcwd () in
+  let user = try Some(Sys.getenv "USER") with _ -> None in
+  FrogLockClient.acquire ~cwd ?user ~info ~cores:1 ~priority daemon
+    (function
+      | true ->
+        Lwt_log.ign_debug_f "hurray ! lock acquired";
+        let%lwt x = f () in
+        Lwt.return (Some x)
+      | false ->
+        Lwt_log.ign_debug_f "hu ho... something wrong happened...";
+        Lwt.return_none
     )
 
 (* thread that prints progress *)
@@ -110,7 +127,7 @@ let make_progress_thread n =
 
 (* run the job's command on every argument, call [yield_res] with
   every result *)
-let map_args ?timeout ~progress ~j cmd yield_res args =
+let map_args_aux ?daemon ?timeout ~priority ~progress ~j cmd yield_res args =
   assert (j >= 1);
   let send_done, progress_thread = if progress
     then make_progress_thread (List.length args)
@@ -123,14 +140,28 @@ let map_args ?timeout ~progress ~j cmd yield_res args =
       Lwt_pool.use pool
         (fun () ->
           Lwt_log.ign_debug_f "run on %s..." arg;
-          let%lwt res = run_cmd ?timeout cmd arg in
-          send_done ();
-          Lwt_log.ign_debug_f "... %s: done (errcode %d)" arg res.S.res_errcode;
-          yield_res res  (* output result *)
+          let%lwt res =
+            match daemon with
+            | Some daemon -> with_lock ~daemon ~priority (fun () -> run_cmd ?timeout cmd arg) (cmd ^ " " ^ arg)
+            | None -> Lwt.map (fun x -> Some x) (run_cmd ?timeout cmd arg)
+          in
+          match res with
+          | Some res ->
+            send_done ();
+            Lwt_log.ign_debug_f "... %s: done (errcode %d)" arg res.S.res_errcode;
+            yield_res res  (* output result *)
+          | None -> assert false (* Retry doing the computation ? *)
         )
     ) args
   in
   Lwt.join [progress_thread; iter_thread]
+
+let map_args ?timeout ~lock ~port ~priority ~progress ~j cmd yield_res args =
+  if lock then
+    FrogLockClient.connect_or_spawn port (fun daemon ->
+        map_args_aux ~daemon ?timeout ~priority ~progress ~j cmd yield_res args)
+  else
+        map_args_aux ?timeout ~priority ~progress ~j cmd yield_res args
 
 (* TODO: lock result file *)
 
@@ -139,7 +170,7 @@ let map_args ?timeout ~progress ~j cmd yield_res args =
 module StrSet = Set.Make(String)
 
 (* resume job from the given file *)
-let resume ?timeout ~progress ~j file =
+let resume ?timeout ~lock ~port ~priority ~progress ~j file =
   (* get the job and the set of executed tasks *)
   let%lwt (job, done_tasks) =
     S.fold_state
@@ -159,7 +190,8 @@ let resume ?timeout ~progress ~j file =
     (List.length remaining_tasks) (StrSet.cardinal done_tasks) in
   S.append_job ~file
     (fun yield_res ->
-      map_args ?timeout ~progress ~j job.S.cmd yield_res remaining_tasks
+       map_args ?timeout ~lock ~port ~priority
+         ~progress ~j job.S.cmd yield_res remaining_tasks
     )
 
 let run_map params cmd args =
@@ -175,11 +207,14 @@ let run_map params cmd args =
   (* open file *)
   S.make_job ~file job
     (fun yield_res ->
-      (* map [cmd] on every element of [args] *)
-      map_args ?timeout:params.timeout
-        ~progress:params.progress
-        ~j:params.parallelism_level
-        cmd yield_res args
+       (* map [cmd] on every element of [args] *)
+       map_args ?timeout:params.timeout
+         ~lock:params.lock
+         ~port:params.port
+         ~priority:params.priority
+         ~progress:params.progress
+         ~j:params.parallelism_level
+         cmd yield_res args
     )
 
 let main params =
@@ -187,55 +222,15 @@ let main params =
   | Run (cmd, args) ->
       run_map params cmd args
   | Resume file ->
-      resume ?timeout:params.timeout
-        ~progress:params.progress
-        ~j:params.parallelism_level
-        file
+    resume ?timeout:params.timeout
+      ~lock:params.lock
+      ~port:params.port
+      ~priority:params.priority
+      ~progress:params.progress
+      ~j:params.parallelism_level
+      file
 
 (** {2 Main} *)
-
-(*
-let cmd_ = ref None
-let j_ = ref 1
-let args_ = ref []
-let file_ = ref None
-let dir_ = ref None
-let timeout_ = ref None
-let resume_ = ref None
-let file_args_ = ref None
-let progress_ = ref true
-
-let set_file_ s = file_ := Some s
-let set_dir_ s = dir_ := Some s
-let push_ s = match !cmd_ with
-  | None -> cmd_ := Some s
-  | Some _ -> args_ := s :: !args_
-let set_timeout_ f =
-  if f <= 0. then failwith "timeout must be > 0"
-  else timeout_ := Some f
-let set_debug_ () =
-  Lwt_log.add_rule "*" Lwt_log.Debug
-let set_resume_ s = match !resume_ with
-  | Some _ -> failwith "can resume at most one file"
-  | None -> resume_ := Some s
-let set_file_args_ f = file_args_ := Some f
-
-let usage =
-  "map [options] <file> cmd [--] arg [arg...] \n\
-  map [options] -resume <file>"
-
-let options = Arg.align
-  [ "-j", Arg.Set_int j_, " parallelism level"
-  ; "-o", Arg.String set_file_, " set state file"
-  ; "-d", Arg.String set_dir_, " directory where to put state file"
-  ; "-progress", Arg.Bool (fun b->progress_ := b), " enable/disable progress bar"
-  ; "-timeout", Arg.Float set_timeout_, " timeout for the command (in s)"
-  ; "-debug", Arg.Unit set_debug_, " enable debug messages"
-  ; "-resume", Arg.String set_resume_, " resume given file"
-  ; "-F", Arg.String set_file_args_, " read arguments from file"
-  ; "--", Arg.Rest push_, " arguments to the command"
-  ]
-*)
 
 let read_file_args file =
   Lwt_io.with_file ~mode:Lwt_io.input file
@@ -244,33 +239,12 @@ let read_file_args file =
       Lwt_stream.to_list lines
     )
 
-let read_params cmds file file_args dir j timeout progress resume =
-  let cmd, args = match cmds with x :: r -> Some x, r | [] -> None, [] in
-  let mk_params cmd =
-    Lwt.return {
-      cmd;
-      filename= Some file;
-      dir= dir;
-      parallelism_level= j;
-      timeout = timeout;
-      progress = progress;
-    }
-  in
-  match resume, cmd with
-    | true, _ -> mk_params (Resume file)
-    | false, Some c ->
-      let%lwt args =  match file_args with
-        | None -> Lwt.return args
-        | Some f -> read_file_args f
-      in
-      mk_params (Run (c, args))
-    | false, None -> raise Exit
-
 let opts =
   let open Cmdliner in
-  let aux dir j timeout progress file cmd =
+  let aux dir j timeout progress lock port priority file cmd =
     let%lwt cmd = cmd in
-    Lwt.return { cmd; filename = file; dir; parallelism_level = j; timeout; progress }
+    Lwt.return { cmd; filename = file; dir; parallelism_level = j; timeout; progress;
+                 lock; port; priority }
   in
   let dir =
     let doc = "Directory where to put the state file" in
@@ -286,9 +260,21 @@ let opts =
   in
   let progress =
     let doc = "Enable/diable progress bar" in
-    Arg.(value & opt bool true & info ["p"; "progress"] ~docv:"BOOL" ~doc)
+    Arg.(value & opt bool true & info ["b"; "progress"] ~docv:"BOOL" ~doc)
   in
-  Term.(pure aux $ dir $ j $ timeout $ progress)
+  let lock =
+    let doc = "Set wether to encapsulates each call to the command in a froglock." in
+    Arg.(value & opt bool true & info ["lock"] ~docv:"BOOL" ~doc)
+  in
+  let port =
+    let doc = "Connection port for the daemon (see froglock for more explanation)." in
+    Arg.(value & opt int 12000 & info ["p"; "port"] ~docv:"PORT" ~doc)
+  in
+  let prio =
+    let doc = "Priority for the locked task (see froglock for more explanation)." in
+    Arg.(value & opt int 10 & info ["prio"] ~docv:"PRIO" ~doc)
+  in
+  Term.(pure aux $ dir $ j $ timeout $ progress $ lock $ port $ prio)
 
 let resume_term =
   let open Cmdliner in
@@ -350,6 +336,7 @@ let term =
   Term.info ~man ~doc "frogmap"
 
 let () =
+  Lwt_log.add_rule "*" Lwt_log.Debug;
   match Cmdliner.Term.eval_choice term [resume_term] with
   | `Version | `Help | `Error `Parse | `Error `Term | `Error `Exn -> exit 2
   | `Ok () -> ()

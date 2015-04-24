@@ -104,12 +104,13 @@ let start_scheduler ~state () =
     let%lwt res = Lwt_mvar.take inbox in
     match res with
     | `Register task' ->
+      Lwt_log.ign_info_f ~section "added query %d to queue" task'.id;
       push_task task' state;
       run_next ()
     | `Done task' ->
       match List.partition (fun t -> t.M.current_id = task'.id) state.current with
-      | [t], l ->
-        (* task if finished, run the next one *)
+      | t :: _, l ->
+        (* task is finished, run the next one *)
         Lwt_log.ign_info_f ~section "task %d finished (pid %d) after %.2fs"
           task'.id t.M.current_job.M.pid
           (Unix.gettimeofday() -. t.M.current_start);
@@ -118,12 +119,11 @@ let start_scheduler ~state () =
       | [], _ ->
         Lwt_log.ign_error_f ~section "scheduler: unexpected 'Done' for task %d" task'.id;
         listen ()
-      | _ -> assert false (* there shouldn't be more than one process with task'.id.... *)
   (* run task *)
   and run_next () =
     if cores_needed state <= state.max_cores - used_cores state then
       if Q.is_empty state.queue then
-        if used_cores state <= 0 && state.num_clients = 0 then (
+        if used_cores state = 0 && state.num_clients = 0 then (
           (* only exit if no clients are connected, to avoid the
              race condition:
               - client connects
@@ -166,7 +166,6 @@ let handle_acquire ~state id (ic,oc) query =
   let release_ () =
     (* release lock *)
     Lwt_log.ign_debug_f ~section "task %d: released" id;
-    state.num_clients <- state.num_clients - 1;
     Lwt_mvar.put state.scheduler (`Done task)
   in
   try%lwt
@@ -195,34 +194,51 @@ let handle_status ~state oc =
   let ans = M.StatusAnswer {M.waiting; current} in
   M.print oc ans
 
-(* handle one client.
-  [cond_stop] condition to stop the server
-  [ic,oc] connection to client *)
-let handle_client ~state ic oc =
-  let%lwt res = M.parse ic in
-  match res with
+let handle_msg ~state ic oc = function
   | M.Acquire _ when not state.accept ->
-      Lwt_log.ign_info ~section "ignore query (not accepting)";
-      M.print oc M.Reject
+    Lwt_log.ign_info ~section "ignore query (not accepting)";
+    M.print oc M.Reject
   | M.Acquire q ->
-      let id = state.cur_id in
-      state.cur_id <- state.cur_id + 1;
-      Lwt_log.ign_info_f ~section "received new query (id %d)" id;
-      state.num_clients <- state.num_clients + 1;
-      handle_acquire ~state id (ic,oc) q
+    let id = state.cur_id in
+    state.cur_id <- state.cur_id + 1;
+    Lwt_log.ign_info_f ~section "received new query (id %d)" id;
+    handle_acquire ~state id (ic,oc) q
   | M.Status ->
-      handle_status ~state oc
+    Lwt_log.ign_info ~section "replying with status";
+    handle_status ~state oc
   | M.StopAccepting ->
-      stop_accepting ~state
-  | ( M.StatusAnswer _
+    Lwt_log.ign_info ~section "stop accepting new requests";
+    stop_accepting ~state
+  | ( M.Start | M.End
+    | M.StatusAnswer _
     | M.Release
     | M.Go
     | M.Reject
     ) as msg ->
-      Lwt.fail (M.Unexpected msg)
+    Lwt_log.ign_error "unexpected message received, :(";
+    Lwt.fail (M.Unexpected msg)
+
+(* handle one client.
+  [cond_stop] condition to stop the server
+  [ic,oc] connection to client *)
+let rec handle_client ~state ic oc =
+  let%lwt res = M.parse ic in
+  match res with
+  | M.Start ->
+    state.num_clients <- state.num_clients + 1;
+    Lwt_log.ign_info_f ~section "new connection (%d total)" state.num_clients;
+    handle_client ~state ic oc
+  | M.End ->
+    state.num_clients <- state.num_clients - 1;
+    Lwt_log.ign_info_f ~section "closed connection (%d total)" state.num_clients;
+    Lwt.return_unit
+  | msg ->
+    let%lwt () = handle_msg ~state ic oc msg in
+    handle_client ~state ic oc
 
 (* spawn a daemon, to listen on the given port *)
 let spawn port =
+  Lwt_log.ign_info ~section "---------------------------";
   Lwt_log.ign_info_f ~section "starting daemon on port %d" port;
   let addr = Unix.ADDR_INET (Unix.inet_addr_loopback, port) in
   let state = make_state [] in
@@ -271,7 +287,7 @@ let fork_and_spawn ?log_file port =
     Lwt_daemon.daemonize ~syslog:false ~directory:"/tmp"
       ~stdin:`Close ~stdout:`Close ~stderr:`Keep ();
     let%lwt () = setup_loggers ?log_file () in
-    Lwt_log.Section.set_level section Lwt_log.Info;
+    Lwt_log.Section.set_level section Lwt_log.Debug;
     Lwt_log.ign_debug ~section "loggers are setup";
     let thread =
       try%lwt

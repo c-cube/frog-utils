@@ -40,8 +40,12 @@ let connect port f =
   let addr = Unix.ADDR_INET (Unix.inet_addr_loopback, port) in
   Lwt_io.with_connection addr
     (fun (ic,oc) ->
-      Lwt_log.ign_debug_f ~section "connected to daemon";
-      f {ic; oc}
+       Lwt_log.ign_debug_f ~section "connected to daemon";
+       let%lwt () = M.print oc M.Start in
+       let%lwt res = f {ic; oc} in
+       let%lwt () = M.print oc M.End in
+       Lwt_log.ign_debug ~section "connection to daemon closed";
+       Lwt.return res
     )
 
 (* given the channels to the daemon, acquire lock, call [f], release lock *)
