@@ -30,7 +30,7 @@ install_lib: all
 
 install_man: all
 	for b in $(BINARIES) ; do \
-		./$$b --help=groff > $(MANDIR)/man1/$$( basename $$b .native ).1 ; \
+		./$$b --help=groff > $(MANDIR)/man1/$$( basename $$b .native ).1 || true; \
 	done
 
 install: install_bin install_lib install_man
@@ -39,7 +39,7 @@ uninstall:
 	ocamlfind remove frogutils
 	for b in $(BINARIES) ; do \
 	    rm "$(BINDIR)/$$( basename $$b .native )" ; \
-			rm "$(MANDIR)/man1/$$( basename $$b .native ).1" ; \
+			rm -f "$(MANDIR)/man1/$$( basename $$b .native ).1" ; \
 	done
 	rm -r "$(SHAREDIR)/frogutils/"
 	rm $(addprefix "$(BINDIR)/", $(BINARIES)) || true
