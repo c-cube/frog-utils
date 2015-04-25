@@ -26,7 +26,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 (** {1 Communication Protocole} *)
 
-[@@@warning "-33"]
 [@@@warning "-39"]
 
 (** Description of a froglock job.
@@ -34,10 +33,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     Some fields have default values for backward compatibility (old client, new server);
     The flag [{strict=false}] ensures backward compatibility (new client, old server).
 *)
-type id = int [@@deriving yojson, show]
-
 type job = {
-  id          [@key "id"] : id;
   info        [@key "info"] : string option;
   user        [@key "user"] : string option;
   priority    [@key "priority"] : int [@default 10];
@@ -50,36 +46,38 @@ type job = {
 [@@deriving yojson {strict=false},show]
 
 type current_job = {
+  current_id    [@key "id"] : int;
   current_job   [@key "job"] : job;
   current_start [@key "start"] : float;  (* time at which task started *)
 } [@@deriving yojson,show]
 
+type waiting_job = {
+  waiting_id    [@key "id"] : int;
+  waiting_job   [@key "job"] : job;
+} [@@deriving yojson, show]
+
 type status_answer = {
+  max_cores [@key "cores"] : int;
   current [@key "current"] : current_job list;
-  waiting [@key "waiting"] : job list;
+  waiting [@key "waiting"] : waiting_job list;
 } [@@deriving yojson,show]
 
 type t =
   | Start         [@name "start"]
   | End           [@name "end"]
   | Acquire       [@name "acquire"] of job
-  | Go            [@name "go"] of id
-  | Release       [@name "release"] of id
-  | Reject        [@name "reject"] of id
+  | Go            [@name "go"]
+  | Release       [@name "release"]
+  | Reject        [@name "reject"]
   | Status        [@name "status"]
   | StatusAnswer  [@name "statusanswer"] of status_answer
   | StopAccepting [@name "stopaccepting"] (* from now on, no more accepts *)
   [@@deriving yojson, show]
 
-[@@@warning "+33"]
 [@@@warning "+39"]
 
 exception InvalidMessage of string
 exception Unexpected of t
-
-let new_id =
-  let i = ref ~-1 in
-  (fun () -> incr i; !i)
 
 let register_exn_printers () =
   Printexc.register_printer

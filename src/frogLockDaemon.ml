@@ -28,12 +28,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 module M = FrogLockMessages
 
-let job_id = M.new_id
-
 let main_config_file = "/etc/froglock.conf"
 let section = Lwt_log.Section.make "FrogLockDaemon"
 
 type acquire_task = {
+  id : int;
   query : M.job;
   ic : Lwt_io.input_channel;
   oc : Lwt_io.output_channel;
@@ -49,10 +48,11 @@ module Q = Heap.Make(struct
 (* internal message between client handlers and the scheduler *)
 type scheduler_msg =
   [ `Register of acquire_task
-  | `Done of M.id
+  | `Done of int
   ]
 
 type state = {
+  mutable current_id : int;
   mutable max_cores : int;
   mutable num_clients : int;
   mutable accept : bool;
@@ -65,13 +65,14 @@ let make_state config_files =
   let config = FrogConfig.parse_files config_files
     (FrogConfig.parse_or_empty main_config_file) in
   {
-  max_cores = FrogConfig.get_int ~default:1 config "cores";
-  num_clients = 0;
-  accept = true;
-  current = [];
-  queue = Q.empty;
-  scheduler = Lwt_mvar.create_empty ();
-}
+    current_id = 0;
+    max_cores = FrogConfig.get_int ~default:1 config "cores";
+    num_clients = 0;
+    accept = true;
+    current = [];
+    queue = Q.empty;
+    scheduler = Lwt_mvar.create_empty ();
+  }
 
 let push_task t st = st.queue <- Q.add st.queue t
 
@@ -104,21 +105,21 @@ let start_scheduler ~state () =
     let%lwt res = Lwt_mvar.take inbox in
     match res with
     | `Register task' ->
-      Lwt_log.ign_info_f ~section "added query %d to queue" (task'.query.M.id :> int);
+      Lwt_log.ign_info_f ~section "added query %d to queue" task'.id;
       push_task task' state;
       run_next ()
     | `Done id ->
-      match List.partition (fun t -> t.M.current_job.M.id = id) state.current with
+      match List.partition (fun t -> t.M.current_id = id) state.current with
       | t :: _, l ->
         (* task is finished, run the next one *)
         Lwt_log.ign_info_f ~section "task %d finished (pid %d) after %.2fs"
-          (id: M.id :> int) t.M.current_job.M.pid
+          id t.M.current_job.M.pid
           (Unix.gettimeofday() -. t.M.current_start);
         state.current <- l;
         run_next ()
       | [], _ ->
-        Lwt_log.ign_error_f ~section "scheduler: unexpected 'Done' for task %d" (id : M.id :> int);
-        listen ()
+        Lwt_log.ign_error_f ~section "scheduler: unexpected 'Done' for task %d" id;
+        run_next ()
   (* run task *)
   and run_next () =
     if cores_needed state <= state.max_cores - used_cores state then
@@ -136,16 +137,17 @@ let start_scheduler ~state () =
         (* start the given process *)
         let task = take_task state in
         Lwt_log.ign_info_f ~section "start task %d (user %s, pid %d): %s"
-          (task.query.M.id : M.id :> int)
+          task.id
           (maybe_str task.query.M.user)
           task.query.M.pid
           (maybe_str task.query.M.info);
         let cur = {
-          M.current_job=task.query;
-          current_start=Unix.gettimeofday();
+          M.current_id = task.id;
+          current_job = task.query;
+          current_start = Unix.gettimeofday ();
         } in
         state.current <- cur :: state.current;
-        let%lwt () = M.print task.oc (M.Go task.query.M.id) in
+        let%lwt () = M.print task.oc M.Go in
         run_next ()
       )
     else
@@ -173,55 +175,62 @@ let handle_acquire ~state id (ic,oc) query =
 let handle_status ~state oc =
   let module M = M in
   let waiting = Q.fold
-    (fun acc task -> task.query :: acc) [] state.queue
+      (fun acc task ->
+         {M.waiting_id = task.id; waiting_job = task.query } :: acc
+      ) [] state.queue
   in
   let waiting = List.rev waiting in
   let current = state.current in
-  let ans = M.StatusAnswer {M.waiting; current} in
+  let ans = M.StatusAnswer {M.waiting; current; max_cores = state.max_cores} in
   M.print oc ans
 
-let handle_msg ~state ic oc = function
-  | M.Acquire q when not state.accept ->
-    Lwt_log.ign_info ~section "ignore query (not accepting)";
-    M.print oc (M.Reject q.M.id)
-  | M.Acquire query ->
-    Lwt_log.ign_info_f ~section "received new query (id %d)" (query.M.id :> int);
-    let task = {query; ic; oc} in
-    Lwt_mvar.put state.scheduler (`Register task)
-  | M.Release id ->
-    Lwt_log.ign_debug_f ~section "task %d: released" (id :> int);
-    Lwt_mvar.put state.scheduler (`Done id)
-  | M.Status ->
-    Lwt_log.ign_info ~section "replying with status";
-    handle_status ~state oc
-  | M.StopAccepting ->
-    Lwt_log.ign_info ~section "stop accepting jobs...";
-    state.accept <- false;
+let handle_query ~state ic oc query =
+  let id = state.current_id in
+  state.current_id <- state.current_id + 1;
+  Lwt_log.ign_info_f ~section "received new query (id %d)" id;
+  let task = {id; query; ic; oc} in
+  let%lwt () = Lwt_mvar.put state.scheduler (`Register task) in
+  let%lwt msg = M.parse ic in
+  begin match msg with
+    | M.Release -> ()
+    | _ -> Lwt_log.ign_error_f "unexpected message: %s" (M.show msg)
+  end;
+  Lwt_log.ign_debug_f ~section "task %d: released" id;
+  Lwt_mvar.put state.scheduler (`Done id)
+
+let handle_keepalive ~state ic oc =
+  if state.accept then begin
+    state.num_clients <- state.num_clients + 1;
+    Lwt_log.ign_info_f ~section "new connection (%d total)" state.num_clients;
+    let%lwt _ = M.expect ic ((=) M.End) in
+    state.num_clients <- state.num_clients - 1;
+    Lwt_log.ign_info_f ~section "closed connection (%d total)" state.num_clients;
     Lwt.return_unit
-  | ( M.Start | M.End
-    | M.StatusAnswer _
-    | M.Go _ | M.Reject _
-    ) as msg ->
-    Lwt_log.ign_error "unexpected message received, :(";
-    Lwt.fail (M.Unexpected msg)
+  end else begin
+    Lwt_log.ign_info ~section "ignore query (not accepting)";
+    M.print oc M.Reject
+  end
 
 (* handle one client.
   [cond_stop] condition to stop the server
   [ic,oc] connection to client *)
-let rec handle_client ~state ic oc =
+let handle_client ~state ic oc =
   let%lwt res = M.parse ic in
   match res with
-  | M.Start ->
-    state.num_clients <- state.num_clients + 1;
-    Lwt_log.ign_info_f ~section "new connection (%d total)" state.num_clients;
-    handle_client ~state ic oc
-  | M.End ->
-    state.num_clients <- state.num_clients - 1;
-    Lwt_log.ign_info_f ~section "closed connection (%d total)" state.num_clients;
+  | M.Start -> handle_keepalive ~state ic oc
+  | M.Acquire query -> handle_query ~state ic oc query
+  | M.StopAccepting ->
+    Lwt_log.ign_info ~section "stop accepting jobs...";
+    state.accept <- false;
     Lwt.return_unit
-  | msg ->
-    let%lwt () = handle_msg ~state ic oc msg in
-    handle_client ~state ic oc
+  | M.Status ->
+    Lwt_log.ign_info ~section "replying with status";
+    handle_status ~state oc
+  | ( M.StatusAnswer _
+    | M.Go | M.Reject
+    | M.End | M.Release
+    ) as msg ->
+    Lwt.fail (M.Unexpected msg)
 
 (* spawn a daemon, to listen on the given port *)
 let spawn port =

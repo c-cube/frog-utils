@@ -336,7 +336,6 @@ let term =
   Term.info ~man ~doc "frogmap"
 
 let () =
-  Lwt_log.add_rule "*" Lwt_log.Debug;
   match Cmdliner.Term.eval_choice term [resume_term] with
   | `Version | `Help | `Error `Parse | `Error `Term | `Error `Exn -> exit 2
   | `Ok () -> ()
