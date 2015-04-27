@@ -49,6 +49,7 @@ module Q = Heap.Make(struct
 type scheduler_msg =
   [ `Register of acquire_task
   | `Done of int
+  | `Refresh
   ]
 
 type state = {
@@ -97,6 +98,10 @@ let cores_needed st =
     let j = t.query.M.cores in
     if j <= 0 then st.max_cores else j
 
+let log_state state =
+  Lwt_log.ign_info_f ~section "current state : %d running, %d / %d cores, %d in queue, %d active connections"
+    (List.length state.current) (used_cores state) (state.max_cores) (Q.size state.queue) state.num_clients
+
 (* scheduler: receives requests from several clients, and pings them back *)
 let start_scheduler ~state () =
   let inbox = state.scheduler in
@@ -107,6 +112,8 @@ let start_scheduler ~state () =
     | `Register task' ->
       Lwt_log.ign_info_f ~section "added query %d to queue" task'.id;
       push_task task' state;
+      run_next ()
+    | `Refresh ->
       run_next ()
     | `Done id ->
       match List.partition (fun t -> t.M.current_id = id) state.current with
@@ -122,6 +129,7 @@ let start_scheduler ~state () =
         run_next ()
   (* run task *)
   and run_next () =
+    log_state state;
     if cores_needed state <= state.max_cores - used_cores state then
       if Q.is_empty state.queue then
         if used_cores state = 0 && state.num_clients = 0 then (
@@ -174,6 +182,7 @@ let handle_acquire ~state id (ic,oc) query =
 
 let handle_status ~state oc =
   let module M = M in
+  Lwt_log.ign_info ~section "replying with status";
   let waiting = Q.fold
       (fun acc task ->
          {M.waiting_id = task.id; waiting_job = task.query } :: acc
@@ -205,7 +214,7 @@ let handle_keepalive ~state ic oc =
     let%lwt _ = M.expect ic ((=) M.End) in
     state.num_clients <- state.num_clients - 1;
     Lwt_log.ign_info_f ~section "closed connection (%d total)" state.num_clients;
-    Lwt.return_unit
+    Lwt_mvar.put state.scheduler `Refresh
   end else begin
     Lwt_log.ign_info ~section "ignore query (not accepting)";
     M.print oc M.Reject
@@ -217,15 +226,13 @@ let handle_keepalive ~state ic oc =
 let handle_client ~state ic oc =
   let%lwt res = M.parse ic in
   match res with
+  | M.Status -> handle_status ~state oc
   | M.Start -> handle_keepalive ~state ic oc
   | M.Acquire query -> handle_query ~state ic oc query
   | M.StopAccepting ->
     Lwt_log.ign_info ~section "stop accepting jobs...";
     state.accept <- false;
     Lwt.return_unit
-  | M.Status ->
-    Lwt_log.ign_info ~section "replying with status";
-    handle_status ~state oc
   | ( M.StatusAnswer _
     | M.Go | M.Reject
     | M.End | M.Release
