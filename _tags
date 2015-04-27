@@ -7,3 +7,6 @@ true: warn_A, warn(-4), warn(-44), warn(-29)
             package(ppx_deriving_yojson), package(toml), package(re.posix), \
             package(cmdliner), package(archimedes.cairo), thread
 <src/**/*>: annot, bin_annot
+
+<test>: include
+<test/*>: package(oUnit)

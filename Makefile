@@ -5,6 +5,7 @@ LIB_NAMES=frogutils
 LIBS=$(addprefix $(LIB_NAMES), .cma .cmxa .cmxs)
 BINARIES=froglock.native frogmap.native frogiter.native frogtptp.native froghop.native
 TARGETS=$(LIBS) $(BINARIES)
+TEST=foo.native
 
 BINDIR=/usr/local/bin/
 SHAREDIR=/usr/local/share/
@@ -14,6 +15,10 @@ all:
 
 clean:
 	ocamlbuild -clean
+
+test: all
+	ocamlbuild $(OPTIONS) $(TEST)
+	./$(TEST)
 
 INSTALL_TARGETS=$(addprefix _build/src/, $(LIBS))
 

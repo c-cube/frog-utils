@@ -2,6 +2,9 @@ S src/
 B _build/src
 S src/lib
 B _build/src/lib
+S test/
+B _build/test
+
 PKG lwt
 PKG lwt.ppx
 PKG lwt.unix
@@ -14,4 +17,5 @@ PKG ppx_deriving_yojson
 PKG toml
 PKG archimedes
 PKG cmdliner
+PKG oUnit
 FLG -w +a -w -4 -w -44 -w -29
