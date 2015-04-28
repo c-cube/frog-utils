@@ -18,7 +18,7 @@ clean:
 
 test: all
 	ocamlbuild $(OPTIONS) $(TEST)
-	./$(TEST)
+	./$(TEST) -runner sequential
 
 INSTALL_TARGETS=$(addprefix _build/src/, $(LIBS))
 
