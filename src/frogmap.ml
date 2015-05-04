@@ -67,9 +67,11 @@ let run_cmd ?timeout cmd arg =
           | Unix.WSTOPPED _  -> 128
         ) p#status
       in
-      let res_time = Unix.gettimeofday() -. start in
-      Lwt_log.ign_debug_f "process '%s' on '%s': done (%.2fs)" cmd arg res_time;
-      Lwt.return {S.res_arg=arg; res_time; res_errcode; res_out; res_err; }
+      let res_rtime = Unix.gettimeofday () -. start in
+      let%lwt rusage = p#rusage in
+      let res_utime = rusage.Lwt_unix.ru_utime in
+      Lwt_log.ign_debug_f "process '%s' on '%s': done (user : %.2fs, real : %.2f)" cmd arg res_utime res_rtime;
+      Lwt.return {S.res_arg=arg; res_rtime; res_utime; res_errcode; res_out; res_err; }
     )
 
 let with_lock ~daemon ~priority f info =

@@ -160,7 +160,7 @@ let matches maybe_re s = match maybe_re with
 let unsat_times (prover, file) =
   let re_unsat = Opt.(prover.Prover.unsat >>= compile_re ~msg:"unsat") in
   St.fold_state
-    (fun acc { St.res_time = t; St.res_out = out; _ } ->
+    (fun acc { St.res_utime = t; St.res_out = out; _ } ->
        if matches re_unsat out then t :: acc else acc)
     (fun _ -> []) file
 

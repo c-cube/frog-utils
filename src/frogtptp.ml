@@ -96,15 +96,15 @@ let make_summary prover job results =
   *)
   StrMap.iter
     (fun file res ->
-      s.run_time <- s.run_time +. res.St.res_time;
+      s.run_time <- s.run_time +. res.St.res_utime;
       if res.St.res_errcode <> 0
         then s.num_error <- s.num_error + 1;
       if execp_re_maybe re_sat res.St.res_out then (
-        s.total_time <- s.total_time +. res.St.res_time;
-        s.set_sat <- StrMap.add file res.St.res_time s.set_sat
+        s.total_time <- s.total_time +. res.St.res_utime;
+        s.set_sat <- StrMap.add file res.St.res_utime s.set_sat
       ) else if execp_re_maybe re_unsat res.St.res_out then (
-        s.total_time <- s.total_time +. res.St.res_time;
-        s.set_unsat <- StrMap.add file res.St.res_time s.set_unsat
+        s.total_time <- s.total_time +. res.St.res_utime;
+        s.set_unsat <- StrMap.add file res.St.res_utime s.set_unsat
       );
     ) results;
   s

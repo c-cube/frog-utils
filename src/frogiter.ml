@@ -49,7 +49,7 @@ type params = {
 (* print metadata of result on the given chan *)
 let print_prelude oc res =
   let%lwt () = Lwt_io.fprintf oc "# argument: %s\n" res.S.res_arg in
-  Lwt_io.fprintf oc "# time: %.2f\n" res.S.res_time
+  Lwt_io.fprintf oc "# time: %.2f\n" res.S.res_rtime
 
 let escape_quote s =
   let buf = Buffer.create (String.length s) in
@@ -80,7 +80,7 @@ let run_cmd params res =
   let env = Unix.environment () |> Array.to_list in
   let env =
     [ "FROG_ERRCODE=" ^ res.S.res_err
-    ; "FROG_TIME=" ^ string_of_float res.S.res_time
+    ; "FROG_TIME=" ^ string_of_float res.S.res_rtime
     ; "FROG_ERR=" ^ res.S.res_err
     ; "FROG_OUT=" ^ res.S.res_out
     ; "FROG_ARG=" ^ res.S.res_arg

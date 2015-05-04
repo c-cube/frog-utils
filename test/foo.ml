@@ -21,7 +21,7 @@ let cmp_time diff a b = abs_float (b -. a) <= diff
 
 let check_times e res =
   let open FrogMapState in
-  Lwt.return (e +. (res.res_time -. float_of_string res.res_arg))
+  Lwt.return (e +. (res.res_rtime -. float_of_string res.res_arg))
 
 let map_sleep_time times ctxt =
   let file, ch = bracket_tmpfile ~prefix:"frog" ~suffix:".json" ctxt in

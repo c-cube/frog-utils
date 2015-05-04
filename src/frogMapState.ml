@@ -37,11 +37,12 @@ type job = {
 
 type result = {
   res_arg     [@key "arg"]     : string;
-  res_time    [@key "time"]    : float;
+  res_rtime   [@key "time"]    : float;
+  res_utime   [@key "utime"]   : float [@default 0.];
   res_errcode [@key "errcode"] : int;
   res_out     [@key "stdout"]  : string;
   res_err     [@key "stderr"]  : string;
-} [@@deriving yojson,show]
+} [@@deriving yojson {strict=false},show]
 (** Result of running the command on one argument *)
 
 [@@@warning "+39"]
