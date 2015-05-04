@@ -316,7 +316,7 @@ let term =
   in
   let args =
     let doc = "Arguments on which to map the given command" in
-    Arg.(non_empty & pos_right 0 string [] & info [] ~docv:"ARGS" ~doc)
+    Arg.(value & pos_right 0 string [] & info [] ~docv:"ARGS" ~doc)
   in
   let file_args =
     let doc = "Read arguments from file" in
