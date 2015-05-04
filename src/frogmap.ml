@@ -322,7 +322,7 @@ let term =
   in
   let file_args =
     let doc = "Read arguments from file" in
-    Arg.(value & opt (some string) None & info ["F"] ~docv:"FILE" ~doc)
+    Arg.(value & opt (some non_dir_file) None & info ["F"] ~docv:"FILE" ~doc)
   in
   let doc = "Maps the given commands on the given inputs." in
   let man = [

@@ -37,6 +37,9 @@ let debug fmt = FrogDebug.debug fmt
 
 let re_not_comma = Re_posix.compile_pat "[^,]+"
 
+let use_utime = ref true
+let get_time res = if !use_utime then res.St.res_utime else res.St.res_rtime
+
 (* split a string along "," *)
 let split_comma s =
   let l = ref [] in
@@ -96,15 +99,16 @@ let make_summary prover job results =
   *)
   StrMap.iter
     (fun file res ->
-      s.run_time <- s.run_time +. res.St.res_utime;
+       let time = get_time res in
+      s.run_time <- s.run_time +. time;
       if res.St.res_errcode <> 0
         then s.num_error <- s.num_error + 1;
       if execp_re_maybe re_sat res.St.res_out then (
-        s.total_time <- s.total_time +. res.St.res_utime;
-        s.set_sat <- StrMap.add file res.St.res_utime s.set_sat
+        s.total_time <- s.total_time +. time;
+        s.set_sat <- StrMap.add file time s.set_sat
       ) else if execp_re_maybe re_unsat res.St.res_out then (
-        s.total_time <- s.total_time +. res.St.res_utime;
-        s.set_unsat <- StrMap.add file res.St.res_utime s.set_unsat
+        s.total_time <- s.total_time +. time;
+        s.set_unsat <- StrMap.add file time s.set_unsat
       );
     ) results;
   s
@@ -316,7 +320,14 @@ let limit_term =
 
 let analyze_term =
   let open Cmdliner in
-  let aux config_files conf l = main { config_files; conf; cmd = Analyse l } in
+  let aux config_files utime l =
+    use_utime := utime;
+    main { config_files; conf = { memory = None; timeout = None} ; cmd = Analyse l }
+  in
+  let utime =
+    let doc = "Use user time instead of real time for comparisons" in
+    Arg.(value & opt bool false & info ["u"; "utime"] ~doc)
+  in
   let args =
     let doc = "List of pairs of prover and corresponding output file to analyse" in
     Arg.(non_empty & pos 0 (list (pair ~sep:'=' string non_dir_file)) [] & info [] ~doc)
@@ -327,7 +338,7 @@ let analyze_term =
     `P "Analyse the prover's results and prints statistics about them.
         TODO: more detailed explication.";
   ] in
-  Term.(pure aux $ config_term $ limit_term $ args),
+  Term.(pure aux $ config_term $ utime $ args),
   Term.info ~man ~doc "analyse"
 
 let run_term =
