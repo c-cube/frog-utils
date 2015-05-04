@@ -46,29 +46,32 @@ type job = {
 [@@deriving yojson {strict=false},show]
 
 type current_job = {
-  current_job   [@key "current_job"] : job;
-  current_id    [@key "current_id"] : int;
-  current_start [@key "current_start"] : float;  (* time at which task started *)
+  current_id    [@key "id"] : int;
+  current_job   [@key "job"] : job;
+  current_start [@key "start"] : float;  (* time at which task started *)
 } [@@deriving yojson,show]
 
 type waiting_job = {
-  waiting_job [@key "waiting_job"] : job;
-  waiting_id  [@key "waiting_id"] : int;
-} [@@deriving yojson,show]
+  waiting_id    [@key "id"] : int;
+  waiting_job   [@key "job"] : job;
+} [@@deriving yojson, show]
 
 type status_answer = {
+  max_cores [@key "cores"] : int;
   current [@key "current"] : current_job list;
   waiting [@key "waiting"] : waiting_job list;
 } [@@deriving yojson,show]
 
 type t =
+  | Start         [@name "start"]
+  | End           [@name "end"]
   | Acquire       [@name "acquire"] of job
+  | Go            [@name "go"]
   | Release       [@name "release"]
-  | Go            [@name "go"] (* acquisition succeeded *)
+  | Reject        [@name "reject"]
   | Status        [@name "status"]
   | StatusAnswer  [@name "statusanswer"] of status_answer
   | StopAccepting [@name "stopaccepting"] (* from now on, no more accepts *)
-  | Reject        [@name "reject"]  (* request not accepted *)
   [@@deriving yojson, show]
 
 [@@@warning "+39"]

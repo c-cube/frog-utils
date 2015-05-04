@@ -29,44 +29,53 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 module M = FrogLockMessages
 
 type remote_daemon = {
-  ic : Lwt_io.input_channel;
-  oc : Lwt_io.output_channel;
+  port : int;
 }
 
 let section = Lwt_log.Section.make "FrogLockClient"
 
-let connect port f =
+let daemon_ch port f =
   Lwt_log.ign_debug_f ~section "trying to connect to daemon on port %d..." port;
   let addr = Unix.ADDR_INET (Unix.inet_addr_loopback, port) in
-  Lwt_io.with_connection addr
-    (fun (ic,oc) ->
+  Lwt_io.with_connection addr (fun (ic,oc) -> f ic oc)
+
+let connect port f =
+  daemon_ch port (fun _ oc ->
       Lwt_log.ign_debug_f ~section "connected to daemon";
-      f {ic; oc}
+      let%lwt () = M.print oc M.Start in
+      let%lwt res = f {port; } in
+      let%lwt () = M.print oc M.End in
+      Lwt_log.ign_debug ~section "connection to daemon closed";
+      Lwt.return res
     )
 
 (* given the channels to the daemon, acquire lock, call [f], release lock *)
-let acquire ?cwd ?user ?info ?(cores=0) ?(priority=1) ?(tags=[]) {ic; oc} f =
+let acquire ?cwd ?user ?info ?(cores=0) ?(priority=1) ?(tags=[]) {port; } f =
   Lwt_log.ign_debug "acquiring lock...";
-  let query_time = Unix.gettimeofday() in
-  (* send "acquire" *)
-  let pid = Unix.getpid() in
-  let msg = M.Acquire {M.info; user; priority; query_time; tags; cwd; pid; cores} in
-  let%lwt () = M.print oc msg in
-  (* expect "go" *)
-  let%lwt res = M.parse ic in
-  match res with
-  | M.Reject ->
-    Lwt_log.ign_debug ~section "lock: rejected (daemon too busy?)";
-    f false
-  | M.Go ->
-    Lwt_log.ign_debug ~section "acquired lock";
-    f true
-    [@finally
-      (* eventually, release *)
-      Lwt_log.ign_debug ~section "release lock";
-      M.print oc M.Release
-    ]
-  | msg -> Lwt.fail (M.Unexpected msg)
+  let addr = Unix.ADDR_INET (Unix.inet_addr_loopback, port) in
+  Lwt_io.with_connection addr
+    (fun (ic,oc) ->
+       let query_time = Unix.gettimeofday() in
+       (* send "acquire" *)
+       let pid = Unix.getpid() in
+       let msg = M.Acquire {M.info; user; priority; query_time; tags; cwd; pid; cores} in
+       let%lwt () = M.print oc msg in
+       (* expect "go" *)
+       let%lwt res = M.parse ic in
+       match res with
+       | M.Reject ->
+         Lwt_log.ign_debug ~section "lock: rejected (daemon too busy?)";
+         f false
+       | M.Go ->
+         Lwt_log.ign_debug ~section "acquired lock";
+         let%lwt res = f true in
+         Lwt_log.ign_debug ~section "release lock";
+         let%lwt () = M.print oc M.Release in
+         Lwt.return res
+       | _ ->
+         Lwt_log.ign_error_f "unexpected message: %s" (M.show res);
+         Lwt.fail (M.Unexpected res)
+    )
 
 (* try to connect; if it fails, spawn daemon and retry *)
 let connect_or_spawn ?log_file ?(retry=1.) port f =
@@ -86,10 +95,10 @@ let connect_or_spawn ?log_file ?(retry=1.) port f =
 
 let get_status port =
   try%lwt
-    connect port
-      (fun daemon ->
-        let%lwt () = M.print daemon.oc M.Status
-        and res = M.parse daemon.ic in
+    daemon_ch port
+      (fun ic oc ->
+        let%lwt () = M.print oc M.Status
+        and res = M.parse ic in
         match res with
         | M.StatusAnswer ans ->
             Lwt.return (Some ans)
@@ -102,7 +111,9 @@ let get_status port =
 (* connect to daemon (if any) and tell it to stop *)
 let stop_accepting port =
   try%lwt
-    connect port (fun {oc;_} -> M.print oc M.StopAccepting)
+    daemon_ch port (fun _ oc -> M.print oc M.StopAccepting)
   with e ->
     Lwt_log.ign_error_f ~section "error: %s" (Printexc.to_string e);
     Lwt.return_unit
+
+

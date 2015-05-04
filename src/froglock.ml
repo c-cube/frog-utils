@@ -116,9 +116,10 @@ let print_status params =
     match res with
     | None ->
       Lwt_log.info_f ~section "daemon not running"
-    | Some {M.current=l; waiting} ->
+    | Some {M.current=l; waiting; max_cores} ->
+      let%lwt () = Lwt_io.printlf "Maximum cores: %d" max_cores in
       let%lwt () = match l with
-        | [] -> Lwt.return_unit
+        | [] -> Lwt_io.printlf "No current task."
         | _ ->
           Lwt_list.iter_s (fun c ->
               let time = Unix.gettimeofday() -. c.M.current_start in
