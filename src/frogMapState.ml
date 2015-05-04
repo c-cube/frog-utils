@@ -60,7 +60,8 @@ let make_fresh_file ?dir pattern =
 
 let print_job oc job =
   let s = Yojson.Safe.to_string (job_to_yojson job) in
-  Lwt_io.write_line oc s
+  let%lwt () = Lwt_io.write_line oc s in
+  Lwt_io.flush oc
 
 (* given a handle to the result file, adds the result to it *)
 let add_res oc res =

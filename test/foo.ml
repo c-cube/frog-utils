@@ -27,7 +27,7 @@ let map_sleep_time times ctxt =
   let file, ch = bracket_tmpfile ~prefix:"frog" ~suffix:".json" ctxt in
   close_out ch;
   assert_command ~ctxt "./frogmap.native"
-    (["-p"; "false"; "-o"; file; "sleep"] @ (List.map string_of_int times));
+    (["--progress"; "false"; "-o"; file; "sleep"] @ (List.map string_of_int times));
   let diff = Lwt_main.run (FrogMapState.fold_state_s check_times (fun _ -> Lwt.return 0.) file) in
   let max_diff = 0.01 *. (float) (List.length times) in
   assert_equal ~ctxt ~cmp:(cmp_time max_diff) ~printer:string_of_float 0. diff
