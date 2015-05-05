@@ -69,7 +69,7 @@ let run_cmd ?timeout cmd arg =
       in
       let res_rtime = Unix.gettimeofday () -. start in
       let%lwt rusage = p#rusage in
-      let res_utime = rusage.Lwt_unix.ru_utime in
+      let res_utime = rusage.Lwt_unix.ru_utime +. rusage.Lwt_unix.ru_stime in
       Lwt_log.ign_debug_f "process '%s' on '%s': done (user : %.2fs, real : %.2f)" cmd arg res_utime res_rtime;
       Lwt.return {S.res_arg=arg; res_rtime; res_utime; res_errcode; res_out; res_err; }
     )
