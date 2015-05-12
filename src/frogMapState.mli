@@ -39,6 +39,7 @@ type result = {
   res_arg     [@key "arg"]     : string;
   res_rtime   [@key "time"]    : float;
   res_utime   [@key "utime"]   : float [@default 0.];
+  res_stime   [@key "stime"]   : float [@default 0.];
   res_errcode [@key "errcode"] : int;
   res_out     [@key "stdout"]  : string;
   res_err     [@key "stderr"]  : string;

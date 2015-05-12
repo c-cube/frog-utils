@@ -69,9 +69,11 @@ let run_cmd ?timeout cmd arg =
       in
       let res_rtime = Unix.gettimeofday () -. start in
       let%lwt rusage = p#rusage in
-      let res_utime = rusage.Lwt_unix.ru_utime +. rusage.Lwt_unix.ru_stime in
-      Lwt_log.ign_debug_f "process '%s' on '%s': done (user : %.2fs, real : %.2f)" cmd arg res_utime res_rtime;
-      Lwt.return {S.res_arg=arg; res_rtime; res_utime; res_errcode; res_out; res_err; }
+      let res_utime = rusage.Lwt_unix.ru_utime in
+      let res_stime = rusage.Lwt_unix.ru_stime in
+      Lwt_log.ign_debug_f "process '%s' on '%s': done (real : %.2fs, user : %.2f, system : %.2f)"
+        cmd arg res_rtime res_utime res_stime;
+      Lwt.return {S.res_arg=arg; res_rtime; res_utime; res_stime; res_errcode; res_out; res_err; }
     )
 
 let with_lock ~daemon ~priority f info =

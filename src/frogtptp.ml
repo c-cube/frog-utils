@@ -31,15 +31,35 @@ module St = FrogMapState
 module Prover = FrogTPTP.Prover
 module Conf = FrogConfig
 
-(** {2 Description of a prover} *)
+(** Type Definitions *)
+type time = {
+  real : float;
+  user : float;
+  system : float;
+}
 
+type file_summary = {
+  mutable num_all : int;
+  mutable set_unsat : time StrMap.t;  (* pb -> time *)
+  mutable set_sat : time StrMap.t; (* pb -> time *)
+  mutable num_error : int;
+  mutable solved_time : time; (* of successfully solved problems *)
+  mutable run_time : time; (* total run time of the prover *)
+}
+type run_params = {
+  timeout : int option;
+  memory : int option;
+}
+
+type analyse_params = {
+  get_time : time -> float;
+}
+
+(* Misc function *)
 let debug fmt = FrogDebug.debug fmt
 
+(*
 let re_not_comma = Re_posix.compile_pat "[^,]+"
-
-let use_utime = ref true
-let get_time res = if !use_utime then res.St.res_utime else res.St.res_rtime
-
 (* split a string along "," *)
 let split_comma s =
   let l = ref [] in
@@ -54,15 +74,7 @@ let split_comma s =
     List.rev !l
   with Not_found ->
     List.rev !l
-
-type file_summary = {
-  mutable num_all : int;
-  mutable set_unsat : float StrMap.t;  (* pb -> time *)
-  mutable set_sat : float StrMap.t; (* pb -> time *)
-  mutable num_error : int;
-  mutable total_time : float; (* of successfully solved problems *)
-  mutable run_time : float; (* Total run time of the prover *)
-}
+   *)
 
 let compile_re ~msg re =
   try
@@ -82,15 +94,27 @@ module Opt = struct
     | Some x -> f x
 end
 
+let add_time t t' = {
+  real = t.real +. t'.real;
+  user = t.user +. t'.user;
+  system = t.system +. t'.system;
+}
+
+let time_of_res res = {
+  real = res.St.res_rtime;
+  user = res.St.res_utime;
+  system = res.St.res_stime;
+}
+
 (* compute summary of this file *)
 let make_summary prover job results =
   let s = {
-    num_all=List.length job.St.arguments;
-    set_unsat=StrMap.empty;
-    set_sat=StrMap.empty;
-    num_error=0;
-    total_time=0.;
-    run_time = 0.;
+    num_all = List.length job.St.arguments;
+    set_unsat = StrMap.empty;
+    set_sat = StrMap.empty;
+    num_error = 0;
+    solved_time = { real = 0.; user = 0.; system = 0.; };
+    run_time = { real = 0.; user = 0.; system = 0.; };
   } in
   let re_sat = Opt.(prover.Prover.sat >>= compile_re ~msg:"sat") in
   let re_unsat = Opt.(prover.Prover.unsat >>= compile_re ~msg:"unsat") in
@@ -99,17 +123,16 @@ let make_summary prover job results =
   *)
   StrMap.iter
     (fun file res ->
-       let time = get_time res in
-      s.run_time <- s.run_time +. time;
-      if res.St.res_errcode <> 0
-        then s.num_error <- s.num_error + 1;
-      if execp_re_maybe re_sat res.St.res_out then (
-        s.total_time <- s.total_time +. time;
-        s.set_sat <- StrMap.add file time s.set_sat
-      ) else if execp_re_maybe re_unsat res.St.res_out then (
-        s.total_time <- s.total_time +. time;
-        s.set_unsat <- StrMap.add file time s.set_unsat
-      );
+       let time = time_of_res res in
+       s.run_time <- add_time s.run_time time;
+       if res.St.res_errcode <> 0 then s.num_error <- s.num_error + 1;
+       if execp_re_maybe re_sat res.St.res_out then begin
+         s.solved_time <- add_time s.solved_time time;
+         s.set_sat <- StrMap.add file time s.set_sat
+       end else if execp_re_maybe re_unsat res.St.res_out then begin
+         s.solved_time <- add_time s.solved_time time;
+         s.set_unsat <- StrMap.add file time s.set_unsat
+       end
     ) results;
   s
 
@@ -119,8 +142,12 @@ let print_single_summary prover s =
   let num_sat = StrMap.cardinal s.set_sat in
   let num_unsat = StrMap.cardinal s.set_unsat in
   let percent_solved = (float (num_sat + num_unsat) *. 100. /. float s.num_all) in
-  Printf.printf "prover %s: %d sat, %d unsat, %d total (%.0f%% solved) in %.2fs, %d errors\n"
-    prover num_sat num_unsat s.num_all percent_solved s.total_time s.num_error;
+  Printf.printf "prover %s: %d sat, %d unsat, %d total (%.0f%% solved), %d errors\n"
+    prover num_sat num_unsat s.num_all percent_solved s.num_error;
+  Printf.printf "solved time : %.2fs (real), %.2f (user), %.2f (system)\n"
+    s.solved_time.real s.solved_time.user s.solved_time.system;
+  Printf.printf "total run time : %.2fs (real), %.2f (user), %.2f (system)\n"
+    s.run_time.real s.run_time.user s.run_time.system;
   ()
 
 (* obtain the full list of problems/results deal with in this file *)
@@ -165,7 +192,7 @@ let map_diff m1 m2 =
     ) m1 m2
 
 (* analyse and compare this list of prover,job,results *)
-let analyse_multiple items =
+let analyse_multiple params items =
   (* individual results *)
   let map = List.fold_left
     (fun map (p_name,p,job,results) ->
@@ -198,10 +225,12 @@ let analyse_multiple items =
       PB.([| text prover; int_ num_sat; int_ num_unsat; int_ s.num_all;
              int_ num_solved_only;
              text (Printf.sprintf "%.0f" percent_solved);
-             text (Printf.sprintf "%.2f" s.total_time);
-             text (Printf.sprintf "%.2f" (s.total_time /. float (StrMap.cardinal s.set_sat + StrMap.cardinal s.set_unsat)));
+             text (Printf.sprintf "%.2f" (params.get_time s.solved_time));
+             text (Printf.sprintf "%.2f"
+                     ((params.get_time s.solved_time) /.
+                      float (StrMap.cardinal s.set_sat + StrMap.cardinal s.set_unsat)));
              int_ s.num_error;
-             text (Printf.sprintf "%.2f" s.run_time) |]
+             text (Printf.sprintf "%.2f" (params.get_time s.run_time)) |]
       ) :: acc
     ) map []
   in
@@ -220,7 +249,7 @@ let analyse_multiple items =
     ) !problems_solved_by_one;
   ()
 
-let analyse_multiple_files ~config l =
+let analyse_multiple_files ~config params l =
   let items = List.map
     (fun (prover,file) ->
       let p = Prover.find_config config prover in
@@ -228,16 +257,16 @@ let analyse_multiple_files ~config l =
       prover, p, job, results
     ) l
   in
-  analyse_multiple items
+  analyse_multiple params items
 
-let analyse ~config l = match l with
+let analyse ~config params l = match l with
   | [] -> assert false
   | [p, file] ->
       debug "analyse file %s, obtained from prover %s" file p;
       analyse_single_file ~config p file
   | _ ->
       debug "analyse %d files" (List.length l);
-      analyse_multiple_files ~config l
+      analyse_multiple_files ~config params l
 
 (* print list of known provers *)
 let list_provers ~config =
@@ -250,15 +279,11 @@ let list_provers ~config =
 
 (** {2 Run} *)
 
+(*
 type cmd =
   | Analyse of (string * string) list  (* list (prover, file) *)
   | Run of string * string
   | ListProvers
-
-type specific_conf = {
-  timeout : int option;
-  memory : int option;
-}
 
 type params = {
   cmd : cmd;
@@ -282,6 +307,17 @@ let main params =
   with FrogConfig.Error msg ->
     print_endline msg;
     exit 1
+   *)
+
+(* Argument parsing *)
+let use_time =
+  (function
+    | "real" -> `Ok (fun { real; _ } -> real)
+    | "user" -> `Ok (fun { user; _ } -> user)
+    | "sys"  -> `Ok (fun { system; _ } -> system)
+    | "cpu"  -> `Ok (fun { user; system; _ } -> user +. system)
+    | _ -> `Error "Must be one of : 'real', 'user', 'sys', or 'cpu'"),
+  (fun fmt _ -> Format.fprintf fmt "*abstract*")
 
 (** {2 Main} *)
 
@@ -292,7 +328,10 @@ let config_term =
   let open Cmdliner in
   let aux config debug =
     if debug then FrogDebug.set_debug true;
-    config
+    try
+      `Ok (FrogConfig.parse_files config FrogConfig.empty)
+    with FrogConfig.Error msg ->
+      `Error (false, msg)
   in
   let config =
     let doc = "Use the given config files. Defaults to '~/.frogtptp.toml'. If one or more config files is
@@ -303,7 +342,7 @@ let config_term =
     let doc = "Enable debug (verbose) output" in
     Arg.(value & flag & info ["d"; "debug"] ~doc)
   in
-  Term.(pure aux $ config $ debug)
+  Term.(ret (pure aux $ config $ debug))
 
 let limit_term =
   let open Cmdliner in
@@ -320,13 +359,16 @@ let limit_term =
 
 let analyze_term =
   let open Cmdliner in
-  let aux config_files utime l =
-    use_utime := utime;
-    main { config_files; conf = { memory = None; timeout = None} ; cmd = Analyse l }
+  let aux config get_time l =
+    analyse ~config { get_time; } l
   in
-  let utime =
-    let doc = "Use user time instead of real time for comparisons" in
-    Arg.(value & opt bool false & info ["u"; "utime"] ~doc)
+  let use_time =
+    let doc = "Specify which time to use for comparing provers. Choices are :
+               'real' (real time elasped between start and end of execution),
+               'user' (user time, as defined by the 'time 'command),
+               'sys' (system time as defined by the 'time' command),
+               'cpu' (sum of user and system time)." in
+    Arg.(value & opt use_time (fun { real; _} -> real) & info ["t"; "time"] ~doc)
   in
   let args =
     let doc = "List of pairs of prover and corresponding output file to analyse" in
@@ -338,12 +380,17 @@ let analyze_term =
     `P "Analyse the prover's results and prints statistics about them.
         TODO: more detailed explication.";
   ] in
-  Term.(pure aux $ config_term $ utime $ args),
+  Term.(pure aux $ config_term $ use_time $ args),
   Term.info ~man ~doc "analyse"
 
 let run_term =
   let open Cmdliner in
-  let aux config_files conf cmd args = main {config_files; conf; cmd = Run (cmd, String.concat " " args) } in
+  let aux config params cmd args =
+    FrogTPTP.run_exec
+      ?timeout:params.timeout
+      ?memory:params.memory
+      ~config cmd (String.concat " " args)
+  in
   let cmd =
     let doc = "Prover to be run" in
     Arg.(required & pos 0 (some string) None & info [] ~doc)
@@ -364,7 +411,7 @@ let run_term =
 
 let list_term =
   let open Cmdliner in
-  let aux config_files conf = main { config_files; conf; cmd = ListProvers } in
+  let aux config = list_provers ~config in
   let doc = "List the known provers,given the config files specified (see 'config' option)" in
   let man = [
     `S "DESCRIPTION";
@@ -372,7 +419,7 @@ let list_term =
         files specified with the options.";
     `P "The list conatins one line for each prover, and is of the form : '<name>: cmd=<cmd>'.";
   ] in
-  Term.(pure aux $ config_term $ limit_term),
+  Term.(pure aux $ config_term),
   Term.info ~man ~doc "list"
 
 let help_term =
