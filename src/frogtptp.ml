@@ -30,8 +30,10 @@ module StrMap = Map.Make(String)
 module St = FrogMapState
 module Prover = FrogTPTP.Prover
 module Conf = FrogConfig
+module PB = PrintBox
 
 (** Type Definitions *)
+(* TODO: have a module to define times and operations on them ? *)
 type time = {
   real : float;
   user : float;
@@ -39,6 +41,7 @@ type time = {
 }
 
 type file_summary = {
+  prover : string;
   mutable num_all : int;
   mutable set_unsat : time StrMap.t;  (* pb -> time *)
   mutable set_sat : time StrMap.t; (* pb -> time *)
@@ -50,31 +53,13 @@ type run_params = {
   timeout : int option;
   memory : int option;
 }
-
 type analyse_params = {
   get_time : time -> float;
+  filter : file_summary StrMap.t -> string -> St.result -> bool;
 }
 
 (* Misc function *)
 let debug fmt = FrogDebug.debug fmt
-
-(*
-let re_not_comma = Re_posix.compile_pat "[^,]+"
-(* split a string along "," *)
-let split_comma s =
-  let l = ref [] in
-  let i = ref 0 in
-  try
-    while !i < String.length s do
-      let sub = Re.exec ~pos:!i re_not_comma s in
-      l := Re.get sub 0 :: !l;
-      let start, len = Re.get_ofs sub 0 in
-      i := start + len;
-    done;
-    List.rev !l
-  with Not_found ->
-    List.rev !l
-   *)
 
 let compile_re ~msg re =
   try
@@ -107,8 +92,9 @@ let time_of_res res = {
 }
 
 (* compute summary of this file *)
-let make_summary prover job results =
+let make_summary ?(filter=(fun _ _ -> true)) prover_name prover job results =
   let s = {
+    prover = prover_name;
     num_all = List.length job.St.arguments;
     set_unsat = StrMap.empty;
     set_sat = StrMap.empty;
@@ -123,20 +109,20 @@ let make_summary prover job results =
   *)
   StrMap.iter
     (fun file res ->
-       let time = time_of_res res in
-       s.run_time <- add_time s.run_time time;
-       if res.St.res_errcode <> 0 then s.num_error <- s.num_error + 1;
-       if execp_re_maybe re_sat res.St.res_out then begin
-         s.solved_time <- add_time s.solved_time time;
-         s.set_sat <- StrMap.add file time s.set_sat
-       end else if execp_re_maybe re_unsat res.St.res_out then begin
-         s.solved_time <- add_time s.solved_time time;
-         s.set_unsat <- StrMap.add file time s.set_unsat
-       end
+       if filter file res then begin
+         let time = time_of_res res in
+         s.run_time <- add_time s.run_time time;
+         if res.St.res_errcode <> 0 then s.num_error <- s.num_error + 1;
+         if execp_re_maybe re_sat res.St.res_out then begin
+           s.solved_time <- add_time s.solved_time time;
+           s.set_sat <- StrMap.add file time s.set_sat
+         end else if execp_re_maybe re_unsat res.St.res_out then begin
+           s.solved_time <- add_time s.solved_time time;
+           s.set_unsat <- StrMap.add file time s.set_unsat
+         end
+      end
     ) results;
   s
-
-module PB = PrintBox
 
 let print_single_summary prover s =
   let num_sat = StrMap.cardinal s.set_sat in
@@ -161,7 +147,7 @@ let extract_file file =
 let analyse_single_file ~config prover file =
   let p = Prover.find_config config prover in
   let job, results = extract_file file in
-  let s = make_summary p job results in
+  let s = make_summary prover p job results in
   print_single_summary prover s
 
 let all_proved s =
@@ -194,45 +180,48 @@ let map_diff m1 m2 =
 (* analyse and compare this list of prover,job,results *)
 let analyse_multiple params items =
   (* individual results *)
-  let map = List.fold_left
-    (fun map (p_name,p,job,results) ->
-      let summary = make_summary p job results in
-      (* individual summary *)
-      StrMap.add p_name summary map
-    ) StrMap.empty items
+  let aux ?filter l = List.fold_left
+      (fun map (file,p_name,p,job,results) ->
+         let summary = make_summary ?filter p_name p job results in
+         StrMap.add file summary map
+      ) StrMap.empty l
   in
+  let map = aux items in
+  let map = aux ~filter:(params.filter map) items in
   (* some globals *)
   let problems_solved_by_one = ref StrMap.empty in
   (* print overall *)
   let first_line = PB.(
-    [| text "prover"; text "sat"; text "unsat"; text "total"; text "exclusive";
-       text "%solved"; text "time (s)"; text "avg time (s)"; text "errors" ; text "runtime (s)" |]
+      [| text "file"; text "prover"; text "sat"; text "unsat"; text "total"; text "exclusive";
+         text "%solved"; text "time (s)"; text "avg time (s)"; text "errors" ; text "runtime (s)" |]
   ) in
   (* next lines *)
-  let next_lines = StrMap.fold
-    (fun prover s acc ->
-      let problems_solved_by_me = all_proved s in
-      let problems_solved_by_others = all_proved_map (StrMap.remove prover map) in
-      let problems_solved_by_me_only = map_diff
-        problems_solved_by_me problems_solved_by_others
-      in
-      problems_solved_by_one := StrMap.add prover
-        problems_solved_by_me_only !problems_solved_by_one;
-      let num_sat = StrMap.cardinal s.set_sat in
-      let num_unsat = StrMap.cardinal s.set_unsat in
-      let percent_solved = (float (num_sat + num_unsat) *. 100. /. float s.num_all) in
-      let num_solved_only = StrMap.cardinal problems_solved_by_me_only in
-      PB.([| text prover; int_ num_sat; int_ num_unsat; int_ s.num_all;
-             int_ num_solved_only;
-             text (Printf.sprintf "%.0f" percent_solved);
-             text (Printf.sprintf "%.2f" (params.get_time s.solved_time));
-             text (Printf.sprintf "%.2f"
-                     ((params.get_time s.solved_time) /.
-                      float (StrMap.cardinal s.set_sat + StrMap.cardinal s.set_unsat)));
-             int_ s.num_error;
-             text (Printf.sprintf "%.2f" (params.get_time s.run_time)) |]
-      ) :: acc
-    ) map []
+  let next_lines = List.rev (* keep ascending order of file names *)
+    @@ StrMap.fold
+      (fun file s acc ->
+         let prover = s.prover in
+         let problems_solved_by_me = all_proved s in
+         let problems_solved_by_others = all_proved_map (StrMap.remove file map) in
+         let problems_solved_by_me_only = map_diff
+             problems_solved_by_me problems_solved_by_others
+         in
+         problems_solved_by_one := StrMap.add prover
+             problems_solved_by_me_only !problems_solved_by_one;
+         let num_sat = StrMap.cardinal s.set_sat in
+         let num_unsat = StrMap.cardinal s.set_unsat in
+         let percent_solved = (float (num_sat + num_unsat) *. 100. /. float s.num_all) in
+         let num_solved_only = StrMap.cardinal problems_solved_by_me_only in
+         PB.([| text @@ Filename.basename file; text prover; int_ num_sat; int_ num_unsat; int_ s.num_all;
+                int_ num_solved_only;
+                text (Printf.sprintf "%.0f" percent_solved);
+                text (Printf.sprintf "%.2f" (params.get_time s.solved_time));
+                text (Printf.sprintf "%.2f"
+                        ((params.get_time s.solved_time) /.
+                         float (StrMap.cardinal s.set_sat + StrMap.cardinal s.set_unsat)));
+                int_ s.num_error;
+                text (Printf.sprintf "%.2f" (params.get_time s.run_time)) |]
+            ) :: acc
+      ) map []
   in
   let box = PB.(frame (grid (Array.of_list (first_line :: next_lines)))) in
   print_endline "";
@@ -254,7 +243,7 @@ let analyse_multiple_files ~config params l =
     (fun (prover,file) ->
       let p = Prover.find_config config prover in
       let job, results = extract_file file in
-      prover, p, job, results
+      file, prover, p, job, results
     ) l
   in
   analyse_multiple params items
@@ -279,36 +268,6 @@ let list_provers ~config =
 
 (** {2 Run} *)
 
-(*
-type cmd =
-  | Analyse of (string * string) list  (* list (prover, file) *)
-  | Run of string * string
-  | ListProvers
-
-type params = {
-  cmd : cmd;
-  config_files : string list;
-  conf : specific_conf;
-}
-
-let main params =
-  try
-    let config = FrogConfig.parse_files params.config_files FrogConfig.empty in
-    match params.cmd with
-    | Run (prog,args) ->
-        FrogTPTP.run_exec
-          ?timeout:params.conf.timeout
-          ?memory:params.conf.memory
-          ~config prog args
-    | Analyse l ->
-        analyse ~config l
-    | ListProvers ->
-        list_provers ~config
-  with FrogConfig.Error msg ->
-    print_endline msg;
-    exit 1
-   *)
-
 (* Argument parsing *)
 let use_time =
   (function
@@ -317,6 +276,14 @@ let use_time =
     | "sys"  -> `Ok (fun { system; _ } -> system)
     | "cpu"  -> `Ok (fun { user; system; _ } -> user +. system)
     | _ -> `Error "Must be one of : 'real', 'user', 'sys', or 'cpu'"),
+  (fun fmt _ -> Format.fprintf fmt "*abstract*")
+
+let filter_pbs =
+  (function
+    | "all" -> `Ok (fun _ _ _ -> true)
+    | "common" -> `Ok (fun map problem _ ->
+        StrMap.for_all (fun _ s -> StrMap.mem problem s.set_unsat) map)
+    | _ -> `Error "Must be one of : 'all', 'common'"),
   (fun fmt _ -> Format.fprintf fmt "*abstract*")
 
 (** {2 Main} *)
@@ -359,8 +326,8 @@ let limit_term =
 
 let analyze_term =
   let open Cmdliner in
-  let aux config get_time l =
-    analyse ~config { get_time; } l
+  let aux config get_time filter l =
+    analyse ~config { get_time; filter; } l
   in
   let use_time =
     let doc = "Specify which time to use for comparing provers. Choices are :
@@ -369,6 +336,10 @@ let analyze_term =
                'sys' (system time as defined by the 'time' command),
                'cpu' (sum of user and system time)." in
     Arg.(value & opt use_time (fun { real; _} -> real) & info ["t"; "time"] ~doc)
+  in
+  let filter =
+    let doc = "TODO" in
+    Arg.(value & opt filter_pbs (fun _ _ _ -> true) & info ["f"; "filter"] ~doc)
   in
   let args =
     let doc = "List of pairs of prover and corresponding output file to analyse" in
@@ -380,7 +351,7 @@ let analyze_term =
     `P "Analyse the prover's results and prints statistics about them.
         TODO: more detailed explication.";
   ] in
-  Term.(pure aux $ config_term $ use_time $ args),
+  Term.(pure aux $ config_term $ use_time $ filter $ args),
   Term.info ~man ~doc "analyse"
 
 let run_term =
