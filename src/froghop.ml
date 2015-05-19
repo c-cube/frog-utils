@@ -24,11 +24,14 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *)
 
+let () = Random.self_init ()
 
 let froghop () =
   print_endline "the frog hops.";
   Unix.sleep 5;
-  print_endline "happy?"
+  if Random.int 10 = 0
+  then print_endline "the frog is tired"
+  else print_endline "the frog hops again"
 
 let term =
   let doc = "Try it and see what happens !" in
