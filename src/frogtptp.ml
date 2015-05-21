@@ -49,6 +49,7 @@ type file_summary = {
   mutable solved_time : time; (* of successfully solved problems *)
   mutable run_time : time; (* total run time of the prover *)
 }
+
 type run_params = {
   timeout : int option;
   memory : int option;
@@ -56,6 +57,27 @@ type run_params = {
 type analyse_params = {
   get_time : time -> float;
   filter : file_summary StrMap.t -> string -> St.result -> bool;
+}
+
+type plot_data =
+  | Unsat_Time
+
+type plot_legend =
+  | Prover
+  | File
+
+type plot_drawer =
+  | Simple of bool (* should we sort the list ? *)
+  | Cumul of bool * int * int (* sort, filter, count *)
+
+type plot_params = {
+  analyse : analyse_params;
+  graph : FrogPlot.graph_config;
+  data : plot_data;
+  legend : plot_legend;
+  drawer : plot_drawer;
+  out_file : string;
+  out_format : string;
 }
 
 (* Misc function *)
@@ -124,6 +146,25 @@ let make_summary ?(filter=(fun _ _ -> true)) prover_name prover job results =
     ) results;
   s
 
+let map_summaries params items =
+  let aux ?filter l = List.fold_left
+      (fun map (file,p_name,p,job,results) ->
+         let summary = make_summary ?filter p_name p job results in
+         StrMap.add file summary map
+      ) StrMap.empty l
+  in
+  let map = aux items in
+  aux ~filter:(params.filter map) items
+
+(* obtain the full list of problems/results deal with in this file *)
+let extract_file file =
+  St.fold_state
+    (fun (job,map) res ->
+      job, StrMap.add res.St.res_arg res map
+    ) (fun job -> job, StrMap.empty) file
+    |> Lwt_main.run
+
+(* Single summary analysis *)
 let print_single_summary prover s =
   let num_sat = StrMap.cardinal s.set_sat in
   let num_unsat = StrMap.cardinal s.set_unsat in
@@ -135,14 +176,6 @@ let print_single_summary prover s =
   Printf.printf "total run time : %.2fs (real), %.2f (user), %.2f (system)\n"
     s.run_time.real s.run_time.user s.run_time.system;
   ()
-
-(* obtain the full list of problems/results deal with in this file *)
-let extract_file file =
-  St.fold_state
-    (fun (job,map) res ->
-      job, StrMap.add res.St.res_arg res map
-    ) (fun job -> job, StrMap.empty) file
-    |> Lwt_main.run
 
 let analyse_single_file ~config prover file =
   let p = Prover.find_config config prover in
@@ -179,15 +212,7 @@ let map_diff m1 m2 =
 
 (* analyse and compare this list of prover,job,results *)
 let analyse_multiple params items =
-  (* individual results *)
-  let aux ?filter l = List.fold_left
-      (fun map (file,p_name,p,job,results) ->
-         let summary = make_summary ?filter p_name p job results in
-         StrMap.add file summary map
-      ) StrMap.empty l
-  in
-  let map = aux items in
-  let map = aux ~filter:(params.filter map) items in
+  let map = map_summaries params items in
   (* some globals *)
   let problems_solved_by_one = ref StrMap.empty in
   (* print overall *)
@@ -238,15 +263,13 @@ let analyse_multiple params items =
     ) !problems_solved_by_one;
   ()
 
-let analyse_multiple_files ~config params l =
-  let items = List.map
+let parse_prover_list ~config l =
+  List.map
     (fun (prover,file) ->
-      let p = Prover.find_config config prover in
-      let job, results = extract_file file in
-      file, prover, p, job, results
+       let p = Prover.find_config config prover in
+       let job, results = extract_file file in
+       file, prover, p, job, results
     ) l
-  in
-  analyse_multiple params items
 
 let analyse ~config params l = match l with
   | [] -> assert false
@@ -255,7 +278,28 @@ let analyse ~config params l = match l with
       analyse_single_file ~config p file
   | _ ->
       debug "analyse %d files" (List.length l);
-      analyse_multiple_files ~config params l
+      analyse_multiple params (parse_prover_list ~config l)
+
+(* Plot functions *)
+let plot ~config params l =
+  let items = parse_prover_list ~config l in
+  let map = map_summaries params.analyse items in
+  let datas = StrMap.fold (fun file s acc ->
+      let name = match params.legend with
+        | Prover -> s.prover | File -> Filename.basename file
+      in
+      let l = match params.data with
+        | Unsat_Time -> List.rev @@ StrMap.fold (fun _ time acc ->
+            params.analyse.get_time time :: acc) s.set_unsat []
+      in
+      (l, name) :: acc) map []
+  in
+  let single_drawer = match params.drawer with
+    | Simple sort -> FrogPlot.float_list ~sort
+    | Cumul (sort, filter, count) -> FrogPlot.float_sum ~sort ~filter ~count
+  in
+  let drawer = FrogPlot.list @@ List.map single_drawer datas in
+  FrogPlot.draw_on_graph params.graph params.out_format params.out_file drawer
 
 (* print list of known provers *)
 let list_provers ~config =
@@ -286,10 +330,26 @@ let filter_pbs =
     | _ -> `Error "Must be one of : 'all', 'common'"),
   (fun fmt _ -> Format.fprintf fmt "*abstract*")
 
+let to_cmd_arg l = Cmdliner.Arg.enum l, Cmdliner.Arg.doc_alts_enum l
+
+let data_conv, data_help = to_cmd_arg [
+    "unsat_time", Unsat_Time;
+  ]
+
+let legend_conv, legend_help = to_cmd_arg [
+    "prover", Prover;
+    "file", File;
+  ]
+
 (** {2 Main} *)
 
 let some_if_pos_ i =
   if i>0 then Some i else None
+
+let args_term =
+  let open Cmdliner in
+  let doc = "List of pairs of prover and corresponding output file to analyse" in
+  Arg.(non_empty & pos 0 (list (pair ~sep:'=' string non_dir_file)) [] & info [] ~doc)
 
 let config_term =
   let open Cmdliner in
@@ -324,11 +384,9 @@ let limit_term =
   in
   Term.(pure aux $ memory $ timeout)
 
-let analyze_term =
+let analyze_params_term =
   let open Cmdliner in
-  let aux config get_time filter l =
-    analyse ~config { get_time; filter; } l
-  in
+  let aux get_time filter = { get_time; filter; } in
   let use_time =
     let doc = "Specify which time to use for comparing provers. Choices are :
                'real' (real time elasped between start and end of execution),
@@ -339,11 +397,62 @@ let analyze_term =
   in
   let filter =
     let doc = "TODO" in
-    Arg.(value & opt filter_pbs (fun _ _ _ -> true) & info ["f"; "filter"] ~doc)
+    Arg.(value & opt filter_pbs (fun _ _ _ -> true) & info ["filter"] ~doc)
   in
-  let args =
-    let doc = "List of pairs of prover and corresponding output file to analyse" in
-    Arg.(non_empty & pos 0 (list (pair ~sep:'=' string non_dir_file)) [] & info [] ~doc)
+  Term.(pure aux $ use_time $ filter)
+
+let drawer_term =
+  let open Cmdliner in
+  let aux cumul sort filter count =
+    if cumul then Cumul (sort, filter, count) else Simple sort
+  in
+  let cumul =
+    let doc = "Plots the cumulative sum of the data" in
+    Arg.(value & opt bool true & info ["cumul"] ~doc)
+  in
+  let sort =
+    let doc = "Should the data be sorted before being plotted" in
+    Arg.(value & opt bool true & info ["sort"] ~doc)
+  in
+  let filter =
+    let doc = "Plots one in every $(docv) data point
+              (ignored if not in cumulative plotting)" in
+    Arg.(value & opt int 3 & info ["pspace"] ~doc)
+  in
+  let count =
+    let doc = "Plots the last $(docv) data point in any case" in
+    Arg.(value & opt int 5 & info ["count"] ~doc)
+  in
+  Term.(pure aux $ cumul $ sort $ filter $ count)
+
+let plot_params_term =
+  let open Cmdliner in
+  let aux analyse graph data legend drawer out_file out_format =
+    { analyse; graph; data; legend; drawer; out_file; out_format }
+  in
+  let data =
+    let doc = Format.sprintf "Decides which value to plot. $(docv) must be %s" data_help in
+    Arg.(value & opt data_conv Unsat_Time & info ["data"] ~doc)
+  in
+  let legend =
+    let doc = Format.sprintf
+        "What legend to attach to each curve. $(docv) must be %s" legend_help
+    in
+    Arg.(value & opt legend_conv Prover & info ["legend"] ~doc)
+  in
+  let out_file =
+    let doc = "Output file for the plot" in
+    Arg.(required & opt (some string) None & info ["o"; "out"] ~doc)
+  in
+  let out_format =
+    let doc = "Output format for the graph" in
+    Arg.(value & opt string "PDF" & info ["format"] ~doc)
+  in
+  Term.(pure aux $ analyze_params_term $ FrogPlot.graph_args $ data $ legend $ drawer_term $ out_file $ out_format)
+
+let analyze_term =
+  let open Cmdliner in
+  let aux config params l = analyse ~config params l
   in
   let doc = "Analyze the results of provers run previously" in
   let man = [
@@ -351,7 +460,7 @@ let analyze_term =
     `P "Analyse the prover's results and prints statistics about them.
         TODO: more detailed explication.";
   ] in
-  Term.(pure aux $ config_term $ use_time $ filter $ args),
+  Term.(pure aux $ config_term $ analyze_params_term $ args_term),
   Term.info ~man ~doc "analyse"
 
 let run_term =
@@ -393,6 +502,20 @@ let list_term =
   Term.(pure aux $ config_term),
   Term.info ~man ~doc "list"
 
+let plot_term =
+  let open Cmdliner in
+  let aux config params args = plot ~config params args in
+  let doc = "Plot graphs of prover's statistics" in
+  let man = [
+    `S "DESCRIPTION";
+    `P "This tools takes results files from runs of '$(b,frogmap)' and plots graphs
+        about the prover's statistics.";
+    `S "OPTIONS";
+    `S FrogPlot.graph_section;
+  ] in
+  Term.(pure aux $ config_term $ plot_params_term $ args_term),
+  Term.info ~man ~doc "plot"
+
 let help_term =
   let open Cmdliner in
   let doc = "Offers various utilities to test automated theorem provers." in
@@ -420,7 +543,7 @@ let help_term =
   Term.info ~version:"dev" ~man ~doc "frogtptp"
 
 let () =
-  match Cmdliner.Term.eval_choice help_term [run_term;list_term;analyze_term; FrogPlot.term] with
+  match Cmdliner.Term.eval_choice help_term [ run_term; list_term; analyze_term; plot_term] with
   | `Version | `Help | `Error `Parse | `Error `Term | `Error `Exn -> exit 2
   | `Ok () -> ()
 

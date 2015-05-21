@@ -4,12 +4,6 @@ module St = FrogMapState
 module Conf = FrogConfig
 module Prover = FrogTPTP.Prover
 
-module Opt = struct
-  let (>>=) o f = match o with
-    | None -> None
-    | Some x -> f x
-end
-
 (* Colors *)
 exception Unknown_color
 
@@ -74,15 +68,35 @@ let mk_tics axis =
 
 type graph_config = {
   style : [ `Lines | `Linesmarkers of string | `Markers of string ];
-  count : int;
-  filter : int;
   x_axis : axis_config;
   y_axis : axis_config;
   colors : color_list;
 }
 
-let mk_graph_config x_axis y_axis style count filter colors =
-  { style; count; filter; x_axis; y_axis; colors = mk_color_list colors }
+let mk_graph_config x_axis y_axis style colors =
+  { style; x_axis; y_axis; colors = mk_color_list colors }
+
+type drawer = graph_config -> A.Viewport.t -> unit
+
+let list l config v = List.iter (fun f -> f config v) l
+
+let print_labels config v =
+  A.Viewport.xlabel v config.x_axis.legend;
+  A.Viewport.ylabel v config.y_axis.legend
+
+let print_axes config v =
+  A.Axes.x ~grid:config.x_axis.grid ~tics:(mk_tics config.x_axis) v;
+  A.Axes.y ~grid:config.y_axis.grid ~tics:(mk_tics config.y_axis) v
+
+let draw_on_graph config format filename draw =
+  let v = A.init ["Cairo"; format; filename] in
+  let c = A.Viewport.get_color v in
+  let () = draw config v in
+  A.Viewport.set_color v c;
+  print_labels config v;
+  print_axes config v;
+  A.show v;
+  A.close v
 
 (* Misc functions *)
 let fold_sum l =
@@ -102,20 +116,18 @@ let ksplit n l =
 
 let add_index l = List.mapi (fun i v -> (i, v)) l
 
-let filter k n l =
+let list_filter k n l =
   let rec aux acc = function
     | [] -> List.rev acc
-    | (k, x) :: r when k mod n = 0 ->
-      aux ((k, x) :: acc) r
+    | (i, x) :: r when i mod n = 0 ->
+      aux ((i, x) :: acc) r
     | _ :: r -> aux acc r
   in
   let l, l' = ksplit k (List.rev l) in
   List.rev_append (aux [] l') l
 
-(** Plotting functions *)
-let print_time config v (l, name) =
-  let l = add_index (fold_sum (List.sort compare l)) in
-  let l = List.map (fun (i, v) -> (float_of_int i, v)) (filter config.count config.filter l) in
+(** Available drawers  *)
+let draw_floats (l, name) config v =
   let n, last =
     try
       List.hd (List.rev l)
@@ -126,52 +138,20 @@ let print_time config v (l, name) =
   A.List.xy_pairs ~style:config.style v l;
   A.Viewport.text v (n +. 5.) last ~pos:A.Backend.RT name
 
-let print_labels config v =
-  A.Viewport.xlabel v config.x_axis.legend;
-  A.Viewport.ylabel v config.y_axis.legend
+let float_list ?(sort=false) (l, name) =
+  let l = if sort then List.sort compare l else l in
+  let l = List.map (fun (i, v) -> (float_of_int i, v)) (add_index l) in
+  draw_floats (l, name)
 
-let print_axes config v =
-  A.Axes.x ~grid:config.x_axis.grid ~tics:(mk_tics config.x_axis) v;
-  A.Axes.y ~grid:config.y_axis.grid ~tics:(mk_tics config.y_axis) v
-
-let draw_graph config format filename args =
-  let v = A.init ["Cairo"; format; filename] in
-  let c = A.Viewport.get_color v in
-  List.iter (print_time config v) args;
-  A.Viewport.set_color v c;
-  print_labels config v;
-  print_axes config v;
-  A.show v;
-  A.close v
-
-(** Analysing functions *)
-let compile_re ~msg re =
-  try
-    Some (Re.compile (Re.no_case (Re_posix.re re)))
-  with e ->
-    Printf.eprintf "could not compile regex %s: %s"
-      msg (Printexc.to_string e);
-    None
-
-let matches maybe_re s = match maybe_re with
-  | None -> false
-  | Some re -> Re.execp re s
-
-let unsat_times (prover, file) =
-  let re_unsat = Opt.(prover.Prover.unsat >>= compile_re ~msg:"unsat") in
-  St.fold_state
-    (fun acc { St.res_utime = t; St.res_out = out; _ } ->
-       if matches re_unsat out then t :: acc else acc)
-    (fun _ -> []) file
+let float_sum ?(filter=3) ?(count=5) ?(sort=true) (l, name) =
+  let l = if sort then List.sort compare l else l in
+  let l = fold_sum l in
+  let l = add_index l in
+  let l = list_filter count filter l in
+  let l = List.map (fun (i, v) -> (float_of_int i, v)) l in
+  draw_floats (l, name)
 
 (** Commands *)
-let main graph_config config_files format out args =
-  let config = Conf.parse_files (Conf.interpolate_home "$HOME/.frogtptp.toml" :: config_files) Conf.empty in
-  let provers, names = List.split (List.map (fun (s, f) -> (Prover.find_config config s, f), s) args) in
-  let times = Lwt_main.run (Lwt_list.map_s unsat_times provers) in
-  let l = List.combine times names in
-  draw_graph graph_config format out l
-
 let config_file =
   let parse s =
     let f = Conf.interpolate_home s in
@@ -200,11 +180,11 @@ let style =
   in
   parse, print
 
-let axis_sect = "AXIS OPTIONS"
+let graph_section = "GRAPH OPTIONS"
 
 let axis_args axis_name dist label =
   let open Cmdliner in
-  let docs = axis_sect in
+  let docs = graph_section in
   let oname s = axis_name ^ "." ^ s in
   let show =
     let doc = "Wether to show draw the axis" in
@@ -235,49 +215,16 @@ let axis_args axis_name dist label =
 
 let graph_args =
   let open Cmdliner in
-  let x_axis = axis_args "x" 100. "Number of problems proved" in
-  let y_axis = axis_args "y" 200. "Cumulative time (in seconds)" in
+  let docs = graph_section in
+  let x_axis = axis_args "x" 100. "Number of Proved Problems" in
+  let y_axis = axis_args "y" 200. "Cumulative Time (in Seconds)" in
   let mark =
     let doc = "Style to use for plotting" in
-    Arg.(value & opt style (`Markers "+") & info ["s"; "style"] ~doc)
-  in
-  let filter =
-    let doc = "Set if you want to filter the list of points drawed. One in every $(docv) point is drawn." in
-    Arg.(value & opt int 3 & info ["f"; "filter"]  ~docv:"N" ~doc)
-  in
-  let last =
-    let doc = "Prevents the last $(docv) points from begin filtered by the 'filter' option" in
-    Arg.(value & opt int 10 & info ["l"; "last"] ~docv:"N" ~doc)
+    Arg.(value & opt style (`Markers "+") & info ["s"; "style"] ~doc ~docs)
   in
   let colors =
     let doc = "List of colors to use while drawing the graphs" in
-    Arg.(value & opt (list color_conv) A.Color.([blue; red; green; magenta; cyan]) & info ["colors"] ~docv:"COLORS" ~doc)
+    Arg.(value & opt (list color_conv) A.Color.([blue; red; green; magenta; cyan]) & info ["colors"] ~docv:"COLORS" ~doc ~docs)
   in
-  Term.(pure mk_graph_config $ x_axis $ y_axis $ mark $ last $ filter $ colors)
-
-let term =
-  let open Cmdliner in
-  let config =
-    let doc = "Config file" in
-    Arg.(value & opt_all config_file [] & info ["c"; "config"] ~docv:"FILE" ~doc)
-  in
-  let args =
-    let doc = "Pairs of provers and result files." in
-    Arg.(non_empty & pos_all (pair ~sep:'=' string non_dir_file) [] & info [] ~docv:"PROVER=FILE" ~doc)
-  in
-  let format =
-    let doc = "Format of the output file" in
-    Arg.(value & opt string "PNG" & info ["f"; "format"] ~doc)
-  in
-  let out =
-    let doc = "Output file" in
-    Arg.(required & opt (some string) None & info ["o"; "out"] ~doc)
-  in
-  let doc = "Draw cumulative time graph of provers." in
-  let man = [
-    `S "OPTIONS";
-    `S axis_sect; `P "Options for the drawing of axes.";
-  ] in
-  Term.(pure main $ graph_args $ config $ format $ out $ args),
-  Term.info ~man ~doc "plot"
+  Term.(pure mk_graph_config $ x_axis $ y_axis $ mark $ colors)
 
