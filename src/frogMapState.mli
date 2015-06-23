@@ -29,20 +29,20 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 (** {2 Types} *)
 
 type job = {
-  cmd       [@key "cmd"]        : string;
-  arguments [@key "arguments"]  : string list;
-  cwd       [@key "cwd"]        : string;
+  cmd        : string [@key "cmd"];
+  arguments  : string list [@key "arguments"];
+  cwd        : string [@key "cwd"];
 } [@@deriving yojson,show]
 (** Description of a job *)
 
 type result = {
-  res_arg     [@key "arg"]     : string;
-  res_rtime   [@key "time"]    : float;
-  res_utime   [@key "utime"]   : float [@default 0.];
-  res_stime   [@key "stime"]   : float [@default 0.];
-  res_errcode [@key "errcode"] : int;
-  res_out     [@key "stdout"]  : string;
-  res_err     [@key "stderr"]  : string;
+  res_arg     : string [@key "arg"];
+  res_rtime   : float [@key "time"];
+  res_utime   : float [@default 0.] [@key "utime"];
+  res_stime   : float [@default 0.] [@key "stime"];
+  res_errcode : int [@key "errcode"];
+  res_out     : string [@key "stdout"];
+  res_err     : string [@key "stderr"];
 } [@@deriving yojson {strict=false},show]
 (** Result of running the command on one argument *)
 

@@ -34,43 +34,43 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     The flag [{strict=false}] ensures backward compatibility (new client, old server).
 *)
 type job = {
-  info        [@key "info"] : string option;
-  user        [@key "user"] : string option;
-  priority    [@key "priority"] : int [@default 10];
-  query_time  [@key "query_time"] : float; (* time at which the query was issued *)
-  cwd         [@key "cwd"] : string option; (* working dir *)
-  tags        [@key "tags"] : string list;
-  pid         [@key "pid"] : int;
-  cores       [@key "cores"] : int [@default 0];
+  info        : string option [@key "info"];
+  user        : string option [@key "user"];
+  priority    : int [@default 10] [@key "priority"];
+  query_time  : float [@key "query_time"]; (* time at which the query was issued *)
+  cwd         : string option [@key "cwd"]; (* working dir *)
+  tags        : string list [@key "tags"];
+  pid         : int [@key "pid"];
+  cores       : int [@default 0] [@key "cores"];
 }
 [@@deriving yojson {strict=false},show]
 
 type current_job = {
-  current_id    [@key "id"] : int;
-  current_job   [@key "job"] : job;
-  current_start [@key "start"] : float;  (* time at which task started *)
+  current_id    : int [@key "id"];
+  current_job   : job [@key "job"];
+  current_start : float [@key "start"];  (* time at which task started *)
 } [@@deriving yojson,show]
 
 type waiting_job = {
-  waiting_id    [@key "id"] : int;
-  waiting_job   [@key "job"] : job;
+  waiting_id    : int [@key "id"];
+  waiting_job   : job [@key "job"];
 } [@@deriving yojson, show]
 
 type status_answer = {
-  max_cores [@key "cores"] : int;
-  current [@key "current"] : current_job list;
-  waiting [@key "waiting"] : waiting_job list;
+  max_cores : int [@key "cores"];
+  current : current_job list [@key "current"];
+  waiting : waiting_job list [@key "waiting"];
 } [@@deriving yojson,show]
 
 type t =
-  | Start         [@name "start"]
-  | End           [@name "end"]
-  | Acquire       [@name "acquire"] of job
-  | Go            [@name "go"]
-  | Release       [@name "release"]
-  | Reject        [@name "reject"]
-  | Status        [@name "status"]
-  | StatusAnswer  [@name "statusanswer"] of status_answer
+  | Start [@name "start"]
+  | End [@name "end"]
+  | Acquire of job [@name "acquire"]
+  | Go [@name "go"]
+  | Release [@name "release"]
+  | Reject [@name "reject"]
+  | Status [@name "status"]
+  | StatusAnswer  of status_answer [@name "statusanswer"]
   | StopAccepting [@name "stopaccepting"] (* from now on, no more accepts *)
   [@@deriving yojson, show]
 
