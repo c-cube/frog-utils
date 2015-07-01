@@ -197,7 +197,8 @@ let common_opts =
     Arg.(value & opt int 10 & info ["prio"] ~docv:"PRIO" ~doc)
   in
   let cores =
-    let doc = "Number of cores to lock fro this task (default= all)." in
+    let doc = "Number of cores to lock for this task. If set to 0, then the
+               task will lock all the cores." in
     Arg.(value & opt int 0 & info["j"; "cores"] ~docv:"CORES" ~doc)
   in
   Term.(pure aux $ port $ debug $ tags $ prio $ cores)
@@ -270,6 +271,11 @@ let term =
         executed through this tool will run at the same time. The daemon listens on a specific
         port, which can be specified in the options. If no daemon listens on the given port,
         one will be automatically launched.";
+    `S "CONFIGURATION FILE";
+    `P "Froglock uses a global configuration file located at $(b,/etc/froglock.conf). It should be composed
+        of a line for each parameter to be set, of the form: 'parameter = value'. Currently accepted parameters are
+        the following.";
+    `I ("$(b,cores)", "maximum number of cores to use at any given time");
   ] in
   Term.(pure main $ (common_opts $ (pure aux $ shell $ cmd))),
   Term.info ~man ~doc "froglock"
