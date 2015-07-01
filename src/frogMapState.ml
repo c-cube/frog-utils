@@ -38,8 +38,8 @@ type job = {
 type result = {
   res_arg     : string [@key "arg"];
   res_rtime   : float [@key "time"];
-  res_utime   : float [@default 0.] [@key "utime"];
-  res_stime   : float [@default 0.] [@key "stime"];
+  res_utime   : (float [@default 0.]) [@key "utime"];
+  res_stime   : (float [@default 0.]) [@key "stime"];
   res_errcode : int [@key "errcode"];
   res_out     : string [@key "stdout"];
   res_err     : string [@key "stderr"];
