@@ -146,3 +146,13 @@ let read_state filename =
     (fun job -> job, StrMap.empty)
     filename
 
+let write_state filename (job, res_map) =
+  Lwt_io.with_file ~flags:[Unix.O_CREAT; Unix.O_WRONLY]
+    ~perm:0o644 ~mode:Lwt_io.output
+    filename
+    (fun oc ->
+      let%lwt () = print_job oc job in
+      Lwt_list.iter_p (fun (_, res) -> add_res oc res) (StrMap.bindings res_map)
+    )
+
+
