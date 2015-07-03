@@ -354,7 +354,10 @@ let args_term =
 let config_term =
   let open Cmdliner in
   let aux config debug =
-    if debug then FrogDebug.set_debug true;
+    if debug then begin
+      FrogDebug.set_debug true;
+      Printexc.record_backtrace true
+    end;
     try
       `Ok (FrogConfig.parse_files config FrogConfig.empty)
     with FrogConfig.Error msg ->
