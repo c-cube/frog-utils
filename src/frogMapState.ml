@@ -152,7 +152,10 @@ let write_state filename (job, res_map) =
     filename
     (fun oc ->
       let%lwt () = print_job oc job in
-      Lwt_list.iter_p (fun (_, res) -> add_res oc res) (StrMap.bindings res_map)
+      let%lwt () = Lwt_list.iter_p
+        (fun (_, res) -> add_res oc res)
+        (StrMap.bindings res_map) in
+      Lwt_io.flush oc
     )
 
 
