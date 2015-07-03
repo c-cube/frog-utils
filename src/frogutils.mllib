@@ -5,3 +5,6 @@ FrogMapState
 FrogConfig
 FrogTPTP
 FrogDebug
+FrogPlot
+FrogHeap
+FrogPrintBox
