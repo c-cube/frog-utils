@@ -22,7 +22,7 @@ depends: [
     "re"
     "ppx_deriving"
     "ppx_deriving_yojson"
-    "cairo"
+    "cairo2"
     "archimedes"
     "cmdliner"
 ]
