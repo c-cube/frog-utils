@@ -30,7 +30,7 @@ module StrMap = Map.Make(String)
 module St = FrogMapState
 module Prover = FrogTPTP.Prover
 module Conf = FrogConfig
-module PB = PrintBox
+module PB = FrogPrintBox
 
 (** Type Definitions *)
 (* TODO: have a module to define times and operations on them ? *)

@@ -38,8 +38,8 @@ type job = {
 type result = {
   res_arg     : string [@key "arg"];
   res_rtime   : float [@key "time"];
-  res_utime   : float [@default 0.] [@key "utime"];
-  res_stime   : float [@default 0.] [@key "stime"];
+  res_utime   : (float [@default 0.]) [@key "utime"];
+  res_stime   : (float [@default 0.]) [@key "stime"];
   res_errcode : int [@key "errcode"];
   res_out     : string [@key "stdout"];
   res_err     : string [@key "stderr"];
@@ -87,3 +87,7 @@ val read_state : string -> (job * result StrMap.t) Lwt.t
 (** [read_state filename] opens [filename], and collects its results into
     an arg-indexed map. It also returns the corresponding job.
     @raise Failure if filename is not a proper job file *)
+
+val write_state : string -> (job * result StrMap.t) -> unit Lwt.t
+(** [write_state filename (job,res)] writes the result into the file,
+    creating it if it didn't exist, overwriting it otherwise *)
