@@ -38,7 +38,7 @@ install_man: all
 		./$$b --help=groff > $(MANDIR)/man1/$$( basename $$b .native ).1 || true; \
 	done
 
-install: install_bin install_lib install_man
+install: install_lib install_bin install_man
 
 uninstall:
 	ocamlfind remove frogutils
