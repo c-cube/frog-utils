@@ -25,10 +25,22 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 let () = Random.self_init ()
 
-type limiter = int -> unit
+type 'a limit = {
+  value : 'a;
+  enforce : handle -> unit;
+  disable : handle -> unit;
+}
 
-let apply limiters pid =
-  List.iter (fun f -> f pid) limiters
+and handle = {
+  main_pid : int;
+  memory_cgroup : Cgroups.Hierarchy.cgroup;
+  cpuacct_cgroup : Cgroups.Hierarchy.cgroup;
+
+  (* Ressource limits *)
+  mutable mem_limit : int limit;
+  mutable cpu_limit : float limit;
+  mutable time_limit : float limit;
+}
 
 (* Cgroup management *)
 let random_name ?(length=7) base =
@@ -44,23 +56,46 @@ let rec new_cgroup parent =
   else
     Cgroups.Hierarchy.mk_sub parent s 0o777
 
+let find_root subsystem name =
+  Cgroups.Hierarchy.find_exn (Format.sprintf "%s:%s" subsystem name)
+
+let dummy_limit value = { value; enforce = (fun _ -> ()); disable = (fun _ -> ()); }
+
+let make_handle
+    ?(mem_limit = dummy_limit 0)
+    ?(cpu_limit = dummy_limit 0.)
+    ?(time_limit = dummy_limit 0.)
+    root main_pid =
+  let memory_cgroup = new_cgroup (find_root "memory" root) in
+  let cpuacct_cgroup = new_cgroup (find_root "cpuacct" root) in
+  Cgroups.Hierarchy.add_process memory_cgroup main_pid;
+  Cgroups.Hierarchy.add_process cpuacct_cgroup main_pid;
+  { main_pid; memory_cgroup; cpuacct_cgroup;
+    mem_limit; cpu_limit; time_limit; }
+
 (* Memory management *)
-let limit_mem cgroup_name limit pid =
-  let parent = Cgroups.Hierarchy.find_exn (
-      Format.sprintf "memory:%s" cgroup_name) in
-  let g = new_cgroup parent in
-  let open Cgroups.Subsystem in
-  Param.set Memory.limit_in_bytes g limit;
-  Cgroups.Hierarchy.add_process g pid
+let mem_limit limit =
+  let open Cgroups.Subsystem in {
+  value = limit;
+  enforce = (fun handle -> Param.set Memory.limit_in_bytes handle.memory_cgroup limit);
+  disable = (fun handle -> Param.set Memory.limit_in_bytes handle.memory_cgroup 0);
+}
 
 (* Real time management *)
-let limit_real_time limit pid =
-  let _ = Lwt_engine.on_timer limit false (fun _ ->
-      Unix.kill pid Sys.sigalrm) in
-  let _ = Lwt_engine.on_timer (limit +. 1.) false (fun _ ->
-      Unix.kill pid Sys.sigkill) in
-  ()
-
+let real_time_limit limit =
+  let soft_alarm, hard_alarm = ref None, ref None in
+  {
+  value = limit;
+  enforce = (fun handle ->
+      soft_alarm := Some (Lwt_engine.on_timer limit false (fun _ ->
+          Unix.kill handle.main_pid Sys.sigalrm));
+      hard_alarm := Some (Lwt_engine.on_timer (limit +. 1.) false (fun _ ->
+          Unix.kill handle.main_pid Sys.sigkill)));
+  disable = (fun _ ->
+      Opt.iter Lwt_engine.stop_event !soft_alarm;
+      Opt.iter Lwt_engine.stop_event !hard_alarm);
+  }
+(*
 (* CPU time management *)
 let limit_cpu_time cgroup_name limit pid =
   let parent = Cgroups.Hierarchy.find_exn (
@@ -99,3 +134,5 @@ let spawn limiters f =
 
 let execv ?(limiters=[]) cmd args =
   spawn limiters (fun () -> Unix.execv cmd args)
+
+   *)

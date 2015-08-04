@@ -23,16 +23,5 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *)
 
-type 'a limit
-type handle
 
-val make_handle :
-  ?mem_limit : int limit ->
-  ?cpu_limit : float limit ->
-  ?time_limit : float limit ->
-  string -> int -> handle
-
-val mem_limit : int -> int limit
-
-val dummy_limit : 'a -> 'a limit
-
+let iter f = function Some a -> f a | None -> ()
