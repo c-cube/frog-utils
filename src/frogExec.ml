@@ -142,7 +142,7 @@ let rec new_cgroup parent =
   if List.exists (fun g -> s = Cgroups.Hierarchy.name g) l then
     new_cgroup parent
   else
-    Cgroups.Hierarchy.mk_sub parent s 0o777
+    Cgroups.Hierarchy.make_sub ~perm:0o770 parent s
 
 let find_root subsystem name =
   Cgroups.Hierarchy.find_exn (Format.sprintf "%s:%s" subsystem name)
