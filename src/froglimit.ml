@@ -1,5 +1,5 @@
 (*
-copyright (c) 2013-2014, simon cruanes
+copyright (c) 2013-2015, guillaume bury
 all rights reserved.
 
 redistribution and use in source and binary forms, with or without
@@ -23,22 +23,34 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *)
 
-let () = Random.self_init ()
+let main_config_file = "/etc/froglimit.conf"
 
-let froghop () =
-  print_endline "the frog hops.";
-  Unix.sleep 5;
-  if Random.int 10 = 0
-  then print_endline "the frog is tired"
-  else print_endline "the frog hops again"
+let main _ = ()
+
+let config_term =
+  let open Cmdliner in
+  let aux l =
+    FrogConfig.parse_files l (FrogConfig.parse_or_empty main_config_file)
+  in
+  let config_file =
+    let doc = "Path to configuration file for froglimit" in
+    Arg.(value & opt_all non_dir_file [] & info ["c"; "config"] ~doc)
+  in
+  Term.(pure aux $ config_file)
 
 let term =
-  let doc = "Try it and see what happens !" in
-  Cmdliner.Term.(pure froghop $ pure ()),
-  Cmdliner.Term.info ~doc "froghop"
+  let open Cmdliner in
+  let mem_limit =
+    let doc = "Memory limit" in
+    Arg.(value & opt (some int) None & info ["m"; "memory"] ~doc)
+  in
+  let doc = "Executes given command with limits" in
+  let man = [] in
+  Term.(pure main $ mem_limit),
+  Term.info ~man ~doc "froglimit"
 
 let () =
-  match Cmdliner.Term.eval term with
+  match Cmdliner.Term.eval_choice term [] with
   | `Version | `Help | `Error `Parse | `Error `Term | `Error `Exn -> exit 2
   | `Ok () -> ()
 

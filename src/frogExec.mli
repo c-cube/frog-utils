@@ -23,16 +23,64 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *)
 
-type 'a limit
-type handle
+type handle = {
+  start : float;
+  main_pid : int;
+  memory_cgroup : Cgroups.Hierarchy.cgroup;
+  cpuacct_cgroup : Cgroups.Hierarchy.cgroup;
+}
 
-val make_handle :
-  ?mem_limit : int limit ->
-  ?cpu_limit : float limit ->
-  ?time_limit : float limit ->
-  string -> int -> handle
+val spawn : f:(handle -> 'a) -> string -> (unit -> 'b) -> 'a
 
-val mem_limit : int -> int limit
+val mk_limits : ?mem_limit:int -> ?time_limit:float -> ?cpu_limit:float -> handle -> unit
 
-val dummy_limit : 'a -> 'a limit
+class virtual ['a, 'b] limit :
+  'a -> handle ->
+  object
+    val handle : handle
+    val mutable value : 'a
+    method private virtual disable : unit
+    method private virtual enable : unit
+    method set : 'a -> unit
+    method virtual stats : 'b
+    method value : 'a
+  end
+
+class memory_limit :
+  handle ->
+  object
+    val handle : handle
+    val mutable value : int
+    method private disable : unit
+    method private enable : unit
+    method set : int -> unit
+    method stats : unit
+    method value : int
+  end
+
+class real_time_limit :
+  handle ->
+  object
+    val mutable alarm : (Lwt_engine.event * Lwt_engine.event) option
+    val handle : handle
+    val mutable value : float
+    method disable : unit
+    method enable : unit
+    method set : float -> unit
+    method stats : float
+    method value : float
+  end
+
+class cpu_time_limit :
+  handle ->
+  object
+    val mutable event : Lwt_engine.event option
+    val handle : handle
+    val mutable value : float
+    method disable : unit
+    method enable : unit
+    method set : float -> unit
+    method stats : unit
+    method value : float
+  end
 

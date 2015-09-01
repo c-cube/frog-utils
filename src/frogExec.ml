@@ -23,26 +23,114 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *)
 
-let () = Random.self_init ()
-
-type 'a limit = {
-  value : 'a;
-  enforce : handle -> unit;
-  disable : handle -> unit;
-}
-
-and handle = {
+(* Pid/cgroup infos *)
+type handle = {
+  start : float;
   main_pid : int;
   memory_cgroup : Cgroups.Hierarchy.cgroup;
   cpuacct_cgroup : Cgroups.Hierarchy.cgroup;
-
-  (* Ressource limits *)
-  mutable mem_limit : int limit;
-  mutable cpu_limit : float limit;
-  mutable time_limit : float limit;
 }
 
+(* Limits *)
+class virtual ['a, 'b] limit value handle = object(self)
+
+  val handle : handle = handle
+  val mutable value : 'a = value
+
+  method value = value
+  method virtual stats : 'b
+
+  method virtual private enable : unit
+  method virtual private disable : unit
+
+  method set v =
+    self#disable;
+    value <- v;
+    self#enable
+
+end
+
+(* Memory management *)
+class memory_limit info = object
+  inherit [int, unit] limit 0 info as super
+
+  method private stats = ()
+
+  method private enable = ()
+  method private disable = ()
+
+  method! set v =
+    super#set v;
+    let open Cgroups.Subsystem in
+    Param.set Memory.limit_in_bytes info.memory_cgroup v
+
+end
+
+(* Real time management *)
+class real_time_limit info = object(self)
+  inherit [float, float] limit 0. info
+
+  val mutable alarm = None
+
+  method stats = Unix.gettimeofday () -. info.start
+
+  method disable =
+    match alarm with
+    | Some (soft, hard) ->
+      Lwt_engine.stop_event soft;
+      Lwt_engine.stop_event hard;
+      alarm <- None
+    | None -> ()
+
+  method enable =
+    let time = value -. self#stats in
+    alarm <- Some (
+        (Lwt_engine.on_timer time false (fun _ ->
+             Unix.kill info.main_pid Sys.sigalrm)),
+        (Lwt_engine.on_timer (time +. 1.) false (fun _ ->
+             Unix.kill info.main_pid Sys.sigkill))
+      )
+
+end
+
+(* CPU time management *)
+class cpu_time_limit info = object(self)
+  inherit [float, unit] limit 0. info
+
+  val mutable event = None
+
+  method stats = ()
+
+  method enable =
+    let n = List.length (Cgroups.Subsystem.Param.get Cgroups.Subsystem.Cpuacct.usage_percpu info.cpuacct_cgroup) in
+    let max_speed = float_of_int n +. 1. in
+    let rec aux _ =
+      if List.mem info.main_pid (Cgroups.Hierarchy.processes info.cpuacct_cgroup) then begin
+        let limit = self#value in
+        let t = Cgroups.Subsystem.Param.get Cgroups.Subsystem.Cpuacct.usage info.cpuacct_cgroup in
+        let t_s = float_of_int t /. 1_000_000_000. in
+        if t_s > limit +. 1. then
+          Unix.kill info.main_pid Sys.sigkill
+        else begin
+          if t_s > limit then (* Unix.kill pid Sys.sigxcpu *) ();
+          let delay = (limit -. t_s) /. max_speed in
+          let wait = max 0.1 delay in
+          event <- Some (Lwt_engine.on_timer wait false aux)
+        end
+      end
+    in
+    aux Lwt_engine.fake_event
+
+  method disable =
+    match event with
+    | Some ev -> Lwt_engine.stop_event ev; event <- None
+    | None -> ()
+
+end
+
 (* Cgroup management *)
+let () = Random.self_init ()
+
 let random_name ?(length=7) base =
   let s = String.init length (fun _ ->
       char_of_int (int_of_char '0' + Random.int 10)) in
@@ -59,80 +147,47 @@ let rec new_cgroup parent =
 let find_root subsystem name =
   Cgroups.Hierarchy.find_exn (Format.sprintf "%s:%s" subsystem name)
 
-let dummy_limit value = { value; enforce = (fun _ -> ()); disable = (fun _ -> ()); }
-
-let make_handle
-    ?(mem_limit = dummy_limit 0)
-    ?(cpu_limit = dummy_limit 0.)
-    ?(time_limit = dummy_limit 0.)
-    root main_pid =
+(* Handle creation *)
+let make_handle root main_pid =
   let memory_cgroup = new_cgroup (find_root "memory" root) in
   let cpuacct_cgroup = new_cgroup (find_root "cpuacct" root) in
   Cgroups.Hierarchy.add_process memory_cgroup main_pid;
   Cgroups.Hierarchy.add_process cpuacct_cgroup main_pid;
-  { main_pid; memory_cgroup; cpuacct_cgroup;
-    mem_limit; cpu_limit; time_limit; }
-
-(* Memory management *)
-let mem_limit limit =
-  let open Cgroups.Subsystem in {
-  value = limit;
-  enforce = (fun handle -> Param.set Memory.limit_in_bytes handle.memory_cgroup limit);
-  disable = (fun handle -> Param.set Memory.limit_in_bytes handle.memory_cgroup 0);
-}
-
-(* Real time management *)
-let real_time_limit limit =
-  let soft_alarm, hard_alarm = ref None, ref None in
-  {
-  value = limit;
-  enforce = (fun handle ->
-      soft_alarm := Some (Lwt_engine.on_timer limit false (fun _ ->
-          Unix.kill handle.main_pid Sys.sigalrm));
-      hard_alarm := Some (Lwt_engine.on_timer (limit +. 1.) false (fun _ ->
-          Unix.kill handle.main_pid Sys.sigkill)));
-  disable = (fun _ ->
-      Opt.iter Lwt_engine.stop_event !soft_alarm;
-      Opt.iter Lwt_engine.stop_event !hard_alarm);
-  }
-(*
-(* CPU time management *)
-let limit_cpu_time cgroup_name limit pid =
-  let parent = Cgroups.Hierarchy.find_exn (
-      Format.asprintf "cpuacct:%s" cgroup_name) in
-  let g = new_cgroup parent in
-  Cgroups.Hierarchy.add_process g pid;
-  let n = List.length (Cgroups.Subsystem.Param.get Cgroups.Subsystem.Cpuacct.usage_percpu g) in
-  let max_speed = float_of_int n +. 1. in
-  let rec aux _ =
-    if List.mem pid (Cgroups.Hierarchy.processes g) then begin
-      let t = Cgroups.Subsystem.Param.get Cgroups.Subsystem.Cpuacct.usage g in
-      let t_s = float_of_int t /. 1_000_000_000. in
-      if t_s > limit +. 1. then
-        Unix.kill pid Sys.sigkill
-      else begin
-        if t_s > limit then (* Unix.kill pid Sys.sigxcpu *) ();
-        let delay = (limit -. t_s) /. max_speed in
-        let wait = max 0.1 delay in
-        ignore (Lwt_engine.on_timer wait false aux)
-      end
-    end
-  in
-  aux Lwt_engine.fake_event
+  let start = Unix.gettimeofday () in
+  { start; main_pid; memory_cgroup; cpuacct_cgroup; }
 
 (* Spawning with limits *)
-let spawn limiters f =
+let spawn ~f root todo =
   match Unix.fork () with
   | 0 ->
-    Sys.set_signal Sys.sigusr1 (Sys.Signal_handle (fun _ -> ignore (f ())));
-    Unix.sleep 1; f ()
+    begin try
+        Sys.set_signal Sys.sigusr1 (Sys.Signal_handle (fun _ ->
+            ignore (todo ());
+            exit 0
+          ));
+        Unix.sleep 1;
+        assert false
+      with _ -> exit 0
+    end
   | pid ->
-    apply limiters pid;
+    let h = make_handle root pid in
+    let res = f h in
     Unix.kill pid Sys.sigusr1;
-    let _, res = Unix.waitpid [] pid in
     res
 
-let execv ?(limiters=[]) cmd args =
-  spawn limiters (fun () -> Unix.execv cmd args)
-
-   *)
+let mk_limits
+    ?mem_limit
+    ?time_limit
+    ?cpu_limit
+    handle =
+  let iter f = function Some a -> f a | None -> () in
+  let _ =
+    let m = new memory_limit handle in
+    iter m#set mem_limit in
+  let _ =
+    let m = new real_time_limit handle in
+    iter m#set time_limit in
+  let _ =
+    let m = new cpu_time_limit handle in
+    iter m#set cpu_limit in
+  ()
