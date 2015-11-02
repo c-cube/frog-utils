@@ -20,7 +20,7 @@ val float_sum :
     [~filter:k] : prints only one every [k] points.
     [~count:n] : prints the last [n] points regardless of [~filter]. *)
 
-val draw_on_graph : graph_config -> string -> string -> drawer -> unit
+val draw_on_graph : graph_config -> fmt:string -> file:string -> drawer -> unit
 (** [draw_on_graph config format filename f] outputs a graph to the given format
     in the given filename. Axes and labels are drawn according to the configuration provided.
     The function [f] is used to draw user-defined content on the graph *)

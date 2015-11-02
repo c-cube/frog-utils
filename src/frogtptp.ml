@@ -299,7 +299,11 @@ let plot ~config params l =
     | Cumul (sort, filter, count) -> FrogPlot.float_sum ~sort ~filter ~count
   in
   let drawer = FrogPlot.list @@ List.map single_drawer datas in
-  FrogPlot.draw_on_graph params.graph params.out_format params.out_file drawer
+  FrogPlot.draw_on_graph
+    params.graph
+    ~fmt:params.out_format
+    ~file:params.out_file
+    drawer
 
 (* print list of known provers *)
 let list_provers ~config =

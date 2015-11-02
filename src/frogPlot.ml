@@ -88,8 +88,8 @@ let print_axes config v =
   A.Axes.x ~grid:config.x_axis.grid ~tics:(mk_tics config.x_axis) v;
   A.Axes.y ~grid:config.y_axis.grid ~tics:(mk_tics config.y_axis) v
 
-let draw_on_graph config format filename draw =
-  let v = A.init ["Cairo"; format; filename] in
+let draw_on_graph config ~fmt:format ~file draw =
+  let v = A.init ["Cairo"; format; file] in
   let c = A.Viewport.get_color v in
   let () = draw config v in
   A.Viewport.set_color v c;
@@ -106,6 +106,7 @@ let fold_sum l =
   in
   aux [] 0. l
 
+(* split [l] after [n] elements *)
 let ksplit n l =
   let rec aux acc k = function
     | [] -> acc, []
@@ -116,6 +117,7 @@ let ksplit n l =
 
 let add_index l = List.mapi (fun i v -> (i, v)) l
 
+(* TODO: comment *)
 let list_filter k n l =
   let rec aux acc = function
     | [] -> List.rev acc
@@ -128,11 +130,9 @@ let list_filter k n l =
 
 (** Available drawers  *)
 let draw_floats (l, name) config v =
-  let n, last =
-    try
-      List.hd (List.rev l)
-    with Failure "hd" ->
-      0., 0.
+  let n, last = match List.rev l with
+    | x :: _ -> x
+    | [] -> 0. , 0.
   in
   A.Viewport.set_color v (next_color config.colors);
   A.List.xy_pairs ~style:config.style v l;
@@ -150,21 +150,6 @@ let float_sum ?(filter=3) ?(count=5) ?(sort=true) (l, name) =
   let l = list_filter count filter l in
   let l = List.map (fun (i, v) -> (float_of_int i, v)) l in
   draw_floats (l, name)
-
-(** Commands *)
-let config_file =
-  let parse s =
-    let f = Conf.interpolate_home s in
-    if Sys.file_exists f then
-      if not (Sys.is_directory f) then
-        `Ok f
-      else
-        `Error (f ^ " is a directory, not a file")
-    else
-      `Error (f ^ " is not a valid file")
-  in
-  let print fmt s = Format.fprintf fmt "%s" s in
-  parse, print
 
 let style =
   let parse s =
