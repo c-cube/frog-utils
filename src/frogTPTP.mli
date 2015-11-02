@@ -45,12 +45,12 @@ module Prover : sig
 end
 
 val run_exec : ?timeout:int -> ?memory:int -> config:FrogConfig.t ->
-               string -> string -> 'a
-(** [run_exec ~config prover file] runs the prover named [prover] on the
+               prover:string -> file:string -> unit -> 'a
+(** [run_exec ~config ~prover ~file ()] runs the prover named [prover] on the
     given [file]. How to run the prover is provided by [config].
     This uses {!Unix.execv} and therefore doesn't return. *)
 
 val run_cmd :?timeout:int -> ?memory:int -> config:FrogConfig.t ->
-               string -> string -> (string * string array)
+               prover:string -> file:string -> (string * string array)
 (** Same as {!run_exec}, but rather than executing the command, only
     returns a pair [(command, args)] that can be executed (starts with "sh") *)

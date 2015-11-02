@@ -95,8 +95,8 @@ module Prover = struct
       ) StrMap.empty provers
 end
 
-let run_cmd ?timeout ?memory ~config prog file =
-  let p = Prover.find_config config prog in
+let run_cmd ?timeout ?memory ~config ~prover ~file =
+  let p = Prover.find_config config prover in
   let tptp = match Conf.get_string ~default:"" config "TPTP" with
     | "" -> None
     | s -> Some s
@@ -115,6 +115,6 @@ let run_cmd ?timeout ?memory ~config prog file =
   let cmd = ["/bin/sh"; "-c"; cmd] in
   "/bin/sh", Array.of_list cmd
 
-let run_exec ?timeout ?memory ~config prog file =
-  let cmd, args = run_cmd ?timeout ?memory ~config prog file in
+let run_exec ?timeout ?memory ~config ~prover ~file () =
+  let cmd, args = run_cmd ?timeout ?memory ~config ~prover ~file in
   Unix.execv cmd args

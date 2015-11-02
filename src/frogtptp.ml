@@ -476,7 +476,7 @@ let run_term =
     FrogTPTP.run_exec
       ?timeout:params.timeout
       ?memory:params.memory
-      ~config cmd (String.concat " " args)
+      ~config ~prover:cmd ~file:(String.concat " " args) ()
   in
   let cmd =
     let doc = "Prover to be run" in
