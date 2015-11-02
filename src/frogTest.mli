@@ -65,10 +65,11 @@ module Config : sig
   type t = {
     j: int; (* number of concurrent processes *)
     timeout: int; (* timeout for each problem *)
+    problem_pat: Re.re; (* regex for problems *)
     prover: Prover.t;
   }
 
-  val make: ?j:int -> ?timeout:int -> prover:Prover.t -> unit -> t
+  val make: ?j:int -> ?timeout:int -> pat:Re.re -> prover:Prover.t -> unit -> t
   val of_file : string -> t or_error
 end
 

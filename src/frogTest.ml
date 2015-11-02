@@ -39,7 +39,7 @@ module Problem = struct
   let m_unsat_, unsat_ = Re.(str "unsat" |> no_case |> mark)
   let m_sat_, sat_ = Re.(str "sat" |> no_case |> mark)
   let m_unknown_, unknown_ = Re.(str "unknown" |> no_case |> mark)
-  let m_error_, error_ = Re.(str "error" |> no_case |> mark)
+  let m_error_, error_ = Re.(alt [str "error"; str "fail"] |> no_case |> mark)
 
   let re_unsat_ = Re.compile unsat_
   let re_sat_ = Re.compile sat_
@@ -56,7 +56,7 @@ module Problem = struct
 
   (* "^ #expect: (unsat|sat|unknown|error)", basically *)
   let re_expect_ = Re.(seq
-    [ bol; str "expect:" |> no_case ; rep blank;
+    [ str "expect:" |> no_case ; rep blank;
       alt [unsat_; sat_; unknown_; error_] ]
     |> compile
   )
@@ -76,6 +76,7 @@ module Problem = struct
 
   let make ~file =
     try%lwt
+      FrogDebug.debug "convert %s into problem..." file;
       let%lwt res = find_expected_ ~file in
       let pb = {
         name=file;
@@ -139,21 +140,26 @@ module Config = struct
   type t = {
     j: int; (* number of concurrent processes *)
     timeout: int; (* timeout for each problem *)
+    problem_pat: Re.re; (* regex for problems *)
     prover: Prover.t;
   }
 
-  let make ?(j=1) ?(timeout=5) ~prover () = { j; timeout; prover }
+  let make ?(j=1) ?(timeout=5) ~pat ~prover () =
+    { j; timeout; prover; problem_pat=pat; }
 
   let of_file file =
     let module E = FrogMisc.Err in
     let module C = FrogConfig in
+    FrogDebug.debug "parse config file %s..." file;
     try
       let c = C.parse_files [file] C.empty in
       let j = C.get_int ~default:1 c "parallelism" in
       let timeout = C.get_int ~default:5 c "timeout" in
       let prover = C.get_string c "prover" in
       let prover = Prover.build_from_config c prover in
-      E.return { j; timeout; prover; }
+      let problem_pat = C.get_string c "problems" in
+      let problem_pat = Re_posix.compile_pat problem_pat in
+      E.return { j; timeout; prover; problem_pat; }
     with
     | C.Error e -> E.fail e
     | Not_found -> E.fail ("invalid config file: " ^ file)
@@ -253,7 +259,7 @@ let extract_res_ ~prover stdout errcode =
 
 (* run one particular test *)
 let run_pb ~config pb =
-  Format.printf "running %-30s... @?" pb.Problem.name;
+  FrogDebug.debug "running %-30s..." pb.Problem.name;
   (* spawn process *)
   let%lwt (out,_err,errcode) = Prover.run_proc
     ~timeout:config.Config.timeout
@@ -283,31 +289,3 @@ let run ?(on_solve = nop2_) ~config set =
   in
   Lwt.return (Results.of_list raw)
 
-(*
-
-
-(* what is expected? *)
-
-(* run test for [f] , and return [true] if test was ok *)
-
-(* find list of files to test *)
-let gather_files () =
-  CCIO.File.read_dir ~recurse:true "tests/"
-  |> Gen.filter (CCString.suffix ~suf:".p")
-  |> Gen.to_rev_list
-  |> List.sort Pervasives.compare
-
-  let num_failed = List.fold_left
-    (fun acc f ->
-      let ok = test_file f in
-      (if ok then 0 else 1) + acc
-    )
-    0 files
-  in
-  if num_failed = 0
-  then Format.printf "success.@."
-  else (
-    Format.printf "%d test(s) failed@." num_failed;
-    exit 1
-  )
-*)

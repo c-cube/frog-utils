@@ -26,19 +26,19 @@ let on_solve pb res =
     in
     Format.fprintf out "%a" (F.in_color c Format.pp_print_string) str
   in
-  Format.printf "problem %-20s: %a@." pb.T.Problem.name pp_res ();
+  Format.printf "problem %-30s %a@." (pb.T.Problem.name ^ ":") pp_res ();
   Lwt.return_unit
 
 (* lwt main *)
 let main ~config ~dir () =
   let open E in
-  (* build problem set *)
-  T.ProblemSet.of_dir dir
+  (* parse config *)
+  Lwt.return (T.Config.of_file (Filename.concat dir config))
+  >>= fun config ->
+  (* build problem set (exclude config file!) *)
+  T.ProblemSet.of_dir ~filter:(Re.execp config.T.Config.problem_pat) dir
   >>= fun pb ->
   Format.printf "run %d tests@." (T.ProblemSet.size pb);
-  (* parse config *)
-  Lwt.return (T.Config.of_file config)
-  >>= fun config ->
   (* solve *)
   E.ok (T.run ~on_solve ~config pb)
   >>= fun results ->
@@ -51,6 +51,7 @@ let () =
   let options = Arg.align
   [ "-timeout", Arg.Set_int timeout, " timeout of prover, in seconds"
   ; "-config", Arg.Set_string config, " configuration file (in target directory)"
+  ; "-debug", Arg.Unit FrogDebug.enable_debug, " enable debug"
   ] in
   Arg.parse options set_dir "frogtest [options] <dir>";
   let dir = match !dir with
