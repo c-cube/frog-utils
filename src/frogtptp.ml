@@ -352,8 +352,9 @@ let some_if_pos_ i =
 
 let args_term =
   let open Cmdliner in
-  let doc = "List of pairs of prover and corresponding output file to analyse" in
-  Arg.(non_empty & pos 0 (list (pair ~sep:'=' string non_dir_file)) [] & info [] ~doc)
+  let doc = "List of pairs of prover and corresponding output file to analyse. This should be a comma-separated
+            list of pairs 'prover=file'" in
+  Arg.(non_empty & pos 0 (list (pair ~sep:'=' string non_dir_file)) [] & info [] ~docv:"ARGS" ~doc)
 
 let config_term =
   let open Cmdliner in
