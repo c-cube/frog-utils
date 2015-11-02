@@ -70,25 +70,33 @@ let of_config config =
       StrMap.add p_name prover map
     ) StrMap.empty provers
 
-let run_cmd ?env ?timeout ?memory ~config ~prover ~file =
-  let p = find_config config prover in
-  let timeout = match timeout with
-    | Some t -> t
-    | None -> Conf.get_int ~default:30 config "timeout"
-  in
-  let memory = match memory with
-    | Some m -> m
-    | None -> Conf.get_int ~default:1000 config "memory"
-  in
+let run_cmd ?env ?(timeout=5) ?(memory=1000) ~prover ~file () =
   FrogDebug.debug "timeout: %d, memory: %d" timeout memory;
-  let cmd = make_command ?env p ~timeout ~memory ~file in
+  let cmd = make_command ?env prover ~timeout ~memory ~file in
   let cmd = ["/bin/sh"; "-c"; cmd] in
   "/bin/sh", Array.of_list cmd
 
-let run_exec ?env ?timeout ?memory ~config ~prover ~file () =
-  let cmd, args = run_cmd ?env ?timeout ?memory ~config ~prover ~file in
+let run_exec ?env ?timeout ?memory ~prover ~file () =
+  let cmd, args = run_cmd ?env ?timeout ?memory ~prover ~file () in
   Unix.execv cmd args
 
+let run_proc ?env ?timeout ?memory ~prover ~file () =
+  let cmd = run_cmd ?env ?timeout ?memory ~prover ~file () in
+  let timeout = FrogMisc.Opt.(timeout >|= float_of_int) in
+  Lwt_process.with_process_full ?timeout cmd
+    (fun p ->
+      let%lwt () = Lwt_io.close p#stdin
+      and res_out = Lwt_io.read p#stdout
+      and res_err = Lwt_io.read p#stderr
+      and res_errcode = Lwt.map
+        (function
+          | Unix.WEXITED e -> e
+          | Unix.WSIGNALED _
+          | Unix.WSTOPPED _  -> 128
+        ) p#status
+      in
+      Lwt.return (res_out, res_err, res_errcode)
+    )
 
 module TPTP = struct
   let make_command ?tptp p ~timeout ~memory ~file =
@@ -98,7 +106,7 @@ module TPTP = struct
     in
     make_command ~env p ~timeout ~memory ~file
 
-  let run_cmd ?tptp ?timeout ?memory ~config ~prover ~file =
+  let run_cmd ?tptp ?timeout ?memory ~config ~prover ~file () =
     let env = match tptp with
       | Some f -> Some [| "TPTP", f |]
       | None ->
@@ -106,5 +114,14 @@ module TPTP = struct
           | None -> None
           | Some f -> Some  [| "TPTP", f |]
     in
-    run_cmd ?env ?timeout ?memory ~config ~prover ~file
+    let prover = find_config config prover in
+    let timeout = match timeout with
+      | Some t -> t
+      | None -> Conf.get_int ~default:30 config "timeout"
+    in
+    let memory = match memory with
+      | Some m -> m
+      | None -> Conf.get_int ~default:1000 config "memory"
+    in
+    run_cmd ?env ~timeout ~memory ~prover ~file ()
 end

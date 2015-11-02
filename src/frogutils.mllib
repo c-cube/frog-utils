@@ -3,8 +3,10 @@ FrogLockClient
 FrogLockDaemon
 FrogMapState
 FrogConfig
-FrogTPTP
 FrogDebug
 FrogPlot
 FrogHeap
 FrogPrintBox
+FrogProver
+FrogMisc
+FrogTest

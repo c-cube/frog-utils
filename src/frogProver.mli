@@ -29,12 +29,16 @@ val make_command :
     run the given prover with the given parameters (time, input) *)
 
 val build_from_config : FrogConfig.t -> string -> t
+(** Parse the description of a prover from a config file *)
+
 val find_config : FrogConfig.t -> string -> t
+(** Parse prover description from config file, and check it is listed
+    in the "provers" list *)
+
 val of_config : FrogConfig.t -> t StrMap.t
 
 val run_exec : ?env:env -> ?timeout:int -> ?memory:int ->
-               config:FrogConfig.t ->
-               prover:string ->
+               prover:t ->
                file:string ->
                unit -> 'a
 (** [run_exec ~config ~prover ~file ()] runs the prover named [prover] on the
@@ -42,17 +46,24 @@ val run_exec : ?env:env -> ?timeout:int -> ?memory:int ->
     This uses {!Unix.execv} and therefore doesn't return. *)
 
 val run_cmd : ?env:env -> ?timeout:int -> ?memory:int ->
-               config:FrogConfig.t ->
-               prover:string ->
+               prover:t ->
                file:string ->
+               unit ->
                (string * string array)
 (** Same as {!run_exec}, but rather than executing the command, only
     returns a pair [(command, args)] that can be executed (starts with "sh") *)
 
+val run_proc : ?env:env -> ?timeout:int -> ?memory:int ->
+               prover:t ->
+               file:string ->
+               unit ->
+               (string * string * int) Lwt.t
+(** Runs the prover in a sub-process, and returns a tuple
+    [stdout, stderr, errcode] *)
+
 (** {2 TPTP Provers} *)
 
 module TPTP : sig
-
   val make_command :
     ?tptp:string ->
     t ->
@@ -67,8 +78,8 @@ module TPTP : sig
                  config:FrogConfig.t ->
                  prover:string ->
                  file:string ->
+                 unit ->
                  (string * string array)
   (** Version of {!run_cmd} that also looks into [config] for a
       key named "TPTP". *)
-
 end

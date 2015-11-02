@@ -469,10 +469,11 @@ let analyze_term =
 let run_term =
   let open Cmdliner in
   let aux config params cmd args =
+    let prover = Prover.find_config config cmd in
     Prover.run_exec
       ?timeout:params.timeout
       ?memory:params.memory
-      ~config ~prover:cmd ~file:(String.concat " " args) ()
+      ~prover ~file:(String.concat " " args) ()
   in
   let cmd =
     let doc = "Prover to be run" in
