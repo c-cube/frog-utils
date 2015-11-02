@@ -2,7 +2,6 @@
 module A = Archimedes
 module St = FrogMapState
 module Conf = FrogConfig
-module Prover = FrogTPTP.Prover
 
 (* Colors *)
 exception Unknown_color

@@ -28,7 +28,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 module StrMap = Map.Make(String)
 module St = FrogMapState
-module Prover = FrogTPTP.Prover
+module Prover = FrogProver
 module Conf = FrogConfig
 module PB = FrogPrintBox
 
@@ -474,7 +474,7 @@ let analyze_term =
 let run_term =
   let open Cmdliner in
   let aux config params cmd args =
-    FrogTPTP.run_exec
+    Prover.run_exec
       ?timeout:params.timeout
       ?memory:params.memory
       ~config ~prover:cmd ~file:(String.concat " " args) ()
