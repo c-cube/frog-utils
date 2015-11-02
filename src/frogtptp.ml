@@ -31,6 +31,7 @@ module St = FrogMapState
 module Prover = FrogProver
 module Conf = FrogConfig
 module PB = FrogPrintBox
+module Opt = FrogMisc.Opt
 
 (** Type Definitions *)
 (* TODO: have a module to define times and operations on them ? *)
@@ -94,12 +95,6 @@ let compile_re ~msg re =
 let execp_re_maybe maybe_re s = match maybe_re with
   | None -> false
   | Some re -> Re.execp re s
-
-module Opt = struct
-  let (>>=) o f = match o with
-    | None -> None
-    | Some x -> f x
-end
 
 let add_time t t' = {
   real = t.real +. t'.real;
