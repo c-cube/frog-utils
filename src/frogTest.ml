@@ -350,8 +350,12 @@ module ResultsComparison = struct
   let pp_list_ p = Format.pp_print_list p
   let pp_hvlist_ p out = fpf out "[@[<hv>%a@]]" (pp_list_ p)
   let pp_pb_res out (pb,res) = fpf out "@[<h>%s: %a@]" pb.Problem.name Res.print res
-  let pp_pb_res2 out (pb,res1,res2) =
-    fpf out "@[<h>%s: %a -> %a@]" pb.Problem.name Res.print res1 Res.print res2
+  let pp_pb_res2 ~bold ~color out (pb,res1,res2) =
+    let module F = FrogMisc.Fmt in
+    fpf out "@[<h>%s: %a@]" pb.Problem.name
+      ((if bold then F.in_bold_color color else F.in_color color)
+        (fun out () -> fpf out "%a -> %a" Res.print res1 Res.print res2))
+      ()
 
   (* TODO: colors! *)
   let print out t =
@@ -361,9 +365,9 @@ module ResultsComparison = struct
       (pp_hvlist_ pp_pb_res) t.appeared
       (pp_hvlist_ pp_pb_res) t.disappeared
       (pp_hvlist_ pp_pb_res) t.same
-      (pp_hvlist_ pp_pb_res2) t.mismatch (* RED *)
-      (pp_hvlist_ pp_pb_res2) t.improved (* GREEN *)
-      (pp_hvlist_ pp_pb_res2) t.regressed (* YELLOW *)
+      (pp_hvlist_ (pp_pb_res2 ~bold:true ~color:`Red)) t.mismatch (* RED *)
+      (pp_hvlist_ (pp_pb_res2 ~bold:false ~color:`Green)) t.improved (* GREEN *)
+      (pp_hvlist_ (pp_pb_res2 ~bold:true ~color:`Yellow)) t.regressed (* YELLOW *)
 end
 
 let extract_res_ ~prover stdout errcode =
