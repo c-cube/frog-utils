@@ -348,7 +348,7 @@ module ResultsComparison = struct
 
   let fpf = Format.fprintf
   let pp_list_ p = Format.pp_print_list p
-  let pp_hvlist_ p out = fpf out "[@[<hv%a@]]" (pp_list_ p)
+  let pp_hvlist_ p out = fpf out "[@[<hv>%a@]]" (pp_list_ p)
   let pp_pb_res out (pb,res) = fpf out "@[<h>%s: %a@]" pb.Problem.name Res.print res
   let pp_pb_res2 out (pb,res1,res2) =
     fpf out "@[<h>%s: %a -> %a@]" pb.Problem.name Res.print res1 Res.print res2
@@ -357,7 +357,7 @@ module ResultsComparison = struct
   let print out t =
     let module F = FrogMisc.Fmt in
     fpf out "@[<v2>comparison: {@,appeared: %a,@ disappeared: %a,@ same: %a \
-      ,@ mismatch: %a@, improved: %a,@ regressed: %a@]@,}"
+      ,@ mismatch: %a,@ improved: %a,@ regressed: %a@]@,}"
       (pp_hvlist_ pp_pb_res) t.appeared
       (pp_hvlist_ pp_pb_res) t.disappeared
       (pp_hvlist_ pp_pb_res) t.same
