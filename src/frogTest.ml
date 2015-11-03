@@ -14,11 +14,14 @@ let spf = Format.asprintf
 
 (** {2 Result on a single problem} *)
 module Res = struct
+  [@@@warning "-39"]
   type t =
     | Sat
     | Unsat
     | Unknown
     | Error
+    [@@deriving yojson]
+  [@@@warning "+39"]
 
   let print out s =
     Format.pp_print_string out (match s with
@@ -30,10 +33,12 @@ module Res = struct
 end
 
 module Problem = struct
+  [@@@warning "-39"]
   type t = {
     name: string;  (* filename *)
     expected: Res.t; (* result expected *)
-  }
+  } [@@deriving yojson]
+  [@@@warning "+39"]
 
   (* regex + mark *)
   let m_unsat_, unsat_ = Re.(str "unsat" |> no_case |> mark)
@@ -170,6 +175,38 @@ end
 module Results = struct
   type raw = (Problem.t * Res.t) MStr.t
 
+  let raw_of_list l =
+    List.fold_left
+      (fun acc (pb,res) -> MStr.add pb.Problem.name (pb,res) acc)
+      MStr.empty l
+
+  let raw_to_yojson r : Yojson.Safe.json =
+    let l = MStr.fold
+      (fun _ (pb,res) acc ->
+        (`List [Problem.to_yojson pb; Res.to_yojson res] :: acc)
+      ) r []
+    in
+    `List l
+
+  module E = FrogMisc.Err
+
+  let raw_of_yojson (j:Yojson.Safe.json) : raw or_error =
+    let open E in
+    let get_list_ = function
+      | `List l -> E.return l
+      | _ -> E.fail "expected list"
+    in
+    (* parse a single (problem, res) pair *)
+    let get_pair_ j =
+      get_list_ j >>= function
+      | [a;b] ->
+          Problem.of_yojson a >>= fun a ->
+          Res.of_yojson b >>= fun b ->
+          E.return (a,b)
+      | _ -> E.fail "expected pair"
+    in
+    get_list_ j >|= List.map get_pair_ >>= E.seq_list >|= raw_of_list
+
   type stat = {
     unsat: int;
     sat: int;
@@ -229,12 +266,20 @@ module Results = struct
     let improved, mismatch, stat = analyse_ raw in
     { raw; stat; improved; mismatch; }
 
+  let of_yojson j = E.(raw_of_yojson j >|= make)
+  let to_yojson t = raw_to_yojson t.raw
+
   let of_list l =
-    let raw = List.fold_left
-      (fun acc (pb,res) -> MStr.add pb.Problem.name (pb,res) acc)
-      MStr.empty l
-    in
+    let raw = raw_of_list l in
     make raw
+
+  let of_file ~file =
+    try
+      let json = Yojson.Safe.from_file file in
+      of_yojson json
+    with e -> E.fail (Printexc.to_string e)
+
+  let to_file t ~file = Yojson.Safe.to_file file (to_yojson t)
 
   let is_ok r = r.mismatch = []
   let num_failed r = List.length r.mismatch

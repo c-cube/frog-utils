@@ -16,6 +16,7 @@ module Res : sig
     | Unsat
     | Unknown
     | Error
+    [@@deriving yojson]
 
   val print : t printer
 end
@@ -24,7 +25,7 @@ module Problem : sig
   type t = private {
     name: string;  (* filename *)
     expected: Res.t; (* result expected *)
-  }
+  } [@@deriving yojson]
 
   val make: file:string -> t or_error Lwt.t
   (** [make ~file] tries to find the expected result of [file], and
@@ -77,6 +78,7 @@ end
 
 module Results : sig
   type raw = (Problem.t * Res.t) MStr.t
+  [@@deriving yojson]
 
   type stat = private {
     unsat: int;
@@ -90,10 +92,17 @@ module Results : sig
     stat: stat;
     improved: (Problem.t * Res.t) list;
     mismatch: (Problem.t * Res.t) list;
-  }
+  } [@@deriving yojson]
 
   val make: raw -> t
+
   val of_list : (Problem.t * Res.t) list -> t
+
+  val of_file : file:string -> t or_error
+  (** Parse JSON file *)
+
+  val to_file : t -> file:string -> unit
+  (** Write JSON file *)
 
   val num_failed : t -> int
   (** [= 0] iff [is_ok] *)

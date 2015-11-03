@@ -29,6 +29,11 @@ module Err = struct
     | `Error e -> `Error e
     | `Ok x -> `Ok (f x)
 
+  let (<*>) f x = match f, x with
+    | `Ok f, `Ok x -> `Ok (f x)
+    | `Error e, _ -> `Error e
+    | _, `Error e -> `Error e
+
   (* 'a or_error list -> 'a list or_error *)
   let seq_list l =
     let rec aux acc = function
