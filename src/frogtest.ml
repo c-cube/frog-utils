@@ -41,7 +41,7 @@ module Run = struct
       (fun p -> FrogMisc.File.read_all p#stdout)
 
   (* lwt main *)
-  let main ~save ~config ~dir () =
+  let main ?j ?timeout ~save ~config ~dir () =
     let open E in
     (* parse config *)
     Lwt.return (T.Config.of_file (Filename.concat dir config))
@@ -51,7 +51,7 @@ module Run = struct
     >>= fun pb ->
     Format.printf "run %d tests@." (T.ProblemSet.size pb);
     (* solve *)
-    E.ok (T.run ~on_solve ~config pb)
+    E.ok (T.run ?j ?timeout ~on_solve ~config pb)
     >>= fun results ->
     Format.printf "%a@." T.Results.print results;
     let%lwt () = match save with
@@ -92,16 +92,12 @@ end
 
 (** {2 Main: Parse CLI} *)
 
-let timeout = Cmdliner.Arg.(opt int 2)
-let config = Cmdliner.Arg.(opt string "test.toml")
-let save = Cmdliner.Arg.(some string)
-
 (* sub-command for running tests *)
 let term_run =
   let open Cmdliner in
-  let aux debug config save dir =
+  let aux debug config save dir j timeout =
     FrogDebug.set_debug debug;
-    Lwt_main.run (Run.main ~save ~config ~dir ())
+    Lwt_main.run (Run.main ?j ?timeout ~save ~config ~dir ())
   in
   let save =
     let parse_ = function
@@ -118,12 +114,15 @@ let term_run =
       info ["s"; "save"] ~doc:"indicate where to save results")
   in
   let debug = Arg.(value & flag & info ["d"; "debug"] ~doc:"enable debug")
-  and config = Arg.(value & config &
+  and config = Arg.(value & opt string "test.toml" &
     info ["c"; "config"] ~doc:"configuration file (in target directory)")
   and dir = Arg.(value & pos 0 string "DIR" &
     info [] ~doc:"target directory (containing tests)")
+  and j = Arg.(value & opt (some int) None & info ["j"] ~doc:"parallelism level")
+  and timeout = Arg.(value & opt (some int) None &
+    info ["t"; "timeout"] ~doc:"timeout (in s)")
   and doc = "test a program on every file in a directory" in
-  Term.(pure aux $ debug $ config $ save $ dir), Term.info ~doc "run"
+  Term.(pure aux $ debug $ config $ save $ dir $ j $ timeout), Term.info ~doc "run"
 
 (* sub-command to display a file *)
 let term_display =

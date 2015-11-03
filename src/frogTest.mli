@@ -143,6 +143,8 @@ end
 
 val run :
   ?on_solve:(Problem.t -> Res.t -> unit Lwt.t) ->
+  ?j:int ->
+  ?timeout:int ->
   config:Config.t ->
   ProblemSet.t ->
   Results.t Lwt.t

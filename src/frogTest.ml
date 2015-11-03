@@ -167,6 +167,12 @@ module Config = struct
   let make ?(j=1) ?(timeout=5) ~pat ~prover () =
     { j; timeout; prover; problem_pat=pat; }
 
+  let update ?j ?timeout c =
+    let module O = FrogMisc.Opt in
+    let j = O.get c.j j in
+    let timeout = O.get c.timeout timeout in
+    { c with j; timeout; }
+
   let of_file file =
     let module E = FrogMisc.Err in
     let module C = FrogConfig in
@@ -399,7 +405,8 @@ let run_pb ~config pb =
 
 let nop2_ _ _ = Lwt.return_unit
 
-let run ?(on_solve = nop2_) ~config set =
+let run ?(on_solve = nop2_) ?j ?timeout ~config set =
+  let config = Config.update ?j ?timeout config in
   let pool = Lwt_pool.create config.Config.j (fun () -> Lwt.return_unit) in
   let%lwt raw =
     Lwt_list.map_p
