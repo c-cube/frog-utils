@@ -110,6 +110,8 @@ module ProblemSet = struct
   type t = Problem.t list
 
   let make l =
+    (* sort by alphabetic order *)
+    let l = List.sort String.compare l in
     let pool = Lwt_pool.create 30 (fun () -> Lwt.return_unit) in
     let%lwt l =
       Lwt_list.map_p
@@ -183,7 +185,7 @@ module Results = struct
   let add_error_ s = {s with errors=s.errors+1}
 
   let pp_stat out s =
-    fpf out "@[<h>unsat: %d, sat: %d, errors: %d, unknown: %d (%d total)@]"
+    fpf out "{@[<hv>unsat: %d,@ sat: %d,@ errors: %d,@ unknown: %d,@ total: %d@]}"
       s.unsat s.sat s.errors s.unknown (s.unsat + s.sat + s.errors + s.unknown)
 
   type t = {
@@ -235,10 +237,11 @@ module Results = struct
     make raw
 
   let is_ok r = r.mismatch = []
+  let num_failed r = List.length r.mismatch
 
   let print out r =
     fpf out
-      "@[<hv2>results: {@,stat:%a,@ improved: @[<hv>%a@],@ mismatch: @[<hv>%a@]@,@]}"
+      "@[<hv2>results: {@,stat:%a,@ improved: [@[<hv>%a@]],@ mismatch: [@[<hv>%a@]]@]@,}"
       pp_stat r.stat
       (pp_list_ pp_pb_res_) r.improved
       (pp_list_ pp_pb_res_) r.mismatch

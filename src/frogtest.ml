@@ -24,9 +24,9 @@ let on_solve pb res =
       | `Improvement -> "ok (improved)", `Blue
       | `Mismatch -> "bad", `Red
     in
-    Format.fprintf out "%a" (F.in_color c Format.pp_print_string) str
+    Format.fprintf out "%a" (F.in_bold_color c Format.pp_print_string) str
   in
-  Format.printf "problem %-30s %a@." (pb.T.Problem.name ^ ":") pp_res ();
+  Format.printf "problem %-30s %a@." (pb.T.Problem.name ^ " :") pp_res ();
   Lwt.return_unit
 
 (* lwt main *)
@@ -45,7 +45,8 @@ let main ~config ~dir () =
   Format.printf "%a@." T.Results.print results;
   if T.Results.is_ok results
   then E.return ()
-  else E.fail "failure(s)" (* TODO: more precise message *)
+  else
+    E.fail (Format.asprintf "%d failure(s)" (T.Results.num_failed results))
 
 let () =
   let options = Arg.align

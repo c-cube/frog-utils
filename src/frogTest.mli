@@ -95,6 +95,9 @@ module Results : sig
   val make: raw -> t
   val of_list : (Problem.t * Res.t) list -> t
 
+  val num_failed : t -> int
+  (** [= 0] iff [is_ok] *)
+
   val is_ok : t -> bool
   (** [is_ok res] is [true] iff there are no errors *)
 
