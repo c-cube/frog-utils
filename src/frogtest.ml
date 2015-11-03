@@ -1,66 +1,170 @@
 
 (* This file is free software, part of frog-utils. See file "license" for more details. *)
 
-(* run tests *)
+(* run tests, or compare results *)
 
 module T = FrogTest
 module Prover = FrogProver
 module E = FrogMisc.LwtErr
 
-let timeout = ref 2
-let config = ref "test.toml"
-let dir = ref None
+type save =
+  | SaveFile of string
+  | SaveCommit  (* save into a file named by the current git commit *)
+  | SaveNone  (* no save *)
 
-let set_dir d = match !dir with
-  | None -> dir := Some d
-  | Some _ -> failwith "give exactly one test directory"
-
-(* callback that prints a result *)
-let on_solve pb res =
-  let module F = FrogMisc.Fmt in
-  let pp_res out () =
-    let str, c = match T.Problem.compare_res pb res with
-      | `Same -> "ok", `Green
-      | `Improvement -> "ok (improved)", `Blue
-      | `Mismatch -> "bad", `Red
+(** {2 Run} *)
+module Run = struct
+  (* callback that prints a result *)
+  let on_solve pb res =
+    let module F = FrogMisc.Fmt in
+    let pp_res out () =
+      let str, c = match T.Problem.compare_res pb res with
+        | `Same -> "ok", `Green
+        | `Improvement -> "ok (improved)", `Blue
+        | `Mismatch -> "bad", `Red
+      in
+      Format.fprintf out "%a" (F.in_bold_color c Format.pp_print_string) str
     in
-    Format.fprintf out "%a" (F.in_bold_color c Format.pp_print_string) str
-  in
-  Format.printf "problem %-30s %a@." (pb.T.Problem.name ^ " :") pp_res ();
-  Lwt.return_unit
+    Format.printf "problem %-30s %a@." (pb.T.Problem.name ^ " :") pp_res ();
+    Lwt.return_unit
 
-(* lwt main *)
-let main ~config ~dir () =
-  let open E in
-  (* parse config *)
-  Lwt.return (T.Config.of_file (Filename.concat dir config))
-  >>= fun config ->
-  (* build problem set (exclude config file!) *)
-  T.ProblemSet.of_dir ~filter:(Re.execp config.T.Config.problem_pat) dir
-  >>= fun pb ->
-  Format.printf "run %d tests@." (T.ProblemSet.size pb);
-  (* solve *)
-  E.ok (T.run ~on_solve ~config pb)
-  >>= fun results ->
-  Format.printf "%a@." T.Results.print results;
-  if T.Results.is_ok results
-  then E.return ()
-  else
-    E.fail (Format.asprintf "%d failure(s)" (T.Results.num_failed results))
+  (* save result in given file *)
+  let save_ ~file res =
+    FrogDebug.debug "save result in file %s" file;
+    T.Results.to_file ~file res;
+    Lwt.return_unit
+
+  (* obtain the current commit name *)
+  let get_commit_ () : string Lwt.t =
+    Lwt_process.with_process_in
+      (Lwt_process.shell "git rev-parse HEAD")
+      (fun p -> FrogMisc.File.read_all p#stdout)
+
+  (* lwt main *)
+  let main ~save ~config ~dir () =
+    let open E in
+    (* parse config *)
+    Lwt.return (T.Config.of_file (Filename.concat dir config))
+    >>= fun config ->
+    (* build problem set (exclude config file!) *)
+    T.ProblemSet.of_dir ~filter:(Re.execp config.T.Config.problem_pat) dir
+    >>= fun pb ->
+    Format.printf "run %d tests@." (T.ProblemSet.size pb);
+    (* solve *)
+    E.ok (T.run ~on_solve ~config pb)
+    >>= fun results ->
+    Format.printf "%a@." T.Results.print results;
+    let%lwt () = match save with
+      | SaveFile f -> save_ ~file:f results
+      | SaveCommit ->
+          let%lwt commit = get_commit_ () in
+          FrogDebug.debug "commit name: %s" commit;
+          save_ ~file:commit results
+      | SaveNone ->
+          FrogDebug.debug "do not save result";
+          Lwt.return_unit
+    in
+    if T.Results.is_ok results
+    then E.return ()
+    else
+      E.fail (Format.asprintf "%d failure(s)" (T.Results.num_failed results))
+end
+
+(** {2 Display Results} *)
+module Display = struct
+  let main ~file () =
+    let open E in
+    E.lift (T.Results.of_file ~file) >>= fun res ->
+    Format.printf "%a@." T.Results.print res;
+    E.return ()
+end
+
+(** {2 Compare Results} *)
+module Compare = struct
+  let main ~file1 ~file2 () =
+    let open E in
+    E.lift (T.Results.of_file ~file:file1) >>= fun res1 ->
+    E.lift (T.Results.of_file ~file:file2) >>= fun res2 ->
+    let cmp = T.ResultsComparison.compare res1.T.Results.raw res2.T.Results.raw in
+    Format.printf "%a@." T.ResultsComparison.print cmp;
+    E.return ()
+end
+
+(** {2 Main: Parse CLI} *)
+
+let timeout = Cmdliner.Arg.(opt int 2)
+let config = Cmdliner.Arg.(opt string "test.toml")
+let save = Cmdliner.Arg.(some string)
+
+(* sub-command for running tests *)
+let term_run =
+  let open Cmdliner in
+  let aux debug config save dir =
+    FrogDebug.set_debug debug;
+    Lwt_main.run (Run.main ~save ~config ~dir ())
+  in
+  let save =
+    let parse_ = function
+      | "commit" -> `Ok SaveCommit
+      | "none" -> `Ok SaveNone
+      | s ->
+          try Scanf.sscanf s "file=%s" (fun f -> `Ok (SaveFile f))
+          with _ -> `Error "expected (commit|none|file=<filename>)"
+    and print_ out = function
+      | SaveCommit -> Format.fprintf out "commit"
+      | SaveNone -> Format.fprintf out "none"
+      | SaveFile f -> Format.fprintf out "file=%s" f
+    in Arg.(value & opt (parse_,print_) SaveNone &
+      info ["s"; "save"] ~doc:"indicate where to save results")
+  in
+  let debug = Arg.(value & flag & info ["d"; "debug"] ~doc:"enable debug")
+  and config = Arg.(value & config &
+    info ["c"; "config"] ~doc:"configuration file (in target directory)")
+  and dir = Arg.(value & pos 0 string "DIR" &
+    info [] ~doc:"target directory (containing tests)")
+  and doc = "test a program on every file in a directory" in
+  Term.(pure aux $ debug $ config $ save $ dir), Term.info ~doc "run"
+
+(* sub-command to display a file *)
+let term_display =
+  let open Cmdliner in
+  let aux file = Lwt_main.run (Display.main ~file ()) in
+  let file =
+    Arg.(value & pos 0 string "FILE" & info [] ~doc:"file containing results")
+  and doc = "display test results from a file" in
+  Term.(pure aux $ file), Term.info ~doc "display"
+
+(* sub-command to compare two files *)
+let term_compare =
+  let open Cmdliner in
+  let aux file1 file2 = Lwt_main.run (Compare.main ~file1 ~file2 ()) in
+  let file1 = Arg.(value & pos 0 string "FILE1" & info [] ~doc:"first file")
+  and file2 = Arg.(value & pos 1 string "FILE2" & info [] ~doc:"second file")
+  and doc = "compare two result files" in
+  Term.(pure aux $ file1 $ file2), Term.info ~doc "compare"
+
+let parse_opt () =
+  let open Cmdliner in
+  let help =
+    let doc = "Offers various utilities to test automated theorem provers." in
+    let man = [
+      `S "DESCRIPTION";
+      `P "$(b,frogtest) is a set of utils to run tests, save their results,
+          and compare different results obtained with distinct versions of
+          the same tool";
+      `S "COMMANDS";
+      `S "OPTIONS"; (* TODO: explain config file *)
+    ] in
+    Term.(ret (pure (fun () -> `Help (`Pager, None)) $ pure ())),
+    Term.info ~version:"dev" ~man ~doc "frogtest"
+  in
+  Cmdliner.Term.eval_choice
+    help [ term_run; term_compare; term_display ]
 
 let () =
-  let options = Arg.align
-  [ "-timeout", Arg.Set_int timeout, " timeout of prover, in seconds"
-  ; "-config", Arg.Set_string config, " configuration file (in target directory)"
-  ; "-debug", Arg.Unit FrogDebug.enable_debug, " enable debug"
-  ] in
-  Arg.parse options set_dir "frogtest [options] <dir>";
-  let dir = match !dir with
-    | None -> failwith "need a test directory"
-    | Some d -> d
-  in
-  match Lwt_main.run (main ~config:!config ~dir ()) with
-  | `Error e ->
+  match parse_opt () with
+  | `Version | `Help | `Error `Parse | `Error `Term | `Error `Exn -> exit 2
+  | `Ok (`Ok ()) -> ()
+  | `Ok (`Error e) ->
       print_endline ("error: " ^ e);
       exit 1
-  | `Ok () -> ()
