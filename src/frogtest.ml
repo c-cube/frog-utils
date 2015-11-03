@@ -36,9 +36,10 @@ module Run = struct
 
   (* obtain the current commit name *)
   let get_commit_ () : string Lwt.t =
+    let open Lwt.Infix in
     Lwt_process.with_process_in
       (Lwt_process.shell "git rev-parse HEAD")
-      (fun p -> FrogMisc.File.read_all p#stdout)
+      (fun p -> FrogMisc.File.read_all p#stdout >|= String.trim)
 
   (* lwt main *)
   let main ?j ?timeout ~save ~config ~dir () =
@@ -59,7 +60,7 @@ module Run = struct
       | SaveCommit ->
           let%lwt commit = get_commit_ () in
           FrogDebug.debug "commit name: %s" commit;
-          save_ ~file:commit results
+          save_ ~file:(commit ^ ".json") results
       | SaveNone ->
           FrogDebug.debug "do not save result";
           Lwt.return_unit
