@@ -30,6 +30,19 @@ module Res = struct
       | Unknown -> "unknown"
       | Error -> "error"
     )
+
+  let compare a b = match a, b with
+    | Unsat, Unsat
+    | Sat, Sat
+    | Unknown, Unknown
+    | Error, Error -> `Same
+    | Unknown, (Sat | Unsat) -> `RightBetter
+    | (Sat | Unsat), Unknown -> `LeftBetter
+    | (Unsat | Error), Sat
+    | (Sat | Error), Unsat
+    | Error, Unknown
+    | (Sat | Unknown | Unsat), Error ->
+        `Mismatch
 end
 
 module Problem = struct
@@ -290,6 +303,67 @@ module Results = struct
       pp_stat r.stat
       (pp_list_ pp_pb_res_) r.improved
       (pp_list_ pp_pb_res_) r.mismatch
+end
+
+module ResultsComparison = struct
+  type t = {
+    appeared: (Problem.t * Res.t) list;  (* new problems *)
+    disappeared: (Problem.t * Res.t) list; (* problems that disappeared *)
+    improved: (Problem.t * Res.t * Res.t) list;
+    regressed: (Problem.t * Res.t * Res.t) list;
+    mismatch: (Problem.t * Res.t * Res.t) list;
+    same: (Problem.t * Res.t) list; (* same result *)
+  }
+
+  let compare (a:Results.raw) b =
+    let appeared = ref []
+    and disappeared = ref []
+    and improved = ref []
+    and regressed = ref []
+    and mismatch = ref []
+    and same = ref [] in
+    (* hack? we want to match each pair of key of a and b *)
+    ignore
+      (MStr.merge
+        (fun _ v1 v2 ->
+          begin match v1, v2 with
+          | Some (pb,res), None ->
+              disappeared := (pb, res) :: !disappeared
+          | None, Some (pb,res) ->
+              appeared := (pb, res) :: !appeared
+          | None, None -> assert false
+          | Some (pb1,res1), Some (pb2, res2) ->
+              assert (pb1.Problem.name = pb2.Problem.name);
+              match Res.compare res1 res2 with
+              | `Same -> same := (pb1,res1) :: !same
+              | `LeftBetter -> regressed := (pb1, res1, res2) :: !regressed
+              | `RightBetter -> improved := (pb1, res1, res2) :: !improved
+              | `Mismatch -> mismatch := (pb1, res1, res2) :: !mismatch
+          end;
+          None
+        ) a b
+      );
+    { appeared= !appeared; disappeared= !disappeared; mismatch= !mismatch;
+      improved= !improved; regressed= !regressed; same= !same; }
+
+  let fpf = Format.fprintf
+  let pp_list_ p = Format.pp_print_list p
+  let pp_hvlist_ p out = fpf out "[@[<hv%a@]]" (pp_list_ p)
+  let pp_pb_res out (pb,res) = fpf out "@[<h>%s: %a@]" pb.Problem.name Res.print res
+  let pp_pb_res2 out (pb,res1,res2) =
+    fpf out "@[<h>%s: %a -> %a@]" pb.Problem.name Res.print res1 Res.print res2
+
+  (* TODO: colors! *)
+  let print out t =
+    let module F = FrogMisc.Fmt in
+    fpf out "@[<v2>comparison: {@,appeared: %a,@ disappeared: %a,@ same: %a \
+      ,@ mismatch: %a@, improved: %a,@ regressed: %a@]@,}"
+      (pp_hvlist_ pp_pb_res) t.appeared
+      (pp_hvlist_ pp_pb_res) t.disappeared
+      (pp_hvlist_ pp_pb_res) t.same
+      (pp_hvlist_ pp_pb_res2) t.mismatch (* RED *)
+      (pp_hvlist_ pp_pb_res2) t.improved (* GREEN *)
+      (pp_hvlist_ pp_pb_res2) t.regressed (* YELLOW *)
 end
 
 let extract_res_ ~prover stdout errcode =

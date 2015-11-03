@@ -18,6 +18,18 @@ module Res : sig
     | Error
     [@@deriving yojson]
 
+  val compare: t -> t -> [`Same | `LeftBetter | `RightBetter | `Mismatch]
+  (** [compare a b] compares results [a] and [b] (assuming they are results
+      of two distinct provers on the same problem), and returns:
+
+      {ul
+        {- `Same if results coincide}
+        {- `Mismatch if they are not compatible (error)}
+        {- `LeftBetter if [b = Unknown] and [a = Sat] or [a = Unsat]}
+        {- `RightBetter if [a = Unknown] and [b = Sat] or [b = Unsat]}
+      }
+  *)
+
   val print : t printer
 end
 
@@ -113,6 +125,22 @@ module Results : sig
   val print: t printer
 end
 
+module ResultsComparison : sig
+  type t = {
+    appeared: (Problem.t * Res.t) list;  (* new problems *)
+    disappeared: (Problem.t * Res.t) list; (* problems that disappeared *)
+    improved: (Problem.t * Res.t * Res.t) list;
+    regressed: (Problem.t * Res.t * Res.t) list;
+    mismatch: (Problem.t * Res.t * Res.t) list;
+    same: (Problem.t * Res.t) list; (* same result *)
+  }
+
+  val compare : Results.raw -> Results.raw -> t
+
+  val print : t printer
+  (** Display comparison in a readable way *)
+end
+
 val run :
   ?on_solve:(Problem.t -> Res.t -> unit Lwt.t) ->
   config:Config.t ->
@@ -121,3 +149,4 @@ val run :
 (** Run the given prover on the given problem set, obtaining results
     after all the problems have been dealt with.
     @param on_solve called whenever a single problem is solved *)
+
