@@ -117,8 +117,8 @@ let term_run =
   let debug = Arg.(value & flag & info ["d"; "debug"] ~doc:"enable debug")
   and config = Arg.(value & opt string "test.toml" &
     info ["c"; "config"] ~doc:"configuration file (in target directory)")
-  and dir = Arg.(value & pos 0 string "DIR" &
-    info [] ~doc:"target directory (containing tests)")
+  and dir = Arg.(value & pos 0 string "./" &
+    info [] ~docv:"DIR" ~doc:"target directory (containing tests)")
   and j = Arg.(value & opt (some int) None & info ["j"] ~doc:"parallelism level")
   and timeout = Arg.(value & opt (some int) None &
     info ["t"; "timeout"] ~doc:"timeout (in s)")
@@ -130,7 +130,7 @@ let term_display =
   let open Cmdliner in
   let aux file = Lwt_main.run (Display.main ~file ()) in
   let file =
-    Arg.(value & pos 0 string "FILE" & info [] ~doc:"file containing results")
+    Arg.(required & pos 0 (some string) None & info [] ~docv:"FILE" ~doc:"file containing results")
   and doc = "display test results from a file" in
   Term.(pure aux $ file), Term.info ~doc "display"
 
@@ -138,8 +138,8 @@ let term_display =
 let term_compare =
   let open Cmdliner in
   let aux file1 file2 = Lwt_main.run (Compare.main ~file1 ~file2 ()) in
-  let file1 = Arg.(value & pos 0 string "FILE1" & info [] ~doc:"first file")
-  and file2 = Arg.(value & pos 1 string "FILE2" & info [] ~doc:"second file")
+  let file1 = Arg.(required & pos 0 (some string) None & info [] ~docv:"FILE1" ~doc:"first file")
+  and file2 = Arg.(required & pos 1 (some string) None & info [] ~docv:"FILE2" ~doc:"second file")
   and doc = "compare two result files" in
   Term.(pure aux $ file1 $ file2), Term.info ~doc "compare"
 
