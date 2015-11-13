@@ -1,0 +1,12 @@
+
+timeout=5
+prover = "some_prover"
+problems = ".*.p"
+
+[some_prover]
+
+cmd = "some_prover --timeout $timeout $file"
+unsat = "unsat"
+sat = "sat"
+unknown = "timeout"
+
