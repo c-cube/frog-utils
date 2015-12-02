@@ -82,11 +82,11 @@ let run_exec ?env ?timeout ?memory ~prover ~file () =
 
 let run_proc ?env ?timeout ?memory ~prover ~file () =
   let cmd = run_cmd ?env ?timeout ?memory ~prover ~file () in
-  let timeout = FrogMisc.Opt.(timeout >|= float_of_int) in
+  let timeout = FrogMisc.Opt.(timeout >|= (fun i->float_of_int i +. 0.5)) in
   Lwt_process.with_process_full ?timeout cmd
     (fun p ->
-      let%lwt () = Lwt_io.close p#stdin
-      and res_out = Lwt_io.read p#stdout
+      let%lwt () = Lwt_io.close p#stdin in
+      let%lwt res_out = Lwt_io.read p#stdout
       and res_err = Lwt_io.read p#stderr
       and res_errcode = Lwt.map
         (function
