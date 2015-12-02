@@ -25,7 +25,7 @@ module Run = struct
       in
       Format.fprintf out "%a" (F.in_bold_color c Format.pp_print_string) str
     in
-    Format.printf "problem %-30s %a@." (pb.T.Problem.name ^ " :") pp_res ();
+    Format.printf "problem %-50s %a@." (pb.T.Problem.name ^ " :") pp_res ();
     Lwt.return_unit
 
   (* save result in given file *)
