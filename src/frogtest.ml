@@ -50,7 +50,7 @@ module Run = struct
     (* build problem set (exclude config file!) *)
     T.ProblemSet.of_dir ~filter:(Re.execp config.T.Config.problem_pat) dir
     >>= fun pb ->
-    Format.printf "run %d tests@." (T.ProblemSet.size pb);
+    Format.printf "run %d tests in %s@." (T.ProblemSet.size pb) dir;
     (* solve *)
     E.ok (T.run ?j ?timeout ~on_solve ~config pb)
     >>= fun results ->
