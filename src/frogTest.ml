@@ -74,7 +74,7 @@ module Problem = struct
 
   (* "^ #expect: (unsat|sat|unknown|error)", basically *)
   let re_expect_ = Re.(seq
-    [ str "expect:" |> no_case ; rep blank;
+    [ alt (List.map no_case [str "expect:"; str "expected:"]) ; rep blank;
       alt [unsat_; sat_; unknown_; error_] ]
     |> compile
   )
