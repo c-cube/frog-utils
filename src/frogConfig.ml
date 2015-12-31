@@ -29,7 +29,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 exception Error of string
 
 type table = {
-  mutable tbl : Toml.Value.table;
+  mutable tbl : TomlTypes.table;
   parent : t;
 }
 and t =
@@ -39,7 +39,7 @@ and t =
 let empty = Empty
 
 let create () = Table {
-  tbl=Toml.Table.empty;
+  tbl=TomlTypes.Table.empty;
   parent=Empty;
 }
 
@@ -62,11 +62,12 @@ let interpolate_home s =
 
 (* try to parse a config file *)
 let parse_or_empty file =
-  try
-    Table {tbl=Toml.Parser.from_filename file; parent=Empty}
-  with Sys_error msg ->
-    Printf.eprintf "error trying to read config: %s\n" msg;
-    empty
+  match Toml.Parser.from_filename file with
+  | `Error (msg, {Toml.Parser. source; line; column; _ }) ->
+      Printf.eprintf "error trying to read config: %s at %s, line %d, col %d\n"
+        msg source line column;
+      empty
+  | `Ok tbl -> Table {tbl; parent=Empty}
 
 let parse_files l conf =
   let module P = Toml.Parser in
@@ -83,6 +84,8 @@ let parse_files l conf =
   | Empty -> conf'
   | Table {tbl; _} -> Table {tbl; parent=conf' }
 
+exception WrongType
+
 (* "generic" getter *)
 let rec get_or ?default getter conf name =
   match conf with
@@ -93,31 +96,51 @@ let rec get_or ?default getter conf name =
       end
   | Table {tbl; parent} ->
       try
-        getter (Toml.Table.find (Toml.key name) tbl)
-      with Not_found | Toml.Value.To.Bad_type _ ->
+        getter (TomlTypes.Table.find (Toml.key name) tbl)
+      with Not_found | WrongType ->
         get_or ?default getter parent name
 
 type 'a getter = ?default:'a -> t -> string -> 'a
 
 let get_table ?default conf name =
-  let getter x =
-    Table {tbl=Toml.Value.To.table x; parent=Empty;}
+  let getter x = match x with
+    | TomlTypes.TTable tbl -> Table {tbl; parent=Empty;}
+    | _ -> raise WrongType
   in
   get_or ?default getter conf name
 
 let get_bool ?default conf name =
-  get_or ?default Toml.Value.To.bool conf name
+  let f = function
+    | TomlTypes.TBool b -> b
+    | _ -> raise WrongType
+  in
+  get_or ?default f conf name
 
 let get_int ?default conf name =
-  get_or ?default Toml.Value.To.int conf name
+  let f = function
+    | TomlTypes.TInt x -> x
+    | _ -> raise WrongType
+  in
+  get_or ?default f conf name
 
 let get_string ?default conf name =
-  get_or ?default Toml.Value.To.string conf name
+  let get_string_exn = function
+    | TomlTypes.TString x -> x
+    | _ -> raise WrongType
+  in
+  get_or ?default get_string_exn conf name
 
 let get_float ?default conf name =
-  get_or ?default Toml.Value.To.float conf name
+  let f = function
+    | TomlTypes.TFloat x -> x
+    | _ -> raise WrongType
+  in
+  get_or ?default f conf name
 
 let get_string_list ?default conf name =
   get_or ?default
-    (fun s -> Toml.Value.To.Array.string (Toml.Value.To.array s))
+    (fun s -> match s with
+      | TomlTypes.TArray (TomlTypes.NodeString l) -> l
+      | _ -> raise WrongType)
     conf name
+
