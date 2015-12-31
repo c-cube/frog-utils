@@ -18,7 +18,7 @@ depends: [
     "lwt"
     "base-unix"
     "yojson"
-    "toml" { >= "2.1.0" }
+    "toml" { >= "4.0" & <= "5.0" }
     "re"
     "ppx_deriving"
     "ppx_deriving_yojson"
