@@ -73,30 +73,34 @@ let of_config config =
 let run_cmd ?env ?(timeout=5) ?(memory=1000) ~prover ~file () =
   FrogDebug.debug "timeout: %d, memory: %d" timeout memory;
   let cmd = make_command ?env prover ~timeout ~memory ~file in
-  let cmd = ["/bin/sh"; "-c"; cmd] in
-  "/bin/sh", Array.of_list cmd
+  Printf.sprintf "/bin/sh -c '%s'" (String.escaped cmd)
 
-let run_exec ?env ?timeout ?memory ~prover ~file () =
-  let cmd, args = run_cmd ?env ?timeout ?memory ~prover ~file () in
-  Unix.execv cmd args
+let run_exec ?env ?(timeout=5) ?(memory=1000) ~prover ~file () =
+  let cmd = make_command ?env prover ~timeout ~memory ~file in
+  Unix.execv "/bin/sh" [| "/bin/sh"; "-c"; cmd |]
+
+let kill_after_ ?timeout p = match timeout with
+  | None -> ()
+  | Some t ->
+      CCThread.detach
+        (fun () ->
+          Thread.sleep t;
+          ignore p#close)
 
 let run_proc ?env ?timeout ?memory ~prover ~file () =
   let cmd = run_cmd ?env ?timeout ?memory ~prover ~file () in
-  let timeout = FrogMisc.Opt.(timeout >|= (fun i->float_of_int i +. 0.5)) in
-  Lwt_process.with_process_full ?timeout cmd
+  let timeout = CCOpt.(timeout >|= (fun i->float_of_int i +. 0.5)) in
+  CCUnix.with_process_full cmd
     (fun p ->
-      let%lwt () = Lwt_io.close p#stdin in
-      let%lwt res_out = Lwt_io.read p#stdout
-      and res_err = Lwt_io.read p#stderr
-      and res_errcode = Lwt.map
-        (function
-          | Unix.WEXITED e -> e
-          | Unix.WSIGNALED _
-          | Unix.WSTOPPED _  -> 128
-        ) p#status
+      kill_after_ ?timeout p;
+      let res_out = CCIO.read_all p#stdout
+      and res_err = CCIO.read_all p#stderr in
+      let errcode = match p#close with
+        | Unix.WEXITED e -> e
+        | Unix.WSIGNALED _
+        | Unix.WSTOPPED _  -> 128
       in
-      Lwt.return (res_out, res_err, res_errcode)
-    )
+      res_out, res_err, errcode)
 
 module TPTP = struct
   let make_command ?tptp p ~timeout ~memory ~file =

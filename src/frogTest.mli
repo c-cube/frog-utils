@@ -39,7 +39,7 @@ module Problem : sig
     expected: Res.t; (* result expected *)
   } [@@deriving yojson]
 
-  val make: file:string -> t or_error Lwt.t
+  val make: file:string -> t or_error
   (** [make ~file] tries to find the expected result of [file], and
       makes a problem if it finds the result *)
 
@@ -60,12 +60,12 @@ end
 module ProblemSet : sig
   type t = Problem.t list
 
-  val make: string list -> t or_error Lwt.t
+  val make: string list -> t or_error
   (** Build a set of problems out of file names *)
 
   val size : t -> int
 
-  val of_dir : ?filter:(string -> bool) -> string -> t or_error Lwt.t
+  val of_dir : ?filter:(string -> bool) -> string -> t or_error
   (** Traverse the directory and makes a problem set out of every
       file it contains.
       @param filter if present, only files that satisfy the predicate are
@@ -142,12 +142,12 @@ module ResultsComparison : sig
 end
 
 val run :
-  ?on_solve:(Problem.t -> Res.t -> unit Lwt.t) ->
+  ?on_solve:(Problem.t -> Res.t -> unit) ->
   ?j:int ->
   ?timeout:int ->
   config:Config.t ->
   ProblemSet.t ->
-  Results.t Lwt.t
+  Results.t
 (** Run the given prover on the given problem set, obtaining results
     after all the problems have been dealt with.
     @param on_solve called whenever a single problem is solved *)

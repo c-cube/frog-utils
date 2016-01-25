@@ -57,7 +57,7 @@ val run_proc : ?env:env -> ?timeout:int -> ?memory:int ->
                prover:t ->
                file:string ->
                unit ->
-               (string * string * int) Lwt.t
+               string * string * int
 (** Runs the prover in a sub-process, and returns a tuple
     [stdout, stderr, errcode] *)
 

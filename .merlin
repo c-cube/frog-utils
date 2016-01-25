@@ -4,10 +4,11 @@ S src/lib
 B _build/src/lib
 S test/
 B _build/test
-
-PKG lwt
-PKG lwt.ppx
-PKG lwt.unix
+PKG threads
+PKG containers.thread
+PKG containers.unix
+PKG containers
+PKG logs
 PKG unix
 PKG yojson
 PKG re.posix

@@ -82,29 +82,28 @@ module Problem = struct
   (* what is expected? *)
   let find_expected_ ~file =
     match find_expected_str_ file with
-    | Some r -> Lwt.return r
+    | Some r -> r
     | None ->
-        let%lwt content = FrogMisc.File.with_in ~file FrogMisc.File.read_all in
+        let content = CCIO.with_in file (CCIO.read_all ~size:1024) in
         let g = Re.exec re_expect_ content in
-        if Re.marked g m_unsat_ then Lwt.return Res.Unsat
-          else if Re.marked g m_sat_ then Lwt.return Res.Sat
-          else if Re.marked g m_unknown_ then Lwt.return Res.Unknown
-          else if Re.marked g m_error_ then Lwt.return Res.Error
-          else Lwt.fail Not_found
+        if Re.marked g m_unsat_ then Res.Unsat
+          else if Re.marked g m_sat_ then Res.Sat
+          else if Re.marked g m_unknown_ then Res.Unknown
+          else if Re.marked g m_error_ then Res.Error
+          else raise Not_found
 
   let make ~file =
-    try%lwt
-      FrogDebug.debug "convert %s into problem..." file;
-      let%lwt res = find_expected_ ~file in
+    try
+      Logs.debug  (fun k->k "convert %s into problem..." file);
+      let res = find_expected_ ~file in
       let pb = {
         name=file;
         expected=res;
       } in
-      Lwt.return (`Ok pb)
+      `Ok pb
     with e ->
-      Lwt.return
-        (`Error (spf "could not find expected res for %s: %s"
-                file (Printexc.to_string e)))
+      `Error (spf "could not find expected res for %s: %s"
+              file (Printexc.to_string e))
 
   let compare_res pb res =
     match pb.expected, res with
@@ -130,8 +129,9 @@ module ProblemSet = struct
   let make l =
     (* sort by alphabetic order *)
     let l = List.sort String.compare l in
-    let pool = Lwt_pool.create 30 (fun () -> Lwt.return_unit) in
-    let%lwt l =
+    let sem = CCSemaphore.create 30 in
+    let l =
+      List.map (* FIXME *)
       Lwt_list.map_p
         (fun file ->
           Lwt_pool.use pool
