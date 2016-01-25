@@ -54,69 +54,58 @@ let add_res oc res =
 (* TODO: locking *)
 
 let make_job ~file job f =
-  let flags = [O_WRONLY; O_CREAT; O_TRUNC; O_SYNC] in
+  let flags = [Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC; Unix.O_SYNC] in
   CCUnix.with_out ~flags ~mode:0o644 file
-    (fun oc ->
+    ~f:(fun oc ->
       (* print header *)
       print_job oc job;
       (* call f with a yield_res function*)
-      f (add_res oc)
-    )
+      f (add_res oc))
 
 let append_job ~file f =
   let flags = [Unix.O_APPEND; Unix.O_WRONLY; Unix.O_SYNC] in
-  Lwt_io.with_file ~flags~perm:0o644 ~mode:Lwt_io.output file
-    (fun oc ->
-      f (add_res oc)
-    )
+  CCUnix.with_out ~flags ~mode:0o644 file
+    ~f:(fun oc -> f (add_res oc))
 
-(* stream of json values from [filename] *)
-let read_json_stream filename =
-  let stream, push = Lwt_stream.create () in
+type +'a gen = unit -> 'a option
+
+(* generator of json values from [filename] *)
+let read_json_gen file : _ gen =
   (* read json values from another thread *)
-  let read_thread =
-    Lwt_preemptive.detach
-    (fun s ->
-      try
-        let str = Yojson.Safe.stream_from_file s in
-        Stream.iter (fun json -> push (Some json)) str;
-        push None
-      with e ->
-        push None;
-        Lwt_log.ign_error_f
-          "reading json file %s: %s" filename (Printexc.to_string e);
-        ()
-    )
-    filename
+  let str = Yojson.Safe.stream_from_file file in
+  let gen () =
+    try Some (Stream.next str)
+    with
+    | Stream.Error msg as e ->
+        Logs.err
+          (fun k->k  "reading json file %s: %s" file msg);
+        raise e
+    | Stream.Failure -> None
   in
-  (* if stream isn't used anymore, stop reading *)
-  Gc.finalise (fun _ -> Lwt.cancel read_thread) stream;
-  stream
+  gen
 
-let fold_state_s f init filename =
-  try%lwt
-    let stream = read_json_stream filename in
-    (* parse job header *)
-    let%lwt res = Lwt_stream.next stream in
-    match job_of_yojson res with
-    | `Error e -> Lwt.fail (Failure e)
-    | `Ok job ->
-        let%lwt acc = init job in
-        Lwt_stream.fold_s
-          (fun json acc ->
-            match result_of_yojson json with
-            | `Error e -> Lwt.fail (Failure e)
-            | `Ok res -> f acc res
-          ) stream acc
-  with
-    | Failure _ as e -> Lwt.fail e
-    | e -> Lwt.fail (Failure (Printexc.to_string e))
+let gen_head g = match g() with
+  | Some x -> x
+  | None -> failwith "empty stream"
+
+let rec gen_fold f acc g = match g() with
+  | None -> acc
+  | Some x ->
+      let acc = f acc x in
+      gen_fold f acc g
 
 let fold_state f init filename =
-  fold_state_s
-    (fun acc x -> Lwt.return (f acc x))
-    (fun job -> Lwt.return (init job))
-    filename
+  let g = read_json_gen filename in
+  (* first item should be the job description *)
+  match job_of_yojson (gen_head g) with
+  | `Error e -> raise (Failure e)
+  | `Ok job ->
+      let acc = init job in
+      gen_fold
+        (fun acc json -> match result_of_yojson json with
+          | `Error e -> failwith e
+          | `Ok x -> f acc x)
+        acc g
 
 module StrMap = Map.Make(String)
 
@@ -127,15 +116,15 @@ let read_state filename =
     filename
 
 let write_state filename (job, res_map) =
-  Lwt_io.with_file ~flags:[Unix.O_CREAT; Unix.O_WRONLY; Unix.O_TRUNC]
-    ~perm:0o644 ~mode:Lwt_io.output
+  CCUnix.with_out
+    ~flags:[Unix.O_CREAT; Unix.O_WRONLY; Unix.O_TRUNC]
+    ~mode:0o644
     filename
-    (fun oc ->
-      let%lwt () = print_job oc job in
-      let%lwt () = Lwt_list.iter_s
-        (fun (_, res) -> add_res oc res)
-        (StrMap.bindings res_map) in
-      Lwt_io.flush oc
-    )
+    ~f:(fun oc ->
+      print_job oc job;
+      StrMap.iter
+        (fun _ res -> add_res oc res)
+        res_map;
+      flush oc)
 
 

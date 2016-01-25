@@ -71,7 +71,7 @@ let of_config config =
     ) StrMap.empty provers
 
 let run_cmd ?env ?(timeout=5) ?(memory=1000) ~prover ~file () =
-  FrogDebug.debug "timeout: %d, memory: %d" timeout memory;
+  Logs.debug (fun k->k "timeout: %d, memory: %d" timeout memory);
   let cmd = make_command ?env prover ~timeout ~memory ~file in
   Printf.sprintf "/bin/sh -c '%s'" (String.escaped cmd)
 
@@ -84,14 +84,14 @@ let kill_after_ ?timeout p = match timeout with
   | Some t ->
       CCThread.detach
         (fun () ->
-          Thread.sleep t;
+          Thread.delay t;
           ignore p#close)
 
 let run_proc ?env ?timeout ?memory ~prover ~file () =
   let cmd = run_cmd ?env ?timeout ?memory ~prover ~file () in
   let timeout = CCOpt.(timeout >|= (fun i->float_of_int i +. 0.5)) in
   CCUnix.with_process_full cmd
-    (fun p ->
+    ~f:(fun p ->
       kill_after_ ?timeout p;
       let res_out = CCIO.read_all p#stdout
       and res_err = CCIO.read_all p#stderr in

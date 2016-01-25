@@ -44,17 +44,14 @@ val append_job : file:string -> (yield_res -> 'a) -> 'a
 
 (** {2 Read state} *)
 
-val fold_state_s : ('a -> result -> 'a) -> (job -> 'a)
-                  -> string -> 'a
+val fold_state :
+  ('a -> result -> 'a) ->
+  (job -> 'a) ->
+  string ->
+  'a
 (** [fold_state f init filename] opens the job's state saved
     in file named [filename], calls [init job] with the job itself,
     and fold through all results for this job using [f].
-    @raise Failure if the file could not be found or if it's not a valid
-      job file *)
-
-val fold_state : ('a -> result -> 'a) -> (job -> 'a)
-                  -> string -> 'a
-(** Pure version of {!fold_state_s}, without theads.
     @raise Failure if the file could not be found or if it's not a valid
       job file *)
 

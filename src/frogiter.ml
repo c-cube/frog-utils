@@ -1,29 +1,5 @@
 
-(*
-copyright (c) 2013-2014, simon cruanes
-all rights reserved.
-
-redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
-
-redistributions of source code must retain the above copyright notice, this
-list of conditions and the following disclaimer.  redistributions in binary
-form must reproduce the above copyright notice, this list of conditions and the
-following disclaimer in the documentation and/or other materials provided with
-the distribution.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
-ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
-FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*)
-
+(* This file is free software, part of frog-utils. See file "license" for more details. *)
 
 (** {1 Call a command on each result of frogmap} *)
 
@@ -48,8 +24,8 @@ type params = {
 
 (* print metadata of result on the given chan *)
 let print_prelude oc res =
-  let%lwt () = Lwt_io.fprintf oc "# argument: %s\n" res.S.res_arg in
-  Lwt_io.fprintf oc "# time: %.2f\n" res.S.res_rtime
+  Printf.fprintf oc "# argument: %s\n" res.S.res_arg;
+  Printf.fprintf oc "# time: %.2f\n" res.S.res_rtime
 
 let escape_quote s =
   let buf = Buffer.create (String.length s) in
@@ -68,13 +44,14 @@ let run_cmd params res =
         | AsArg -> c ^ " " ^ res.S.res_out
         | _ -> c
       in
-      Lwt_process.shell ("set -e; set -o pipefail; " ^ escape_quote c')
+      "set -e; set -o pipefail; " ^ escape_quote c'
     | Exec (p, args)  ->
       let args = match params.format_in with
         | AsArg -> args @ [res.S.res_out]
         | _ -> args
       in
-      (p, Array.of_list (p::args))
+      let args = String.concat " " args in
+      Printf.sprintf "%s %s" p args
   in
   (* give additional info through parameters *)
   let env = Unix.environment () |> Array.to_list in
@@ -87,50 +64,48 @@ let run_cmd params res =
     ] @ env
     |> Array.of_list
   in
-  FrogDebug.debug "run sub-process %s" ([%show: string*string array] cmd);
+  Logs.debug (fun k->k "run sub-process %s" cmd);
   (* spawn process *)
-  try%lwt
-    Lwt_process.with_process_out
-      ~stdout:`Keep ~stderr:`Keep ~env cmd
-      (fun p ->
-        let%lwt () = match params.format_in with
+  try
+    CCUnix.with_process_full ~env cmd
+      ~f:(fun p ->
+        begin match params.format_in with
         | OutOnly ->
-            Lwt_io.write p#stdin res.S.res_out
+            output_string p#stdin res.S.res_out
         | Prelude ->
-            let%lwt () = print_prelude p#stdin res in
-            Lwt_io.write p#stdin res.S.res_out
-        | AsArg -> Lwt.return_unit
-        in
-        let%lwt () = Lwt_io.close p#stdin
-        and _ = p#status in
-        FrogDebug.debug "process finished";
-        Lwt.return_unit
+            print_prelude p#stdin res;
+            output_string p#stdin res.S.res_out
+        | AsArg -> ()
+        end;
+        flush p#stdin;
+        close_out p#stdin;
+        Logs.debug (fun k->k "process finished");
+        ()
       )
   with e ->
-    Lwt_io.eprintlf "error on command %s: %s"
+    Printf.eprintf "error on command %s: %s\n"
       (show_cmd params.cmd) (Printexc.to_string e)
 
 (* print some statistics *)
 let show_stats filename =
-  let%lwt (job, map) = S.read_state filename in
-  let%lwt() = Lwt_io.printlf "job: run '%s' on %d arguments"
-    job.S.cmd (List.length job.S.arguments) in
+  let job, map = S.read_state filename in
+  Printf.printf "job: run '%s' on %d arguments\n"
+    job.S.cmd (List.length job.S.arguments);
   (* compute basic statistics *)
   let foi = float_of_int in
   let num, sum_len_out = S.StrMap.fold
     (fun _ res (num,sum_len_out) ->
-      num + 1, sum_len_out + String.length res.S.res_out
-    ) map (0,0)
+      num + 1, sum_len_out + String.length res.S.res_out)
+    map (0,0)
   in
-  Lwt_io.printlf
-    "%d arguments dealt with, total length of outputs %d (avg output len %.2f)"
+  Printf.printf
+    "%d arguments dealt with, total length of outputs %d (avg output len %.2f)\n"
     num sum_len_out (if num=0 then 0. else foi sum_len_out /. foi num)
 
 let main params =
-  FrogMapState.fold_state_s
-    (fun () res ->
-       run_cmd params res
-    ) (fun _job -> Lwt.return_unit)
+  FrogMapState.fold_state
+    (fun () res -> run_cmd params res)
+    (fun _job -> ())
     params.filename
 
 (** {2 Main} *)
@@ -154,7 +129,9 @@ let stats_term =
 let opts =
   let open Cmdliner in
   let aux debug format_in filename cmd =
+    (* FIXME set debug level in Logs
     if debug then FrogDebug.enable_debug ();
+    *)
     { format_in; cmd; filename }
   in
   let format_in =
@@ -236,5 +213,5 @@ let term =
 let () =
   match Cmdliner.Term.eval_choice term [stats_term] with
   | `Version | `Help | `Error `Parse | `Error `Term | `Error `Exn -> exit 2
-  | `Ok res -> Lwt_main.run res
+  | `Ok res -> res
 

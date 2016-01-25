@@ -1,40 +1,18 @@
-(*
-copyright (c) 2013-2014, simon cruanes
-all rights reserved.
 
-redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
-
-redistributions of source code must retain the above copyright notice, this
-list of conditions and the following disclaimer.  redistributions in binary
-form must reproduce the above copyright notice, this list of conditions and the
-following disclaimer in the documentation and/or other materials provided with
-the distribution.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
-ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
-FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*)
+(* This file is free software, part of frog-utils. See file "license" for more details. *)
 
 (** {1 Scheduling script} *)
 
-let section = Lwt_log.Section.make "FrogLock"
+let section = Logs.Src.create "FrogLock"
 
 let () =
   FrogLockMessages.register_exn_printers();
-  Lwt.async_exception_hook :=
-    (fun e ->
-      Lwt_log.ign_error_f "async error: %s" (Printexc.to_string e);
-      exit 1)
+  ()
 
-let write_line oc line = Lwt_io.write_line oc line
+let write_line oc line =
+  output_string oc line;
+  output_char oc '\n';
+  flush oc
 
 type cmd =
   | Shell of string
@@ -73,28 +51,28 @@ let run_command params =
           let cmd, cmd_string = match params.cmd with
             | PrintStatus
             | StopAccepting -> assert false
-            | Shell c -> Lwt_process.shell c, c
+            | Shell c -> Printf.sprintf "/bin/sh -c %s" c, c
             | Exec (prog, args) ->
-                let cmd = prog, Array.of_list (prog::args) in
-                cmd, (String.concat " " (prog::args))
+                let args = String.concat " " args in
+                let cmd = Printf.sprintf "%s %s" prog args in
+                cmd, args
           in
-          Lwt_log.ign_debug_f "start command %s" cmd_string;
+          Logs.debug ~src:section (fun k->k "start command %s" cmd_string);
           let start = Unix.gettimeofday () in
           (* close stdin so that interactive commands fail *)
-          Lwt_process.with_process_none ~stdin:`Close ~stdout:`Keep cmd
-            (fun process ->
-              let%lwt status = process#status in
+          CCUnix.with_process_full cmd
+            ~f:(fun p ->
+              let status = p#close in
               (* measure time elapsed since we started the process *)
               let stop = Unix.gettimeofday () in
               let time = stop -. start in
-              Lwt_log.ign_debug_f ~section "command finished after %.2fs" time;
-              let res = {res_cmd=cmd_string; time; status; pid=process#pid; } in
-              Lwt.return (Some res)
-            )
+              Logs.debug ~src:section (fun k->k "command finished after %.2fs" time);
+              (* FIXME: obtain PID!! *)
+              let res = {res_cmd=cmd_string; time; status; pid=0; } in
+              Some res)
       | false ->
-          Lwt_log.ign_info_f "could not acquire lock";
-          Lwt.return_none
-      )
+          Logs.info ~src:section (fun k->k "could not acquire lock");
+          None)
     )
 
 module M = FrogLockMessages
@@ -111,33 +89,33 @@ let print_status params =
     | l -> ", tags {" ^ String.concat ", " l ^ "}"
   in
   let now = Unix.gettimeofday() in
-  try%lwt
-    let%lwt res = FrogLockClient.get_status params.port in
+  try
+    let res = FrogLockClient.get_status params.port in
     match res with
     | None ->
-      Lwt_log.info_f ~section "daemon not running"
+      Logs.info ~src:section (fun k->k "daemon not running")
     | Some {M.current=l; waiting; max_cores} ->
-      let%lwt () = Lwt_io.printlf "Maximum cores: %d" max_cores in
-      let%lwt () = match l with
-        | [] -> Lwt_io.printlf "No current task."
+      Printf.printf "Maximum cores: %d\n" max_cores;
+      match l with
+        | [] -> print_endline "No current task."
         | _ ->
-          Lwt_list.iter_s (fun c ->
+          List.iter
+            (fun c ->
               let time = Unix.gettimeofday() -. c.M.current_start in
               let job = c.M.current_job in
-              Lwt_io.printlf
-                "current job (cores %d, user %s, pid %d, cwd %s, issued %.2fs ago%s, running for %.2fs): %s"
+              Printf.printf
+                "current job (cores %d, user %s, pid %d, cwd %s, issued %.2fs ago%s, running for %.2fs): %s\n"
                 job.M.cores
                 (maybe_str job.M.user)
                 job.M.pid (maybe_str job.M.cwd)
                 (now -. job.M.query_time)
                 (tags2str job.M.tags)
                 time (maybe_str job.M.info)
-            ) l
-      in
-      Lwt_list.iter_s
+            ) l;
+      List.iter
         (fun wjob ->
            let job = wjob.M.waiting_job in
-           Lwt_io.printlf "waiting job n°%d (cores %d, user %s, pid %d, cwd %s, issued %.2fs ago%s): %s"
+           Printf.printf "waiting job n°%d (cores %d, user %s, pid %d, cwd %s, issued %.2fs ago%s): %s\n"
              wjob.M.waiting_id
              job.M.cores
              (maybe_str job.M.user)
@@ -145,31 +123,30 @@ let print_status params =
              (now -. job.M.query_time)
              (tags2str job.M.tags)
              (maybe_str job.M.info)
-        ) waiting
+        ) waiting;
   with e ->
-     Lwt_log.ign_error_f ~section "error: %s" (Printexc.to_string e);
-     Lwt.return_unit
+     Logs.err ~src:section (fun k->k "error: %s" (Printexc.to_string e));
+     ()
 
 let main params =
-  Lwt_main.run
-    (
-      Lwt_log.default := Lwt_log.channel ~close_mode:`Keep ~channel:Lwt_io.stdout ();
-      if params.debug
-        then Lwt_log.add_rule "*" Lwt_log.Debug;
-      match params.cmd with
-      | PrintStatus -> print_status params
-      | StopAccepting -> FrogLockClient.stop_accepting params.port
-      | Exec _
-      | Shell _ ->
-          let%lwt res = run_command params in
-          match res with
-          | None -> Lwt.return_unit
-          | Some res ->
-            (* TODO: print more details, like return code *)
-            Lwt_log.ign_info_f ~section "process ran in %.2fs (pid: %d)\n"
-              res.time res.pid;
-            Lwt.return_unit
-    )
+  (* TODO setup loggers
+  Lwt_log.default := Lwt_log.channel ~close_mode:`Keep ~channel:Lwt_io.stdout ();
+  if params.debug
+    then Lwt_log.add_rule "*" Lwt_log.Debug;
+  *)
+  match params.cmd with
+  | PrintStatus -> print_status params
+  | StopAccepting -> FrogLockClient.stop_accepting params.port
+  | Exec _
+  | Shell _ ->
+      let res = run_command params in
+      match res with
+      | None -> ()
+      | Some res ->
+        (* TODO: print more details, like return code *)
+        Logs.info ~src:section
+          (fun k->k "process ran in %.2fs (pid: %d)" res.time res.pid);
+        ()
 
 (** {2 Main} *)
 

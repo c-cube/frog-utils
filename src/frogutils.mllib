@@ -1,12 +1,9 @@
-FrogLockMessages
+
 FrogLockClient
 FrogLockDaemon
 FrogMapState
 FrogConfig
-FrogDebug
 FrogPlot
-FrogHeap
 FrogPrintBox
 FrogProver
-FrogMisc
 FrogTest

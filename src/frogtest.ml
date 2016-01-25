@@ -5,7 +5,6 @@
 
 module T = FrogTest
 module Prover = FrogProver
-module E = FrogMisc.LwtErr
 
 type save =
   | SaveFile of string
@@ -16,79 +15,76 @@ type save =
 module Run = struct
   (* callback that prints a result *)
   let on_solve pb res =
-    let module F = FrogMisc.Fmt in
     let pp_res out () =
-      let str, c = match T.Problem.compare_res pb res with
-        | `Same -> "ok", `Green
-        | `Improvement -> "ok (improved)", `Blue
-        | `Mismatch -> "bad", `Red
-      in
-      Format.fprintf out "%a" (F.in_bold_color c Format.pp_print_string) str
+      Format.fprintf out
+        (match T.Problem.compare_res pb res with
+        | `Same -> "@{<Green>ok@}"
+        | `Improvement -> "@{<Blue>ok (improved)@}"
+        | `Mismatch -> "@{<Red>bad@}"
+        )
     in
     Format.printf "problem %-50s %a@." (pb.T.Problem.name ^ " :") pp_res ();
-    Lwt.return_unit
+    ()
 
   (* save result in given file *)
   let save_ ~file res =
-    FrogDebug.debug "save result in file %s" file;
+    Logs.debug (fun k->k "save result in file %s" file);
     T.Results.to_file ~file res;
-    Lwt.return_unit
+    ()
 
   (* obtain the current commit name *)
-  let get_commit_ () : string Lwt.t =
-    let open Lwt.Infix in
-    Lwt_process.with_process_in
-      (Lwt_process.shell "git rev-parse HEAD")
-      (fun p -> FrogMisc.File.read_all p#stdout >|= String.trim)
+  let get_commit_ () : string =
+    CCUnix.with_process_in "git rev-parse HEAD"
+      ~f:(fun oc -> CCIO.read_all oc |> String.trim)
 
   (* lwt main *)
   let main ?j ?timeout ~save ~config ~dir () =
-    let open E in
+    let open CCError.Infix in
     (* parse config *)
-    Lwt.return (T.Config.of_file (Filename.concat dir config))
+    T.Config.of_file (Filename.concat dir config)
     >>= fun config ->
     (* build problem set (exclude config file!) *)
     T.ProblemSet.of_dir ~filter:(Re.execp config.T.Config.problem_pat) dir
     >>= fun pb ->
     Format.printf "run %d tests in %s@." (T.ProblemSet.size pb) dir;
     (* solve *)
-    E.ok (T.run ?j ?timeout ~on_solve ~config pb)
+    CCError.return (T.run ?j ?timeout ~on_solve ~config pb)
     >>= fun results ->
     Format.printf "%a@." T.Results.print results;
-    let%lwt () = match save with
+    begin match save with
       | SaveFile f -> save_ ~file:f results
       | SaveCommit ->
-          let%lwt commit = get_commit_ () in
-          FrogDebug.debug "commit name: %s" commit;
+          let commit = get_commit_ () in
+          Logs.debug (fun k->k "commit name: %s" commit);
           save_ ~file:(commit ^ ".json") results
       | SaveNone ->
-          FrogDebug.debug "do not save result";
-          Lwt.return_unit
-    in
+          Logs.debug (fun k->k "do not save result");
+          ()
+    end;
     if T.Results.is_ok results
-    then E.return ()
+    then CCError.return ()
     else
-      E.fail (Format.asprintf "%d failure(s)" (T.Results.num_failed results))
+      CCError.fail (Format.asprintf "%d failure(s)" (T.Results.num_failed results))
 end
 
 (** {2 Display Results} *)
 module Display = struct
   let main ~file () =
-    let open E in
-    E.lift (T.Results.of_file ~file) >>= fun res ->
+    let open CCError.Infix in
+    T.Results.of_file ~file >|= fun res ->
     Format.printf "%a@." T.Results.print res;
-    E.return ()
+    ()
 end
 
 (** {2 Compare Results} *)
 module Compare = struct
   let main ~file1 ~file2 () =
-    let open E in
-    E.lift (T.Results.of_file ~file:file1) >>= fun res1 ->
-    E.lift (T.Results.of_file ~file:file2) >>= fun res2 ->
+    let open CCError.Infix in
+    T.Results.of_file ~file:file1 >>= fun res1 ->
+    T.Results.of_file ~file:file2 >|= fun res2 ->
     let cmp = T.ResultsComparison.compare res1.T.Results.raw res2.T.Results.raw in
     Format.printf "%a@." T.ResultsComparison.print cmp;
-    E.return ()
+    ()
 end
 
 (** {2 Main: Parse CLI} *)
@@ -97,8 +93,10 @@ end
 let term_run =
   let open Cmdliner in
   let aux debug config save dir j timeout =
+    (* FIXME
     FrogDebug.set_debug debug;
-    Lwt_main.run (Run.main ?j ?timeout ~save ~config ~dir ())
+    *)
+    Run.main ?j ?timeout ~save ~config ~dir ()
   in
   let save =
     let parse_ = function
@@ -128,7 +126,7 @@ let term_run =
 (* sub-command to display a file *)
 let term_display =
   let open Cmdliner in
-  let aux file = Lwt_main.run (Display.main ~file ()) in
+  let aux file = Display.main ~file () in
   let file =
     Arg.(required & pos 0 (some string) None & info [] ~docv:"FILE" ~doc:"file containing results")
   and doc = "display test results from a file" in
@@ -137,7 +135,7 @@ let term_display =
 (* sub-command to compare two files *)
 let term_compare =
   let open Cmdliner in
-  let aux file1 file2 = Lwt_main.run (Compare.main ~file1 ~file2 ()) in
+  let aux file1 file2 = Compare.main ~file1 ~file2 () in
   let file1 = Arg.(required & pos 0 (some string) None & info [] ~docv:"FILE1" ~doc:"first file")
   and file2 = Arg.(required & pos 1 (some string) None & info [] ~docv:"FILE2" ~doc:"second file")
   and doc = "compare two result files" in

@@ -1,32 +1,11 @@
 
-(*
-copyright (c) 2013-2014, simon cruanes
-all rights reserved.
-
-redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
-
-redistributions of source code must retain the above copyright notice, this
-list of conditions and the following disclaimer.  redistributions in binary
-form must reproduce the above copyright notice, this list of conditions and the
-following disclaimer in the documentation and/or other materials provided with
-the distribution.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
-ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
-FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*)
+(* This file is free software, part of frog-utils. See file "license" for more details. *)
 
 (** {1 Map a command on many arguments, with parallelism} *)
 
 module S = FrogMapState
+
+let section = Logs.Src.create "frogmap"
 
 type cmd =
   | Resume of string   (* resume filename *)
@@ -50,30 +29,41 @@ type params = {
   Sys.chdir params.job.S.cwd;
   *)
 
+let kill_after_ ?timeout p = match timeout with
+  | None -> ()
+  | Some t ->
+      CCThread.detach
+        (fun () ->
+          Thread.delay t;
+          ignore p#close)
+
 (* run command on the argument, return a [S.result] *)
 let run_cmd ?timeout cmd arg =
-  let cmd' = cmd ^ " " ^ arg |> Lwt_process.shell in
-  Lwt_log.ign_debug_f "start running '%s' on '%s'" cmd arg;
+  let cmd' = cmd ^ " " ^ arg in
+  Logs.debug ~src:section (fun k->k "start running '%s' on '%s'" cmd arg);
   let start = Unix.gettimeofday () in
-  Lwt_process.with_process_full ?timeout cmd'
-    (fun p ->
-      let%lwt () = Lwt_io.close p#stdin
-      and res_out = Lwt_io.read p#stdout
-      and res_err = Lwt_io.read p#stderr
-      and res_errcode = Lwt.map
-        (function
+  CCUnix.with_process_full cmd'
+    ~f:(fun p ->
+      kill_after_ ?timeout p;
+      close_out p#stdin;
+      let res_out = CCIO.read_all p#stdout
+      and res_err = CCIO.read_all p#stderr in
+      let res_errcode = match p#close with
           | Unix.WEXITED e -> e
           | Unix.WSIGNALED _
           | Unix.WSTOPPED _  -> 128
-        ) p#status
       in
       let res_rtime = Unix.gettimeofday () -. start in
-      let%lwt rusage = p#rusage in
+      let res_utime = 0. and res_stime = 0. in
+      (* FIXME
+      let rusage = p#rusage in
       let res_utime = rusage.Lwt_unix.ru_utime in
       let res_stime = rusage.Lwt_unix.ru_stime in
-      Lwt_log.ign_debug_f "process '%s' on '%s': done (real : %.2fs, user : %.2f, system : %.2f)"
-        cmd arg res_rtime res_utime res_stime;
-      Lwt.return {S.res_arg=arg; res_rtime; res_utime; res_stime; res_errcode; res_out; res_err; }
+      *)
+      Logs.debug ~src:section (fun k->
+        k "process '%s' on '%s': done (real : %.2fs, user : %.2f, system : %.2f)"
+        cmd arg res_rtime res_utime res_stime);
+      {S.res_arg=arg; res_rtime; res_utime; res_stime; res_errcode; res_out; res_err; }
     )
 
 let with_lock ~daemon ~priority f info =
@@ -82,12 +72,12 @@ let with_lock ~daemon ~priority f info =
   FrogLockClient.acquire ~cwd ?user ~info ~cores:1 ~priority daemon
     (function
       | true ->
-        Lwt_log.ign_debug_f "hurray ! lock acquired";
-        let%lwt x = f () in
-        Lwt.return (Some x)
+        Logs.debug ~src:section (fun k->k "hurray ! lock acquired");
+        let x = f () in
+        Some x
       | false ->
-        Lwt_log.ign_debug_f "hu ho... something wrong happened...";
-        Lwt.return_none
+        Logs.debug ~src:section (fun k->k "hu ho... something wrong happened...");
+        None
     )
 
 (* thread that prints progress *)
@@ -115,57 +105,59 @@ let make_progress_thread n =
     let len_bar = 30 in
     let bar = String.init len_bar (fun i -> if i * n <= len_bar * !cur then '#' else ' ') in
     let percent = if n=0 then 100 else (!cur * 100) / n in
-    let%lwt () = Lwt_io.printf "\r... %5d/%d | %3d%% [%6s: %s]"
-      !cur n percent (time_string time_elapsed) bar
-    in
-    let%lwt () = Lwt_io.flush Lwt_io.stdout in
+    Printf.printf "\r... %5d/%d | %3d%% [%6s: %s]%!"
+      !cur n percent (time_string time_elapsed) bar;
     if !cur = n
-    then
-      let%lwt () = Lwt_io.printl "" in
-      Lwt_io.flush Lwt_io.stdout
-    else
-      let%lwt () = Lwt_unix.sleep 0.2 in
+    then (
+      print_endline "";
+      flush stdout;
+    ) else (
+      Thread.delay 0.2;
       loop ()
+    )
   in
-  (fun () -> incr cur), (loop ())
+  (fun () -> incr cur), CCThread.spawn loop
 
 (* run the job's command on every argument, call [yield_res] with
   every result *)
 let map_args_aux ?daemon ?timeout ~priority ~progress ~j cmd yield_res args =
   assert (j >= 1);
-  let send_done, progress_thread = if progress
+  let send_done, _progress_thread = if progress
     then make_progress_thread (List.length args)
-    else (fun () -> ()), Lwt.return_unit
+    else (fun () -> ()), Thread.create CCFun.id ()
   in
-  (* use a pool to limit parallelism to [j] *)
-  let pool = Lwt_pool.create j (fun () -> Lwt.return_unit) in
-  let iter_thread = Lwt_list.iter_p
+  (* TODO use a thread pool of [j] elements *)
+  List.iter
     (fun arg ->
-      Lwt_pool.use pool
+      (* TODO synchronize, we should wait for the thread to stop *)
+      CCThread.detach
         (fun () ->
-          Lwt_log.ign_debug_f "run on %s..." arg;
-          let%lwt res =
+          Logs.debug ~src:section (fun k->k "run on %s..." arg);
+          let res =
             match daemon with
-            | Some daemon -> with_lock ~daemon ~priority (fun () -> run_cmd ?timeout cmd arg) (cmd ^ " " ^ arg)
-            | None -> Lwt.map (fun x -> Some x) (run_cmd ?timeout cmd arg)
+            | Some daemon ->
+                with_lock ~daemon ~priority
+                  (fun () -> run_cmd ?timeout cmd arg) (cmd ^ " " ^ arg)
+            | None -> Some (run_cmd ?timeout cmd arg)
           in
           match res with
           | Some res ->
             send_done ();
-            Lwt_log.ign_debug_f "... %s: done (errcode %d)" arg res.S.res_errcode;
+            Logs.debug ~src:section
+              (fun k->k "... %s: done (errcode %d)" arg res.S.res_errcode);
             yield_res res  (* output result *)
           | None -> assert false (* Retry doing the computation ? *)
-        )
-    ) args
-  in
-  Lwt.join [progress_thread; iter_thread]
+        ))
+    args
 
 let map_args ?timeout ~lock ~port ~priority ~progress ~j cmd yield_res args =
-  if lock then
-    FrogLockClient.connect_or_spawn port (fun daemon ->
+  if lock
+  then
+    FrogLockClient.connect_or_spawn port
+      (fun daemon ->
         map_args_aux ~daemon ?timeout ~priority ~progress ~j cmd yield_res args)
   else
-        map_args_aux ?timeout ~priority ~progress ~j cmd yield_res args
+    map_args_aux ?timeout ~priority ~progress ~j cmd yield_res args
 
 (* TODO: lock result file *)
 
@@ -176,7 +168,7 @@ module StrSet = Set.Make(String)
 (* resume job from the given file *)
 let resume ?timeout ~lock ~port ~priority ~progress ~j file =
   (* get the job and the set of executed tasks *)
-  let%lwt (job, done_tasks) =
+  let job, done_tasks =
     S.fold_state
       (fun (job,set) res -> job, StrSet.add res.S.res_arg set)
       (fun job -> job, StrSet.empty)
@@ -187,26 +179,25 @@ let resume ?timeout ~lock ~port ~priority ~progress ~j file =
     job.S.arguments
   in
   (* change directory *)
-  Lwt_log.ign_debug_f "change directory to %s" job.S.cwd;
+  Logs.debug ~src:section (fun k->k "change directory to %s" job.S.cwd);
   Sys.chdir job.S.cwd;
   (* execute remaining tasks *)
-  let%lwt () = Lwt_io.printlf "resume: %d remaining tasks (%d done)"
-    (List.length remaining_tasks) (StrSet.cardinal done_tasks) in
+  Printf.printf "resume: %d remaining tasks (%d done)\n"
+    (List.length remaining_tasks) (StrSet.cardinal done_tasks);
   S.append_job ~file
     (fun yield_res ->
        map_args ?timeout ~lock ~port ~priority
-         ~progress ~j job.S.cmd yield_res remaining_tasks
-    )
+         ~progress ~j job.S.cmd yield_res remaining_tasks)
 
 let run_map params cmd args =
   (* chose output file *)
-  let%lwt file = match params.filename with
+  let file = match params.filename with
     | None -> S.make_fresh_file ?dir:params.dir "frogmapXXXXX.json"
-    | Some f -> Lwt.return f
+    | Some f -> f
   in
-  let%lwt () = Lwt_io.printlf
-    "run command '%s' on %d arguments, parallelism %d, output to %s"
-    cmd (List.length args) params.parallelism_level file in
+  Printf.printf
+    "run command '%s' on %d arguments, parallelism %d, output to %s\n"
+    cmd (List.length args) params.parallelism_level file;
   let job = {S.cmd = cmd; arguments=args; cwd= Sys.getcwd(); } in
   (* open file *)
   S.make_job ~file job
@@ -218,8 +209,7 @@ let run_map params cmd args =
          ~priority:params.priority
          ~progress:params.progress
          ~j:params.parallelism_level
-         cmd yield_res args
-    )
+         cmd yield_res args)
 
 let main params =
   match params.cmd with
@@ -236,19 +226,13 @@ let main params =
 
 (** {2 Main} *)
 
-let read_file_args file =
-  Lwt_io.with_file ~mode:Lwt_io.input file
-    (fun ic ->
-      let lines = Lwt_io.read_lines ic in
-      Lwt_stream.to_list lines
-    )
+let read_file_args file = CCIO.with_in file CCIO.read_lines_l
 
 let opts =
   let open Cmdliner in
   let aux dir j timeout progress lock port priority file cmd =
-    let%lwt cmd = cmd in
-    Lwt.return { cmd; filename = file; dir; parallelism_level = j; timeout; progress;
-                 lock; port; priority }
+    { cmd; filename = file; dir; parallelism_level = j; timeout; progress;
+      lock; port; priority }
   in
   let dir =
     let doc = "Directory where to put the state file" in
@@ -282,8 +266,8 @@ let opts =
 
 let resume_term =
   let open Cmdliner in
-  let cmd f = Lwt.return (Resume f) in
-  let aux params = Lwt_main.run (Lwt.bind params main) in
+  let cmd f = Resume f in
+  let aux params = main params in
   let file =
     let doc = "Task file to be resumed" in
     Arg.(required & pos 0 (some non_dir_file) None & info [] ~docv:"FILE" ~doc)
@@ -303,13 +287,13 @@ let resume_term =
 let term =
   let open Cmdliner in
   let params cmd args file_args =
-    let%lwt args = match file_args with
-      | None -> Lwt.return args
+    let args = match file_args with
+      | None -> args
       | Some f -> read_file_args f
     in
-    Lwt.return (Run (cmd, args))
+    Run (cmd, args)
   in
-  let aux params = Lwt_main.run (Lwt.bind params main) in
+  let aux params = main params in
   let file =
     let doc = "Output file" in
     Arg.(value & opt (some string) None & info ["o"; "output"] ~docv:"FILE" ~doc)

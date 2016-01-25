@@ -31,7 +31,6 @@ module St = FrogMapState
 module Prover = FrogProver
 module Conf = FrogConfig
 module PB = FrogPrintBox
-module Opt = FrogMisc.Opt
 
 (** Type Definitions *)
 (* TODO: have a module to define times and operations on them ? *)
@@ -81,9 +80,6 @@ type plot_params = {
   out_format : string;
 }
 
-(* Misc function *)
-let debug fmt = FrogDebug.debug fmt
-
 let compile_re ~msg re =
   try
     Some (Re.compile (Re.no_case (Re_posix.re re)))
@@ -119,8 +115,8 @@ let make_summary ?(filter=(fun _ _ -> true)) prover_name prover job results =
     solved_time = { real = 0.; user = 0.; system = 0.; };
     run_time = { real = 0.; user = 0.; system = 0.; };
   } in
-  let re_sat = Opt.(prover.Prover.sat >>= compile_re ~msg:"sat") in
-  let re_unsat = Opt.(prover.Prover.unsat >>= compile_re ~msg:"unsat") in
+  let re_sat = CCOpt.(prover.Prover.sat >>= compile_re ~msg:"sat") in
+  let re_unsat = CCOpt.(prover.Prover.unsat >>= compile_re ~msg:"unsat") in
   (*
   let re_unknown = Opt.(prover.Prover.unknown >>= compile_re ~msg:"unknown") in
   *)
@@ -155,9 +151,8 @@ let map_summaries params items =
 let extract_file file =
   St.fold_state
     (fun (job,map) res ->
-      job, StrMap.add res.St.res_arg res map
-    ) (fun job -> job, StrMap.empty) file
-    |> Lwt_main.run
+      job, StrMap.add res.St.res_arg res map)
+    (fun job -> job, StrMap.empty) file
 
 (* Single summary analysis *)
 let print_single_summary prover s =
@@ -269,10 +264,10 @@ let parse_prover_list ~config l =
 let analyse ~config params l = match l with
   | [] -> assert false
   | [p, file] ->
-      debug "analyse file %s, obtained from prover %s" file p;
+      Logs.debug (fun k->k "analyse file %s, obtained from prover %s" file p);
       analyse_single_file ~config p file
   | _ ->
-      debug "analyse %d files" (List.length l);
+      Logs.debug (fun k->k "analyse %d files" (List.length l));
       analyse_multiple params (parse_prover_list ~config l)
 
 (* Plot functions *)
@@ -354,10 +349,12 @@ let args_term =
 let config_term =
   let open Cmdliner in
   let aux config debug =
-    if debug then begin
+    if debug then (
+      (* FIXME
       FrogDebug.set_debug true;
+      *)
       Printexc.record_backtrace true
-    end;
+    );
     try
       `Ok (FrogConfig.parse_files config FrogConfig.empty)
     with FrogConfig.Error msg ->

@@ -129,26 +129,23 @@ module ProblemSet = struct
   let make l =
     (* sort by alphabetic order *)
     let l = List.sort String.compare l in
-    let sem = CCSemaphore.create 30 in
-    let l =
-      List.map (* FIXME *)
-      Lwt_list.map_p
-        (fun file ->
-          Lwt_pool.use pool
-            (fun () -> Problem.make ~file)
-        ) l
-    in
-    Lwt.return (FrogMisc.Err.seq_list l)
+    CCError.map_l
+      (fun file -> Problem.make ~file)
+      l
 
   let size = List.length
 
+  let rec gen_to_list_ acc g = match g() with
+    | None -> acc
+    | Some x -> gen_to_list_ (x :: acc) g
+
   let of_dir ?filter:(p=fun _ -> true) d =
-    let l = FrogMisc.File.walk d in
-    let l = FrogMisc.List.filter_map
+    let l = CCIO.File.walk d |> gen_to_list_ [] in
+    let l = CCList.filter_map
       (fun (kind,f) -> match kind with
         | `File when p f -> Some f
-        | _ -> None
-      ) l
+        | _ -> None)
+      l
     in
     make l
 
@@ -168,15 +165,13 @@ module Config = struct
     { j; timeout; prover; problem_pat=pat; }
 
   let update ?j ?timeout c =
-    let module O = FrogMisc.Opt in
-    let j = O.get c.j j in
-    let timeout = O.get c.timeout timeout in
+    let j = CCOpt.get c.j j in
+    let timeout = CCOpt.get c.timeout timeout in
     { c with j; timeout; }
 
   let of_file file =
-    let module E = FrogMisc.Err in
     let module C = FrogConfig in
-    FrogDebug.debug "parse config file %s..." file;
+    Logs.debug (fun k->k "parse config file %s..." file);
     try
       let c = C.parse_files [file] C.empty in
       let j = C.get_int ~default:1 c "parallelism" in
@@ -185,10 +180,10 @@ module Config = struct
       let prover = Prover.build_from_config c prover in
       let problem_pat = C.get_string c "problems" in
       let problem_pat = Re_posix.compile_pat problem_pat in
-      E.return { j; timeout; prover; problem_pat; }
+      CCError.return { j; timeout; prover; problem_pat; }
     with
-    | C.Error e -> E.fail e
-    | Not_found -> E.fail ("invalid config file: " ^ file)
+    | C.Error e -> CCError.fail e
+    | Not_found -> CCError.fail ("invalid config file: " ^ file)
 end
 
 module Results = struct
@@ -202,18 +197,16 @@ module Results = struct
   let raw_to_yojson r : Yojson.Safe.json =
     let l = MStr.fold
       (fun _ (pb,res) acc ->
-        (`List [Problem.to_yojson pb; Res.to_yojson res] :: acc)
-      ) r []
+        (`List [Problem.to_yojson pb; Res.to_yojson res] :: acc))
+      r []
     in
     `List l
 
-  module E = FrogMisc.Err
-
   let raw_of_yojson (j:Yojson.Safe.json) : raw or_error =
-    let open E in
+    let open CCError.Infix in
     let get_list_ = function
-      | `List l -> E.return l
-      | _ -> E.fail "expected list"
+      | `List l -> CCError.return l
+      | _ -> CCError.fail "expected list"
     in
     (* parse a single (problem, res) pair *)
     let get_pair_ j =
@@ -221,10 +214,10 @@ module Results = struct
       | [a;b] ->
           Problem.of_yojson a >>= fun a ->
           Res.of_yojson b >>= fun b ->
-          E.return (a,b)
-      | _ -> E.fail "expected pair"
+          CCError.return (a,b)
+      | _ -> CCError.fail "expected pair"
     in
-    get_list_ j >|= List.map get_pair_ >>= E.seq_list >|= raw_of_list
+    get_list_ j >>= CCError.map_l get_pair_ >|= raw_of_list
 
   type stat = {
     unsat: int;
@@ -285,7 +278,7 @@ module Results = struct
     let improved, mismatch, stat = analyse_ raw in
     { raw; stat; improved; mismatch; }
 
-  let of_yojson j = E.(raw_of_yojson j >|= make)
+  let of_yojson j = CCError.(raw_of_yojson j >|= make)
   let to_yojson t = raw_to_yojson t.raw
 
   let of_list l =
@@ -296,7 +289,7 @@ module Results = struct
     try
       let json = Yojson.Safe.from_file file in
       of_yojson json
-    with e -> E.fail (Printexc.to_string e)
+    with e -> CCError.fail (Printexc.to_string e)
 
   let to_file t ~file = Yojson.Safe.to_file file (to_yojson t)
 
@@ -356,24 +349,21 @@ module ResultsComparison = struct
   let pp_list_ p = Format.pp_print_list p
   let pp_hvlist_ p out = fpf out "[@[<hv>%a@]]" (pp_list_ p)
   let pp_pb_res out (pb,res) = fpf out "@[<h>%s: %a@]" pb.Problem.name Res.print res
-  let pp_pb_res2 ~bold ~color out (pb,res1,res2) =
-    let module F = FrogMisc.Fmt in
+  let pp_pb_res2 ~color out (pb,res1,res2) =
     fpf out "@[<h>%s: %a@]" pb.Problem.name
-      ((if bold then F.in_bold_color color else F.in_color color)
+      (CCFormat.with_color color
         (fun out () -> fpf out "%a -> %a" Res.print res1 Res.print res2))
       ()
 
-  (* TODO: colors! *)
   let print out t =
-    let module F = FrogMisc.Fmt in
     fpf out "@[<v2>comparison: {@,appeared: %a,@ disappeared: %a,@ same: %a \
       ,@ mismatch: %a,@ improved: %a,@ regressed: %a@]@,}"
       (pp_hvlist_ pp_pb_res) t.appeared
       (pp_hvlist_ pp_pb_res) t.disappeared
       (pp_hvlist_ pp_pb_res) t.same
-      (pp_hvlist_ (pp_pb_res2 ~bold:true ~color:`Red)) t.mismatch (* RED *)
-      (pp_hvlist_ (pp_pb_res2 ~bold:false ~color:`Green)) t.improved (* GREEN *)
-      (pp_hvlist_ (pp_pb_res2 ~bold:true ~color:`Yellow)) t.regressed (* YELLOW *)
+      (pp_hvlist_ (pp_pb_res2 ~color:"Red")) t.mismatch (* RED *)
+      (pp_hvlist_ (pp_pb_res2 ~color:"green")) t.improved (* GREEN *)
+      (pp_hvlist_ (pp_pb_res2 ~color:"Yellow")) t.regressed (* YELLOW *)
 end
 
 let extract_res_ ~prover stdout errcode =
@@ -391,34 +381,32 @@ let extract_res_ ~prover stdout errcode =
 
 (* run one particular test *)
 let run_pb ~config pb =
-  FrogDebug.debug "running %-30s..." pb.Problem.name;
+  Logs.debug (fun k->k "running %-30s..." pb.Problem.name);
   (* spawn process *)
-  let%lwt (out,_err,errcode) = Prover.run_proc
+  let out, _err, errcode = Prover.run_proc
     ~timeout:config.Config.timeout
     ~prover:config.Config.prover
     ~file:pb.Problem.name
     ()
   in
   (* parse its output *)
-  let actual = extract_res_ ~prover:config.Config.prover out errcode in
-  Lwt.return actual
+  extract_res_ ~prover:config.Config.prover out errcode
 
-let nop2_ _ _ = Lwt.return_unit
+let nop2_ _ _ = ()
 
 let run ?(on_solve = nop2_) ?j ?timeout ~config set =
   let config = Config.update ?j ?timeout config in
-  let pool = Lwt_pool.create config.Config.j (fun () -> Lwt.return_unit) in
-  let%lwt raw =
-    Lwt_list.map_p
+  (* FIXME: limit the number of threads, use a thread pool, something *)
+  let raw =
+    List.map
       (fun pb ->
-        Lwt_pool.use pool
+        CCFuture.make
           (fun () ->
-            let%lwt res = run_pb ~config pb in
-            let%lwt () = on_solve pb res in
-            Lwt.return (pb, res)
-          )
-      )
+            let res = run_pb ~config pb in
+            on_solve pb res;
+            pb, res))
       set
   in
-  Lwt.return (Results.of_list raw)
+  let raw = List.rev_map CCFuture.get raw in
+  Results.of_list raw
 

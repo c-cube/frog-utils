@@ -49,7 +49,7 @@ val run_cmd : ?env:env -> ?timeout:int -> ?memory:int ->
                prover:t ->
                file:string ->
                unit ->
-               (string * string array)
+               string
 (** Same as {!run_exec}, but rather than executing the command, only
     returns a pair [(command, args)] that can be executed (starts with "sh") *)
 
@@ -79,7 +79,7 @@ module TPTP : sig
                  prover:string ->
                  file:string ->
                  unit ->
-                 (string * string array)
+                 string
   (** Version of {!run_cmd} that also looks into [config] for a
       key named "TPTP". *)
 end
