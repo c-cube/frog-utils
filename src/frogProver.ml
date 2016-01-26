@@ -29,7 +29,9 @@ let make_command ?(env=[||]) p ~timeout ~memory ~file =
       | _ -> raise Not_found
     ) s
   in
+  (* XXX: seems to make zombie processes?
   add_str "ulimit -t \\$(( 1 + $time)) -v \\$(( 1000000 * $memory )); ";
+  *)
   Array.iter
     (fun (key,value) -> add_str (key ^ "=" ^ value ^ " "))
     env;
