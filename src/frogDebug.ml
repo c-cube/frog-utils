@@ -28,7 +28,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 let debug_ = ref false
 
-let set_debug b = debug_ := b
+let set_debug b =
+  if b then Lwt_log.append_rule "*" Lwt_log.Debug;
+  debug_ := b
+
 let enable_debug () = debug_ := true
 
 let debug fmt =
