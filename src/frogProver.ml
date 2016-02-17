@@ -88,17 +88,25 @@ let run_proc ?env ?timeout ?memory ~prover ~file () =
   Lwt_process.with_process_full ?timeout cmd
     (fun p ->
       let res =
-        let%lwt () = Lwt_io.close p#stdin in
-        let%lwt res_out = Lwt_io.read p#stdout
-        and res_err = Lwt_io.read p#stderr
-        and res_errcode = Lwt.map
-          (function
-            | Unix.WEXITED e -> e
-            | Unix.WSIGNALED _
-            | Unix.WSTOPPED _  -> 128
-          ) p#status
+        let res_errcode =
+          Lwt.map
+            (function
+              | Unix.WEXITED e -> e
+              | Unix.WSIGNALED _
+              | Unix.WSTOPPED _ -> 128)
+            p#status
         in
-        Lwt.return (res_out, res_err, res_errcode)
+        try%lwt
+          let%lwt () = Lwt_io.close p#stdin in
+          let%lwt res_out = Lwt_io.read p#stdout
+          and res_err = Lwt_io.read p#stderr
+          and res_errcode = res_errcode in
+          Lwt.return (res_out, res_err, res_errcode)
+        with e ->
+          let%lwt res_errcode = res_errcode in
+          Lwt_log.ign_debug_f ~exn:e "error while running %s"
+            ([%show: (string * string array)] cmd);
+          Lwt.return ("", "", res_errcode)
       in
       match timeout with
         | None -> res
