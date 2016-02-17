@@ -399,6 +399,8 @@ let run_pb ~config pb =
     ~file:pb.Problem.name
     ()
   in
+  Lwt_log.ign_debug_f "output for %s: `%s`, `%s`, errcode %d"
+    pb.Problem.name out _err errcode;
   (* parse its output *)
   let actual = extract_res_ ~prover:config.Config.prover out errcode in
   Lwt.return actual
