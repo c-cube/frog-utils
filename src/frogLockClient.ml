@@ -78,13 +78,13 @@ let acquire ?cwd ?user ?info ?(cores=0) ?(priority=1) ?(tags=[]) {port; } f =
     )
 
 (* try to connect; if it fails, spawn daemon and retry *)
-let connect_or_spawn ?log_file ?(retry=1.) port f =
+let connect_or_spawn ?(retry=1.) port f =
   try%lwt
     connect port f
   with _ ->
     (* launch daemon and re-connect *)
     Lwt_log.ign_info ~section "could not connect; launch daemon...";
-    match%lwt FrogLockDaemon.fork_and_spawn ?log_file port with
+    match%lwt FrogLockDaemon.fork_and_spawn port with
     | `child thread ->
         let%lwt () = thread in
         Lwt.fail Exit

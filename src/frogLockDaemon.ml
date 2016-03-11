@@ -264,12 +264,10 @@ let spawn port =
 
 (* TODO: change log level through connection *)
 
-let setup_loggers ?log_file () =
+let setup_loggers file_name () =
   let syslog = Lwt_log.syslog ~facility:`User () in
   Lwt_log.default := syslog;
-  let%lwt () =  match log_file with
-    | None -> Lwt.return_unit
-    | Some file_name ->
+  let%lwt () =
       try%lwt
         let%lwt log' = Lwt_log.file ~mode:`Append ~perm:0o666 ~file_name () in
         let all_log = Lwt_log.broadcast [log'; syslog] in
@@ -284,12 +282,16 @@ let setup_loggers ?log_file () =
   Lwt_io.close Lwt_io.stderr
 
 (* fork and spawn a daemon on the given port *)
-let fork_and_spawn ?log_file port =
+let fork_and_spawn port =
   match Lwt_unix.fork () with
   | 0 -> (* child, will be the daemon *)
     Lwt_daemon.daemonize ~syslog:false ~directory:"/tmp"
       ~stdin:`Close ~stdout:`Close ~stderr:`Keep ();
-    let%lwt () = setup_loggers ?log_file () in
+    let log_file =
+      let config = FrogConfig.parse_or_empty main_config_file in
+      FrogConfig.get_string ~default:"/tmp/froglock.log" config "log"
+    in
+    let%lwt () = setup_loggers log_file () in
     Lwt_log.Section.set_level section Lwt_log.Debug;
     Lwt_log.ign_debug ~section "loggers are setup";
     let thread =
@@ -301,3 +303,4 @@ let fork_and_spawn ?log_file port =
     in
     Lwt.return (`child thread)
   | _ -> Lwt.return `parent
+

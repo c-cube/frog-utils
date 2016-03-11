@@ -86,7 +86,7 @@ let with_lock ~daemon ~priority f info =
         let%lwt x = f () in
         Lwt.return (Some x)
       | false ->
-        Lwt_log.ign_debug_f "hu ho... something wrong happened...";
+        Lwt_log.ign_debug_f "hu ho... didn't get the lock...";
         Lwt.return_none
     )
 

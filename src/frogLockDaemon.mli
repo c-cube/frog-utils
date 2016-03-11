@@ -29,9 +29,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 val spawn : int -> unit Lwt.t
 (** Spawn on the given port. Can fail. *)
 
-val fork_and_spawn : ?log_file:string -> int ->
-                      [> `child of unit Lwt.t | `parent ] Lwt.t
+val fork_and_spawn : int -> [> `child of unit Lwt.t | `parent ] Lwt.t
 (** Fork the process and spawn a daemon in the child (using {!spawn}).
     It returns [`child t] if the current process is the child, running
-    [t] as the spawned server
-    @param log_file path to the log file to use (None to disable) *)
+    [t] as the spawned server. *)
+

@@ -65,7 +65,7 @@ let run_command params =
   let info = show_cmd params.cmd in
   let user = try Some(Sys.getenv "USER") with _ -> None in
   let cwd = Sys.getcwd () in
-  FrogLockClient.connect_or_spawn ~log_file:"/tmp/froglock.log" params.port
+  FrogLockClient.connect_or_spawn params.port
     (fun daemon ->
       FrogLockClient.acquire ~cwd ?user ~info ~cores:params.cores ~priority:params.priority ~tags:params.tags daemon
         (function
