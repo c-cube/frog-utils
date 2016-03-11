@@ -245,10 +245,18 @@ let read_file_args file =
 
 let opts =
   let open Cmdliner in
-  let aux dir j timeout progress lock port priority file cmd =
+  let aux debug dir j timeout progress lock port priority file cmd =
+    Lwt_log.default := Lwt_log.channel ~close_mode:`Keep ~channel:Lwt_io.stdout ();
+    if debug then
+      Lwt_log.add_rule "*" Lwt_log.Debug;
+    let progress = progress && not debug in
     let%lwt cmd = cmd in
     Lwt.return { cmd; filename = file; dir; parallelism_level = j; timeout; progress;
                  lock; port; priority }
+  in
+  let debug =
+    let doc = "Enable debug mode" in
+    Arg.(value & flag & info ["d"; "debug"] ~doc)
   in
   let dir =
     let doc = "Directory where to put the state file" in
@@ -278,7 +286,7 @@ let opts =
     let doc = "Priority for the locked task (see froglock for more explanation)." in
     Arg.(value & opt int 10 & info ["prio"] ~docv:"PRIO" ~doc)
   in
-  Term.(pure aux $ dir $ j $ timeout $ progress $ lock $ port $ prio)
+  Term.(pure aux $ debug $ dir $ j $ timeout $ progress $ lock $ port $ prio)
 
 let resume_term =
   let open Cmdliner in
