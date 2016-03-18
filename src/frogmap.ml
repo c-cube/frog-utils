@@ -29,7 +29,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 module S = FrogMapState
 
 type cmd =
-  | Resume of string   (* resume filename *)
+  | Resume of string list       (* resume filename *)
   | Run of string * string list (* run command *)
 
 type params = {
@@ -225,14 +225,15 @@ let main params =
   match params.cmd with
   | Run (cmd, args) ->
       run_map params cmd args
-  | Resume file ->
-    resume ?timeout:params.timeout
-      ~lock:params.lock
-      ~port:params.port
-      ~priority:params.priority
-      ~progress:params.progress
-      ~j:params.parallelism_level
-      file
+  | Resume files ->
+    Lwt_list.iter_s
+      (resume ?timeout:params.timeout
+         ~lock:params.lock
+         ~port:params.port
+         ~priority:params.priority
+         ~progress:params.progress
+         ~j:params.parallelism_level)
+      files
 
 (** {2 Main} *)
 
@@ -290,11 +291,11 @@ let opts =
 
 let resume_term =
   let open Cmdliner in
-  let cmd f = Lwt.return (Resume f) in
+  let cmd l = Lwt.return (Resume l) in
   let aux params = Lwt_main.run (Lwt.bind params main) in
   let file =
     let doc = "Task file to be resumed" in
-    Arg.(required & pos 0 (some non_dir_file) None & info [] ~docv:"FILE" ~doc)
+    Arg.(non_empty & pos_all non_dir_file [] & info [] ~docv:"FILE" ~doc)
   in
   let doc = "Resume an previous instance of frogmap using its output file." in
   let man = [
