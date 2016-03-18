@@ -190,8 +190,8 @@ let resume ?timeout ~lock ~port ~priority ~progress ~j file =
   Lwt_log.ign_debug_f "change directory to %s" job.S.cwd;
   Sys.chdir job.S.cwd;
   (* execute remaining tasks *)
-  let%lwt () = Lwt_io.printlf "resume: %d remaining tasks (%d done)"
-    (List.length remaining_tasks) (StrSet.cardinal done_tasks) in
+  let%lwt () = Lwt_io.printlf "resume %s: %d remaining tasks (%d done)"
+    file (List.length remaining_tasks) (StrSet.cardinal done_tasks) in
   S.append_job ~file
     (fun yield_res ->
        map_args ?timeout ~lock ~port ~priority
