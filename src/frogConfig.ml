@@ -68,6 +68,9 @@ let parse_or_empty file =
         msg source line column;
       empty
   | `Ok tbl -> Table {tbl; parent=Empty}
+  | exception e ->
+    Printf.eprintf "error trying to read config: %s" (Printexc.to_string e);
+    empty
 
 let parse_files l conf =
   let module P = Toml.Parser in
