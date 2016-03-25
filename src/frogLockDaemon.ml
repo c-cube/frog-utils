@@ -180,7 +180,7 @@ let handle_acquire ~state id (ic,oc) query =
     release_ ()
 *)
 
-let handle_status ~state oc =
+let handle_status ~state ic oc =
   let module M = M in
   Lwt_log.ign_info ~section "replying with status";
   let waiting = Q.fold
@@ -191,7 +191,9 @@ let handle_status ~state oc =
   let waiting = List.rev waiting in
   let current = state.current in
   let ans = M.StatusAnswer {M.waiting; current; max_cores = state.max_cores} in
-  M.print oc ans
+  let%lwt () = M.print oc ans in
+  let%lwt _ = M.expect ic ((=) M.StatusOk) in
+  Lwt.return_unit
 
 let handle_query ~state ic oc query =
   let id = state.current_id in
@@ -226,7 +228,7 @@ let handle_keepalive ~state ic oc =
 let handle_client ~state ic oc =
   let%lwt res = M.parse ic in
   match res with
-  | M.Status -> handle_status ~state oc
+  | M.Status -> handle_status ~state ic oc
   | M.Start -> handle_keepalive ~state ic oc
   | M.Acquire query -> handle_query ~state ic oc query
   | M.StopAccepting ->
@@ -234,6 +236,7 @@ let handle_client ~state ic oc =
     state.accept <- false;
     Lwt.return_unit
   | ( M.StatusAnswer _
+    | M.StatusOk
     | M.Go | M.Reject
     | M.End | M.Release
     ) as msg ->

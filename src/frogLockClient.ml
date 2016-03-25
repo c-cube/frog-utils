@@ -97,13 +97,14 @@ let get_status port =
   try%lwt
     daemon_ch port
       (fun ic oc ->
-        let%lwt () = M.print oc M.Status
-        and res = M.parse ic in
-        match res with
+        let%lwt () = M.print oc M.Status in
+        let%lwt ret = M.parse ic in
+        let%lwt () = M.print oc M.StatusOk in
+        match ret with
         | M.StatusAnswer ans ->
             Lwt.return (Some ans)
         | m ->
-            Lwt.fail (M.Unexpected m)
+          Lwt.fail (M.Unexpected m)
       )
   with e ->
     Lwt_log.ign_debug_f ~section "encountered error : %s" (Printexc.to_string e);

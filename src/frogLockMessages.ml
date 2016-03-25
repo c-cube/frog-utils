@@ -71,6 +71,7 @@ type t =
   | Reject [@name "reject"]
   | Status [@name "status"]
   | StatusAnswer  of status_answer [@name "statusanswer"]
+  | StatusOk [@name "statusok"]
   | StopAccepting [@name "stopaccepting"] (* from now on, no more accepts *)
   [@@deriving yojson, show]
 
@@ -103,3 +104,4 @@ let parse ic = expect ic (fun _ -> true)
 let print oc m =
   let s = Yojson.Safe.to_string (to_yojson m) in
   Lwt_io.write_line oc s
+
