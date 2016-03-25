@@ -252,7 +252,13 @@ let spawn port =
   (* server that listens for incoming clients *)
   let server = Lwt_io.establish_server addr
     (fun (ic,oc) ->
-      Lwt.async (fun () -> handle_client ~state ic oc)
+      Lwt.async
+        (fun () ->
+           Lwt.finalize
+             (fun () -> handle_client ~state ic oc)
+             (fun () ->
+               let%lwt () = Lwt_io.close ic in
+               Lwt_io.close oc))
     )
   in
   (* stop *)
