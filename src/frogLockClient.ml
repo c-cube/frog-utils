@@ -105,7 +105,8 @@ let get_status port =
         | m ->
             Lwt.fail (M.Unexpected m)
       )
-  with _  ->
+  with e ->
+    Lwt_log.ign_debug_f ~section "encountered error : %s" (Printexc.to_string e);
     Lwt.return_none
 
 (* connect to daemon (if any) and tell it to stop *)
