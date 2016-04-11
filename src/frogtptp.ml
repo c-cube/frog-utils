@@ -1,28 +1,5 @@
 
-(*
-copyright (c) 2013-2014, simon cruanes
-all rights reserved.
-
-redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
-
-redistributions of source code must retain the above copyright notice, this
-list of conditions and the following disclaimer.  redistributions in binary
-form must reproduce the above copyright notice, this list of conditions and the
-following disclaimer in the documentation and/or other materials provided with
-the distribution.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
-ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
-FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*)
+(* This file is free software, part of frog-utils. See file "license" for more details. *)
 
 (** {1 Manage TPTP provers} *)
 
@@ -32,54 +9,6 @@ module Prover = FrogProver
 module Conf = FrogConfig
 module PB = FrogPrintBox
 module Opt = FrogMisc.Opt
-
-(** Type Definitions *)
-(* TODO: have a module to define times and operations on them ? *)
-type time = {
-  real : float;
-  user : float;
-  system : float;
-}
-
-type file_summary = {
-  prover : string;
-  mutable num_all : int;
-  mutable set_unsat : time StrMap.t;  (* pb -> time *)
-  mutable set_sat : time StrMap.t; (* pb -> time *)
-  mutable num_error : int;
-  mutable solved_time : time; (* of successfully solved problems *)
-  mutable run_time : time; (* total run time of the prover *)
-}
-
-type run_params = {
-  timeout : int option;
-  memory : int option;
-}
-type analyse_params = {
-  get_time : time -> float;
-  filter : file_summary StrMap.t -> string -> St.result -> bool;
-}
-
-type plot_data =
-  | Unsat_Time
-
-type plot_legend =
-  | Prover
-  | File
-
-type plot_drawer =
-  | Simple of bool (* should we sort the list ? *)
-  | Cumul of bool * int * int (* sort, filter, count *)
-
-type plot_params = {
-  analyse : analyse_params;
-  graph : FrogPlot.graph_config;
-  data : plot_data;
-  legend : plot_legend;
-  drawer : plot_drawer;
-  out_file : string;
-  out_format : string;
-}
 
 (* Misc function *)
 let debug fmt = Lwt_log.ign_debug_f fmt
@@ -96,61 +25,6 @@ let execp_re_maybe maybe_re s = match maybe_re with
   | None -> false
   | Some re -> Re.execp re s
 
-let add_time t t' = {
-  real = t.real +. t'.real;
-  user = t.user +. t'.user;
-  system = t.system +. t'.system;
-}
-
-let time_of_res res = {
-  real = res.St.res_rtime;
-  user = res.St.res_utime;
-  system = res.St.res_stime;
-}
-
-(* compute summary of this file *)
-let make_summary ?(filter=(fun _ _ -> true)) prover_name prover job results =
-  let s = {
-    prover = prover_name;
-    num_all = List.length job.St.arguments;
-    set_unsat = StrMap.empty;
-    set_sat = StrMap.empty;
-    num_error = 0;
-    solved_time = { real = 0.; user = 0.; system = 0.; };
-    run_time = { real = 0.; user = 0.; system = 0.; };
-  } in
-  let re_sat = Opt.(prover.Prover.sat >>= compile_re ~msg:"sat") in
-  let re_unsat = Opt.(prover.Prover.unsat >>= compile_re ~msg:"unsat") in
-  (*
-  let re_unknown = Opt.(prover.Prover.unknown >>= compile_re ~msg:"unknown") in
-  *)
-  StrMap.iter
-    (fun file res ->
-       if filter file res then begin
-         let time = time_of_res res in
-         s.run_time <- add_time s.run_time time;
-         if res.St.res_errcode <> 0 then s.num_error <- s.num_error + 1;
-         if execp_re_maybe re_sat res.St.res_out then begin
-           s.solved_time <- add_time s.solved_time time;
-           s.set_sat <- StrMap.add file time s.set_sat
-         end else if execp_re_maybe re_unsat res.St.res_out then begin
-           s.solved_time <- add_time s.solved_time time;
-           s.set_unsat <- StrMap.add file time s.set_unsat
-         end
-      end
-    ) results;
-  s
-
-let map_summaries params items =
-  let aux ?filter l = List.fold_left
-      (fun map (file,p_name,p,job,results) ->
-         let summary = make_summary ?filter p_name p job results in
-         StrMap.add file summary map
-      ) StrMap.empty l
-  in
-  let map = aux items in
-  aux ~filter:(params.filter map) items
-
 (* obtain the full list of problems/results deal with in this file *)
 let extract_file file =
   St.fold_state
@@ -161,6 +35,7 @@ let extract_file file =
 
 (* Single summary analysis *)
 let print_single_summary prover s =
+  let open FrogTPTP in
   let num_sat = StrMap.cardinal s.set_sat in
   let num_unsat = StrMap.cardinal s.set_unsat in
   let percent_solved = (float (num_sat + num_unsat) *. 100. /. float s.num_all) in
@@ -172,14 +47,8 @@ let print_single_summary prover s =
     s.run_time.real s.run_time.user s.run_time.system;
   ()
 
-let analyse_single_file ~config prover file =
-  let p = Prover.find_config config prover in
-  let job, results = extract_file file in
-  let s = make_summary prover p job results in
-  print_single_summary prover s
-
 let all_proved s =
-  StrMap.merge (fun _ _ _ -> Some ()) s.set_unsat s.set_sat
+  StrMap.merge (fun _ _ _ -> Some ()) s.FrogTPTP.set_unsat s.FrogTPTP.set_sat
 
 (* input: map prover -> summary
   output: map problem -> unit, containing every problem solved by at
@@ -192,8 +61,8 @@ let all_proved_map map =
     StrMap.fold
       (fun _ s acc ->
         acc
-        |> StrMap.merge (fun _ _ _ -> Some ()) s.set_unsat
-        |> StrMap.merge (fun _ _ _ -> Some ()) s.set_sat
+        |> StrMap.merge (fun _ _ _ -> Some ()) s.FrogTPTP.set_unsat
+        |> StrMap.merge (fun _ _ _ -> Some ()) s.FrogTPTP.set_sat
       ) others acc
   with Not_found ->
     StrMap.empty
@@ -205,88 +74,57 @@ let map_diff m1 m2 =
       | _ -> None)
     m1 m2
 
-(* TODO: use Olinq/OLinq_table? *)
-(* analyse and compare this list of prover,job,results *)
-let analyse_multiple params items =
-  let map = map_summaries params items in
-  (* some globals *)
-  let problems_solved_by_one = ref StrMap.empty in
-  (* print overall *)
-  let first_line = PB.(
-      [| text "file"; text "prover"; text "sat"; text "unsat"; text "total"; text "exclusive";
-         text "%solved"; text "time (s)"; text "avg time (s)"; text "errors" ; text "runtime (s)" |]
-  ) in
-  (* next lines *)
-  let next_lines = List.rev (* keep ascending order of file names *)
-    @@ StrMap.fold
-      (fun file s acc ->
-         let prover = s.prover in
-         let problems_solved_by_me = all_proved s in
-         let problems_solved_by_others = all_proved_map (StrMap.remove file map) in
-         let problems_solved_by_me_only = map_diff
-             problems_solved_by_me problems_solved_by_others
-         in
-         problems_solved_by_one := StrMap.add prover
-             problems_solved_by_me_only !problems_solved_by_one;
-         let num_sat = StrMap.cardinal s.set_sat in
-         let num_unsat = StrMap.cardinal s.set_unsat in
-         let percent_solved = (float (num_sat + num_unsat) *. 100. /. float s.num_all) in
-         let num_solved_only = StrMap.cardinal problems_solved_by_me_only in
-         PB.([| text @@ Filename.basename file; text prover; int_ num_sat; int_ num_unsat; int_ s.num_all;
-                int_ num_solved_only;
-                text (Printf.sprintf "%.0f" percent_solved);
-                text (Printf.sprintf "%.2f" (params.get_time s.solved_time));
-                text (Printf.sprintf "%.2f"
-                        ((params.get_time s.solved_time) /.
-                         float (StrMap.cardinal s.set_sat + StrMap.cardinal s.set_unsat)));
-                int_ s.num_error;
-                text (Printf.sprintf "%.2f" (params.get_time s.run_time)) |]
-            ) :: acc
-      ) map []
-  in
-  let box = PB.(frame (grid (Array.of_list (first_line :: next_lines)))) in
-  print_endline "";
-  PB.output stdout box;
-  print_endline "";
-  (* TODO: pairwise comparison *)
-  (* print, for each prover, list of problems it's the only one to solve *)
-  StrMap.iter
-    (fun prover map ->
-      Printf.printf "problems solved by only %s:\n" prover;
-      StrMap.iter
-        (fun file () -> Printf.printf "  %s\n" file)
-        map
-    ) !problems_solved_by_one;
-  ()
-
-let parse_prover_list ~config l =
-  List.map
-    (fun (prover,file) ->
-       let p = Prover.find_config config prover in
-       let job, results = extract_file file in
-       file, prover, p, job, results
-    ) l
-
 let analyse ~config params l = match l with
   | [] -> assert false
   | [p, file] ->
       debug "analyse file %s, obtained from prover %s" file p;
-      analyse_single_file ~config p file
+      let s = FrogTPTP.analyse_single_file ~config p file in
+      FrogTPTP.print_file_summary stdout s
   | _ ->
       debug "analyse %d files" (List.length l);
-      analyse_multiple params (parse_prover_list ~config l)
+      let l = FrogTPTP.analyse_multiple params (FrogTPTP.parse_prover_list ~config l) in
+      let box = FrogTPTP.box_of_ar l in
+      PB.output stdout box;
+      List.iter (FrogTPTP.print_ar_exclusive stdout) l;
+      ()
+
+type plot_data =
+  | Unsat_Time
+
+type plot_legend =
+  | Prover
+  | File
+
+type plot_drawer =
+  | Simple of bool (* should we sort the list ? *)
+  | Cumul of bool * int * int (* sort, filter, count *)
+
+type plot_params = {
+  analyse : FrogTPTP.analyse_params;
+  graph : FrogPlot.graph_config;
+  data : plot_data;
+  legend : plot_legend;
+  drawer : plot_drawer;
+  out_file : string;
+  out_format : string;
+}
 
 (* Plot functions *)
 let plot ~config params l =
-  let items = parse_prover_list ~config l in
-  let map = map_summaries params.analyse items in
-  let datas = StrMap.fold (fun file s acc ->
+  let items = FrogTPTP.parse_prover_list ~config l in
+  let map = FrogTPTP.map_summaries params.analyse items in
+  let datas =
+    StrMap.fold (fun file s acc ->
       let name = match params.legend with
-        | Prover -> s.prover | File -> Filename.basename file
+        | Prover -> s.FrogTPTP.prover
+        | File -> Filename.basename file
       in
       let l = match params.data with
-        | Unsat_Time -> List.rev @@ StrMap.fold (fun _ time acc ->
-            params.analyse.get_time time :: acc) s.set_unsat []
+        | Unsat_Time ->
+          StrMap.fold
+            (fun _ time acc -> params.analyse.FrogTPTP.get_time time :: acc)
+            s.FrogTPTP.set_unsat []
+          |> List.rev
       in
       (l, name) :: acc) map []
   in
@@ -306,27 +144,30 @@ let list_provers ~config =
   let provers = Prover.of_config config in
   Printf.printf "provers:\n";
   StrMap.iter
-    (fun name p ->
-      Printf.printf "  %s: cmd=%s\n" name p.Prover.cmd;
-    ) provers
+    (fun name p -> Printf.printf "  %s: cmd=%s\n" name p.Prover.cmd)
+    provers
 
 (** {2 Run} *)
 
 (* Argument parsing *)
 let use_time =
   (function
-    | "real" -> `Ok (fun { real; _ } -> real)
-    | "user" -> `Ok (fun { user; _ } -> user)
-    | "sys"  -> `Ok (fun { system; _ } -> system)
-    | "cpu"  -> `Ok (fun { user; system; _ } -> user +. system)
+    | "real" -> `Ok (fun { FrogTPTP.real; _ } -> real)
+    | "user" -> `Ok (fun { FrogTPTP.user; _ } -> user)
+    | "sys"  -> `Ok (fun { FrogTPTP.system; _ } -> system)
+    | "cpu"  -> `Ok (fun { FrogTPTP.user; system; _ } -> user +. system)
     | _ -> `Error "Must be one of : 'real', 'user', 'sys', or 'cpu'"),
   (fun fmt _ -> Format.fprintf fmt "*abstract*")
 
 let filter_pbs =
   (function
     | "all" -> `Ok (fun _ _ _ -> true)
-    | "common" -> `Ok (fun map problem _ ->
-        StrMap.for_all (fun _ s -> StrMap.mem problem s.set_unsat) map)
+    | "common" ->
+      `Ok
+        (fun map problem _ ->
+           StrMap.for_all
+             (fun _ s -> StrMap.mem problem s.FrogTPTP.set_unsat)
+             map)
     | _ -> `Error "Must be one of : 'all', 'common'"),
   (fun fmt _ -> Format.fprintf fmt "*abstract*")
 
@@ -377,7 +218,8 @@ let config_term =
 
 let limit_term =
   let open Cmdliner in
-  let aux memory timeout = {memory = some_if_pos_ memory; timeout = some_if_pos_ timeout;} in
+  let aux memory timeout =
+    {FrogTPTP.memory = some_if_pos_ memory; timeout = some_if_pos_ timeout;} in
   let memory =
     let doc = "Memory limit" in
     Arg.(value & opt int (~- 1) & info ["m"; "memory"] ~doc)
@@ -390,14 +232,14 @@ let limit_term =
 
 let analyze_params_term =
   let open Cmdliner in
-  let aux get_time filter = { get_time; filter; } in
+  let aux get_time filter = { FrogTPTP.get_time; filter; } in
   let use_time =
     let doc = "Specify which time to use for comparing provers. Choices are :
                'real' (real time elasped between start and end of execution),
                'user' (user time, as defined by the 'time 'command),
                'sys' (system time as defined by the 'time' command),
                'cpu' (sum of user and system time)." in
-    Arg.(value & opt use_time (fun { real; _} -> real) & info ["t"; "time"] ~doc)
+    Arg.(value & opt use_time (fun { FrogTPTP.real; _} -> real) & info ["t"; "time"] ~doc)
   in
   let filter =
     let doc = "TODO" in
@@ -471,7 +313,7 @@ let run_term =
   let open Cmdliner in
   let aux config params cmd args =
     let timeout =
-      match params.timeout with
+      match params.FrogTPTP.timeout with
       | (Some _) as res -> res
       | None ->
         begin match FrogConfig.get_int config "timeout" with
@@ -480,7 +322,7 @@ let run_term =
         end
     in
     let memory =
-      match params.memory with
+      match params.FrogTPTP.memory with
       | (Some _) as res -> res
       | None ->
         begin match FrogConfig.get_int config "memory" with
