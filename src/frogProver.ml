@@ -73,7 +73,7 @@ let of_config config =
     ) StrMap.empty provers
 
 let run_cmd ?env ?(timeout=5) ?(memory=1000) ~prover ~file () =
-  FrogDebug.debug "timeout: %d, memory: %d" timeout memory;
+  Lwt_log.ign_debug_f "timeout: %d, memory: %d" timeout memory;
   let cmd = make_command ?env prover ~timeout ~memory ~file in
   let cmd = ["/bin/sh"; "-c"; cmd] in
   "/bin/sh", Array.of_list cmd

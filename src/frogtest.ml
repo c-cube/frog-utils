@@ -30,7 +30,7 @@ module Run = struct
 
   (* save result in given file *)
   let save_ ~file res =
-    FrogDebug.debug "save result in file %s" file;
+    Lwt_log.ign_debug_f "save result in file `%s`" file;
     T.Results.to_file ~file res;
     Lwt.return_unit
 
@@ -59,10 +59,10 @@ module Run = struct
       | SaveFile f -> save_ ~file:f results
       | SaveCommit ->
           let%lwt commit = get_commit_ () in
-          FrogDebug.debug "commit name: %s" commit;
+          Lwt_log.ign_debug_f "commit name: %s" commit;
           save_ ~file:(commit ^ ".json") results
       | SaveNone ->
-          FrogDebug.debug "do not save result";
+          Lwt_log.ign_debug "do not save result";
           Lwt.return_unit
     in
     if T.Results.is_ok results
@@ -97,7 +97,7 @@ end
 let term_run =
   let open Cmdliner in
   let aux debug config save dir j timeout =
-    FrogDebug.set_debug debug;
+    if debug then Lwt_log.add_rule "*" Lwt_log.Debug;
     Lwt_main.run (Run.main ?j ?timeout ~save ~config ~dir ())
   in
   let save =

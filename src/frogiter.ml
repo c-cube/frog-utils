@@ -87,7 +87,7 @@ let run_cmd params res =
     ] @ env
     |> Array.of_list
   in
-  FrogDebug.debug "run sub-process %s" ([%show: string*string array] cmd);
+  Lwt_log.ign_debug_f "run sub-process %s" ([%show: string*string array] cmd);
   (* spawn process *)
   try%lwt
     Lwt_process.with_process_out
@@ -103,7 +103,7 @@ let run_cmd params res =
         in
         let%lwt () = Lwt_io.close p#stdin
         and _ = p#status in
-        FrogDebug.debug "process finished";
+        Lwt_log.ign_debug "process finished";
         Lwt.return_unit
       )
   with e ->
@@ -154,7 +154,7 @@ let stats_term =
 let opts =
   let open Cmdliner in
   let aux debug format_in filename cmd =
-    if debug then FrogDebug.enable_debug ();
+    if debug then Lwt_log.add_rule "*" Lwt_log.Debug;
     { format_in; cmd; filename }
   in
   let format_in =

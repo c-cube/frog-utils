@@ -94,7 +94,7 @@ module Problem = struct
 
   let make ~file =
     try%lwt
-      FrogDebug.debug "convert %s into problem..." file;
+      Lwt_log.ign_debug_f "convert `%s` into problem..." file;
       let%lwt res = find_expected_ ~file in
       let pb = {
         name=file;
@@ -176,7 +176,7 @@ module Config = struct
   let of_file file =
     let module E = FrogMisc.Err in
     let module C = FrogConfig in
-    FrogDebug.debug "parse config file %s..." file;
+    Lwt_log.ign_debug_f "parse config file `%s`..." file;
     try
       let c = C.parse_files [file] C.empty in
       let j = C.get_int ~default:1 c "parallelism" in
@@ -391,7 +391,7 @@ let extract_res_ ~prover stdout errcode =
 
 (* run one particular test *)
 let run_pb ~config pb =
-  FrogDebug.debug "running %-30s..." pb.Problem.name;
+  Lwt_log.ign_debug_f "running %-30s..." pb.Problem.name;
   (* spawn process *)
   let%lwt (out,_err,errcode) = Prover.run_proc
     ~timeout:config.Config.timeout

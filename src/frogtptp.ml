@@ -82,7 +82,7 @@ type plot_params = {
 }
 
 (* Misc function *)
-let debug fmt = FrogDebug.debug fmt
+let debug fmt = Lwt_log.ign_debug_f fmt
 
 let compile_re ~msg re =
   try
@@ -202,9 +202,10 @@ let map_diff m1 m2 =
   StrMap.merge
     (fun _ x1 x2 -> match x1, x2 with
       | Some x, None -> Some x
-      | _ -> None
-    ) m1 m2
+      | _ -> None)
+    m1 m2
 
+(* TODO: use Olinq/OLinq_table? *)
 (* analyse and compare this list of prover,job,results *)
 let analyse_multiple params items =
   let map = map_summaries params items in
@@ -355,7 +356,7 @@ let config_term =
   let open Cmdliner in
   let aux config debug =
     if debug then begin
-      FrogDebug.set_debug true;
+      Lwt_log.add_rule "*" Lwt_log.Debug;
       Printexc.record_backtrace true
     end;
     try
