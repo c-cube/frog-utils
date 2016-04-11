@@ -25,6 +25,7 @@ depends: [
     "cairo2"
     "archimedes"
     "cmdliner"
+    "maki"
 ]
 available: [ "ocaml-version" >= "4.02.1" ]
 tags: ["lock" "batch"]

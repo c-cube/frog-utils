@@ -43,6 +43,8 @@ module Res = struct
     | Error, Unknown
     | (Sat | Unknown | Unsat), Error ->
         `Mismatch
+
+  let maki : t Maki.Value.ops = Maki_yojson.make_err ~to_yojson ~of_yojson "result"
 end
 
 module Problem = struct
@@ -122,6 +124,13 @@ module Problem = struct
 
   let print out p =
     fpf out "@[<h>%s (expect: %a)@]" p.name Res.print p.expected
+
+  let maki =
+    let module V = Maki.Value in
+    V.map ~descr:"problem"
+      (fun p -> p.name, p.expected)
+      (fun (name, expected) -> {name;expected})
+      (V.pair V.file Res.maki)
 end
 
 module ProblemSet = struct
@@ -154,15 +163,19 @@ module ProblemSet = struct
 
   let print out set =
     fpf out "@[<hv>%a@]" (Format.pp_print_list Problem.print) set
+
+  let maki = Maki.Value.set Problem.maki
 end
 
 module Config = struct
   type t = {
     j: int; (* number of concurrent processes *)
     timeout: int; (* timeout for each problem *)
-    problem_pat: Re.re; (* regex for problems *)
+    problem_pat: string; (* regex for problems *)
     prover: Prover.t;
-  }
+  } [@@deriving yojson]
+
+  let maki : t Maki.Value.ops = Maki_yojson.make_err ~of_yojson ~to_yojson "config"
 
   let make ?(j=1) ?(timeout=5) ~pat ~prover () =
     { j; timeout; prover; problem_pat=pat; }
@@ -184,7 +197,6 @@ module Config = struct
       let prover = C.get_string c "prover" in
       let prover = Prover.build_from_config c prover in
       let problem_pat = C.get_string c "problems" in
-      let problem_pat = Re_posix.compile_pat problem_pat in
       E.return { j; timeout; prover; problem_pat; }
     with
     | C.Error e -> E.fail e
@@ -202,8 +214,8 @@ module Results = struct
   let raw_to_yojson r : Yojson.Safe.json =
     let l = MStr.fold
       (fun _ (pb,res) acc ->
-        (`List [Problem.to_yojson pb; Res.to_yojson res] :: acc)
-      ) r []
+        (`List [Problem.to_yojson pb; Res.to_yojson res] :: acc))
+      r []
     in
     `List l
 
@@ -309,6 +321,21 @@ module Results = struct
       pp_stat r.stat
       (pp_list_ pp_pb_res_) r.improved
       (pp_list_ pp_pb_res_) r.mismatch
+
+  let maki =
+    Maki.Value.make_fast "results"
+      ~serialize:(fun p ->
+        to_yojson p |> (fun x->Yojson.Safe.to_string x) |> Maki_bencode.mk_str)
+      ~unserialize:(function
+        | Bencode.String s ->
+          begin try
+              Yojson.Safe.from_string s |> of_yojson
+              |> (function
+                |`Ok x -> Result.Ok x
+                | `Error y -> Result.Error (Failure y))
+            with e -> Result.Error e
+          end
+        | _ -> Result.Error (Failure "expected string"))
 end
 
 module ResultsComparison = struct
@@ -390,7 +417,7 @@ let extract_res_ ~prover stdout errcode =
     else Res.Error
 
 (* run one particular test *)
-let run_pb ~config pb =
+let run_pb_ ~config pb =
   Lwt_log.ign_debug_f "running %-30s..." pb.Problem.name;
   (* spawn process *)
   let%lwt (out,_err,errcode) = Prover.run_proc
@@ -405,20 +432,27 @@ let run_pb ~config pb =
   let actual = extract_res_ ~prover:config.Config.prover out errcode in
   Lwt.return actual
 
+let run_pb ?limit ~config pb =
+  let module V = Maki.Value in
+  Maki.call_exn
+    ?limit
+    ~lifetime:(`KeepFor Maki.Time.(days 2))
+    ~deps:[V.pack Config.maki config; V.pack Problem.maki pb]
+    ~op:Res.maki
+    ~name:"frogtest.run_pb"
+    (fun () -> run_pb_ ~config pb)
+
 let nop2_ _ _ = Lwt.return_unit
 
 let run ?(on_solve = nop2_) ?j ?timeout ~config set =
   let config = Config.update ?j ?timeout config in
-  let pool = Lwt_pool.create config.Config.j (fun () -> Lwt.return_unit) in
+  let limit = Maki.Limit.create config.Config.j in
   let%lwt raw =
     Lwt_list.map_p
       (fun pb ->
-        Lwt_pool.use pool
-          (fun () ->
-            let%lwt res = run_pb ~config pb in
-            let%lwt () = on_solve pb res in
-            Lwt.return (pb, res)
-          )
+         let%lwt res = run_pb ~limit ~config pb in
+         let%lwt () = on_solve pb res in
+         Lwt.return (pb, res)
       )
       set
   in

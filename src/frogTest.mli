@@ -31,6 +31,7 @@ module Res : sig
   *)
 
   val print : t printer
+  val maki : t Maki.Value.ops
 end
 
 module Problem : sig
@@ -55,6 +56,7 @@ module Problem : sig
   *)
 
   val print : t printer
+  val maki : t Maki.Value.ops
 end
 
 module ProblemSet : sig
@@ -72,18 +74,20 @@ module ProblemSet : sig
         used *)
 
   val print: t printer
+  val maki : t Maki.Value.ops
 end
 
 module Config : sig
   type t = {
     j: int; (* number of concurrent processes *)
     timeout: int; (* timeout for each problem *)
-    problem_pat: Re.re; (* regex for problems *)
+    problem_pat: string; (* regex for problems *)
     prover: Prover.t;
-  }
+  } [@@deriving yojson]
 
-  val make: ?j:int -> ?timeout:int -> pat:Re.re -> prover:Prover.t -> unit -> t
+  val make: ?j:int -> ?timeout:int -> pat:string -> prover:Prover.t -> unit -> t
   val of_file : string -> t or_error
+  val maki : t Maki.Value.ops
 end
 
 (* TODO: serialize, then make regression tests *)
@@ -123,6 +127,7 @@ module Results : sig
   (** [is_ok res] is [true] iff there are no errors *)
 
   val print: t printer
+  val maki : t Maki.Value.ops
 end
 
 module ResultsComparison : sig

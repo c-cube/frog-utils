@@ -9,13 +9,15 @@ module StrMap = Map.Make(String)
 type env = (string * string) array
 
 type t = {
-  cmd : string;  (* string that possible contains $file,
-                    $memory and $timeout *)
+  cmd : string;
+  (* string that possible contains $file, $memory and $timeout *)
   unsat : string option; (* regex for "unsat" *)
   sat : string option;
   unknown : string option;
   timeout : string option;
-}
+} [@@deriving yojson]
+
+let maki = Maki.Value.marshal "frog_prover"
 
 (* command ready to run in a shell *)
 let make_command ?(env=[||]) p ~timeout ~memory ~file =

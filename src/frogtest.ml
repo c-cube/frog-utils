@@ -48,7 +48,8 @@ module Run = struct
     Lwt.return (T.Config.of_file (Filename.concat dir config))
     >>= fun config ->
     (* build problem set (exclude config file!) *)
-    T.ProblemSet.of_dir ~filter:(Re.execp config.T.Config.problem_pat) dir
+    let problem_pat = Re_posix.compile_pat config.T.Config.problem_pat in
+    T.ProblemSet.of_dir ~filter:(Re.execp problem_pat) dir
     >>= fun pb ->
     Format.printf "run %d tests in %s@." (T.ProblemSet.size pb) dir;
     (* solve *)
@@ -97,7 +98,10 @@ end
 let term_run =
   let open Cmdliner in
   let aux debug config save dir j timeout =
-    if debug then Lwt_log.add_rule "*" Lwt_log.Debug;
+    if debug then (
+      Maki_log.set_level 5;
+      Lwt_log.add_rule "*" Lwt_log.Debug;
+    );
     Lwt_main.run (Run.main ?j ?timeout ~save ~config ~dir ())
   in
   let save =

@@ -18,4 +18,6 @@ PKG toml
 PKG archimedes
 PKG cmdliner
 PKG oUnit
+PKG maki.yojson
+PKG result
 FLG -w +a -w -4 -w -44 -w -29
