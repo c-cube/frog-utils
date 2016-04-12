@@ -5,7 +5,8 @@ problems = ".*.p"
 
 [some_prover]
 
-cmd = "some_prover --timeout $timeout $file"
+binary = "some_prover.exe"
+cmd = "$binary --timeout $timeout $file"
 unsat = "unsat"
 sat = "sat"
 unknown = "timeout"

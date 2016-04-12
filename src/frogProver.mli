@@ -11,7 +11,10 @@ module StrMap : module type of Map.Make(String)
 type env = (string * string) array
 
 type t = {
-  cmd : string;
+  binary: string; (* name of the program itself *)
+  cmd: string;
+  (* the command line to run.
+     possibly contains $binary, $file, $memory and $timeout *)
   unsat : string option;
   sat : string option;
   unknown : string option;

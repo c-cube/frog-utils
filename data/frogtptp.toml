@@ -8,47 +8,56 @@ provers = [ "spass", "eprover", "zip", "zip-arith", "zenon",
 
 [spass]
 
+binary = "SPASS"
 cmd = "SPASS -TPTP -TimeLimit=$timeout -PGiven=0 -Memory=\\$(( 1000000 * $memory )) $file"
 unsat = "proof found"
 sat = "completion found"
 
 [eprover]
 
+binary = "eprover"
 cmd = "eprover --auto --cpu-limit=$timeout --memory-limit=$memory --tstp-in -l0 $file"
 unsat = "# Proof found"
 sat = "# No proof found"
 
 [zenon]
 
+binary = "zenon"
 cmd = "zenon -p0 -max-time ${timeout}s -max-size ${$memory}M -itptp $file"
 unsat = "(\\\\* PROOF-FOUND \\\\*)"
 unknown = "(\\\\* NO-PROOF \\\\*)"
 
 [zip]
 
+binary = "zipperposition"
 cmd = "zipperposition $file -timeout $timeout -debug 0 -mem-limit $memory"
 unsat = "SZS Status (Theorem|Unsatisfiable)"
 sat = "SZS Status (CounterSatisfiable|Satisfiable)"
 
 [zip-arith]
 
+binary = "zipperposition"
 cmd = "zipperposition $file -timeout $timeout -arith -debug 0 -mem-limit $memory"
 unsat = "SZS Status (Theorem|Unsatisfiable)"
 sat = "SZS Status (CounterSatisfiable|Satisfiable)"
 
 [iprover]
 
+binary = "iproveropt"
 cmd = "iproveropt --eprover_path ~/bin --instantiation_flag true --time_out_real $timeout $file"
 unsat = "SZS Status (Theorem|Unsatisfiable)"
 sat = "SZS status CounterSatisfiable"
 
 [beagle]
 
+binary = "beagle"
 cmd = "beagle $file"
 unsat = "SZS status (Theorem|Unsatisfiable)"
 sat = "SZS status CounterSatisfiable"
 
 [princess]
+
+binary = "princess"
 cmd = "princess $file"
 unsat = "VALID"
 sat = "INVALID"
@@ -56,6 +65,7 @@ sat = "INVALID"
 [read-status]
 
 # "prover" that just reads the status from a file
+binary = "awk"
 cmd = "awk '/^% Status/ {{ print $4 }}' $file"
 unsat = "(Theorem|Unsatisfiable)"
 sat = "(CounterSatisfiable|Satisfiable)"

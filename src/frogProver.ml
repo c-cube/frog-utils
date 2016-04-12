@@ -9,8 +9,10 @@ module StrMap = Map.Make(String)
 type env = (string * string) array
 
 type t = {
-  cmd : string;
-  (* string that possible contains $file, $memory and $timeout *)
+  binary: string; (* name of the program itself *)
+  cmd: string;
+  (* the command line to run.
+     possibly contains $binary, $file, $memory and $timeout *)
   unsat : string option; (* regex for "unsat" *)
   sat : string option;
   unknown : string option;
@@ -23,13 +25,14 @@ let maki = Maki.Value.marshal "frog_prover"
 let make_command ?(env=[||]) p ~timeout ~memory ~file =
   let buf = Buffer.create 32 in
   let add_str s =
-  Buffer.add_substitute buf
-    (function
-      | "memory" -> string_of_int memory
-      | "timeout" | "time" -> string_of_int timeout
-      | "file" -> file
-      | _ -> raise Not_found
-    ) s
+    Buffer.add_substitute buf
+      (function
+        | "memory" -> string_of_int memory
+        | "timeout" | "time" -> string_of_int timeout
+        | "file" -> file
+        | "binary" -> p.binary
+        | _ -> raise Not_found)
+      s
   in
   (* XXX: seems to make zombie processes?
   add_str "ulimit -t \\$(( 1 + $time)) -v \\$(( 1000000 * $memory )); ";
@@ -51,12 +54,19 @@ let build_from_config config name =
     with Not_found ->
       failwith ("could not find prover " ^ name ^ " in config")
   in
-  let cmd = Conf.get_string d "cmd" in
+  let cmd = Conf.get_string d "cmd" |> String.trim in
+  let binary =
+    try Conf.get_string d "binary"
+    with Not_found ->
+      let b, _ = FrogMisc.Str.split ~by:' ' cmd in
+      if b="$binary" then failwith "please provide a value for $binary";
+      b
+  in
   let unsat = get_str_ d "unsat" in
   let sat = get_str_ d "sat" in
   let unknown = get_str_ d "unknown" in
   let timeout = get_str_ d "timeout" in
-  { cmd; unsat; sat; unknown; timeout; }
+  { cmd; binary; unsat; sat; unknown; timeout; }
 
 let find_config config name =
   (* check that the prover is listed *)

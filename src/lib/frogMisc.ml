@@ -15,6 +15,12 @@ module Opt = struct
     | Some y -> y
 end
 
+module Str = struct
+  let split ~by s =
+    let i = String.index s by in
+    String.sub s 0 i, String.sub s (i+1) (String.length s -i-1)
+end
+
 module Err = struct
   type 'a t = [`Ok of 'a | `Error of string]
 
