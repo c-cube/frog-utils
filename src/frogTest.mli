@@ -81,11 +81,12 @@ module Config : sig
   type t = {
     j: int; (* number of concurrent processes *)
     timeout: int; (* timeout for each problem *)
+    memory: int;
     problem_pat: string; (* regex for problems *)
     prover: Prover.t;
   } [@@deriving yojson]
 
-  val make: ?j:int -> ?timeout:int -> pat:string -> prover:Prover.t -> unit -> t
+  val make: ?j:int -> ?timeout:int -> ?memory:int -> pat:string -> prover:Prover.t -> unit -> t
   val of_file : string -> t or_error
   val maki : t Maki.Value.ops
 end

@@ -171,6 +171,7 @@ module Config = struct
   type t = {
     j: int; (* number of concurrent processes *)
     timeout: int; (* timeout for each problem *)
+    memory: int;
     problem_pat: string; (* regex for problems *)
     prover: Prover.t;
   } [@@deriving yojson]
@@ -183,8 +184,8 @@ module Config = struct
       (fun (t,_) -> t)
       (V.pair json V.program)
 
-  let make ?(j=1) ?(timeout=5) ~pat ~prover () =
-    { j; timeout; prover; problem_pat=pat; }
+  let make ?(j=1) ?(timeout=5) ?(memory=1000) ~pat ~prover () =
+    { j; timeout; memory; prover; problem_pat=pat; }
 
   let update ?j ?timeout c =
     let module O = FrogMisc.Opt in
@@ -200,10 +201,11 @@ module Config = struct
       let c = C.parse_files [file] C.empty in
       let j = C.get_int ~default:1 c "parallelism" in
       let timeout = C.get_int ~default:5 c "timeout" in
+      let memory = C.get_int ~default:1000 c "memory" in
       let prover = C.get_string c "prover" in
       let prover = Prover.build_from_config c prover in
       let problem_pat = C.get_string c "problems" in
-      E.return { j; timeout; prover; problem_pat; }
+      E.return { j; timeout; memory; prover; problem_pat; }
     with
     | C.Error e -> E.fail e
     | Not_found -> E.fail ("invalid config file: " ^ file)
@@ -428,6 +430,7 @@ let run_pb_ ~config pb =
   (* spawn process *)
   let%lwt (out,_err,errcode) = Prover.run_proc
     ~timeout:config.Config.timeout
+    ~memory:config.Config.memory
     ~prover:config.Config.prover
     ~file:pb.Problem.name
     ()
