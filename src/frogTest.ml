@@ -175,7 +175,13 @@ module Config = struct
     prover: Prover.t;
   } [@@deriving yojson]
 
-  let maki : t Maki.Value.ops = Maki_yojson.make_err ~of_yojson ~to_yojson "config"
+  let maki : t Maki.Value.ops =
+    let module V = Maki.Value in
+    let json =  Maki_yojson.make_err ~of_yojson ~to_yojson "config_json" in
+    V.map ~descr:"config"
+      (fun t -> t, t.prover.Prover.binary)
+      (fun (t,_) -> t)
+      (V.pair json V.program)
 
   let make ?(j=1) ?(timeout=5) ~pat ~prover () =
     { j; timeout; prover; problem_pat=pat; }
