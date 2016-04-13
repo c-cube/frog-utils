@@ -1,6 +1,7 @@
 true: warn(+a-4-44-29-48)
 <src>: include
 <src/lib>: include
+<src/util>: include
 <**/**/*>: package(ppx_deriving_yojson), package(unix), package(lwt), \
             package(lwt.unix), package(lwt.preemptive), \
             package(lwt.ppx), package(ppx_deriving.std), \
