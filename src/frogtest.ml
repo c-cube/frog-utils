@@ -21,6 +21,7 @@ module Run = struct
       let str, c = match T.Problem.compare_res pb res with
         | `Same -> "ok", `Green
         | `Improvement -> "ok (improved)", `Blue
+        | `Disappoint -> "disappoint", `Yellow
         | `Mismatch -> "bad", `Red
       in
       Format.fprintf out "%a" (F.in_bold_color c Format.pp_print_string) str

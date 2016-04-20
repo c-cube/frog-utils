@@ -12,6 +12,10 @@ module Prover = FrogProver
 let fpf = Format.fprintf
 let spf = Format.asprintf
 
+let assoc_or def x l =
+  try List.assoc x l
+  with Not_found -> def
+
 (** {2 Result on a single problem} *)
 module Res = struct
   [@@@warning "-39"]
@@ -54,6 +58,10 @@ module Problem = struct
     expected: Res.t; (* result expected *)
   } [@@deriving yojson]
   [@@@warning "+39"]
+
+  let same_name t1 t2 = t1.name = t2.name
+  let compare_name t1 t2 = Pervasives.compare t1.name t2.name
+  let equal t1 t2 = t1.name=t2.name && t1.expected=t2.expected
 
   (* regex + mark *)
   let m_unsat_, unsat_ = Re.(str "unsat" |> no_case |> mark)
@@ -114,9 +122,9 @@ module Problem = struct
     | Res.Sat, Res.Sat
     | Res.Unknown, Res.Unknown
     | Res.Error, Res.Error -> `Same
+    | (Res.Sat | Res.Unsat | Res.Error), Res.Unknown -> `Disappoint
     | (Res.Unsat | Res.Error), Res.Sat
     | (Res.Sat | Res.Error), Res.Unsat
-    | (Res.Sat | Res.Unsat | Res.Error), Res.Unknown
     | (Res.Sat | Res.Unknown | Res.Unsat), Res.Error ->
         `Mismatch
     | Res.Unknown, (Res.Sat | Res.Unsat) ->
@@ -269,6 +277,7 @@ module Results = struct
     raw: raw;
     stat: stat;
     improved: (Problem.t * Res.t) list;
+    disappoint: (Problem.t * Res.t) list;
     mismatch: (Problem.t * Res.t) list;
   }
 
@@ -280,8 +289,18 @@ module Results = struct
 
   (* build statistics and list of mismatch from raw results *)
   let analyse_ raw =
-    let improved = ref [] in
-    let mismatch = ref [] in
+    let module M = OLinq.AdaptMap(MStr) in
+    let l =
+      M.of_map raw
+      |> OLinq.map snd
+      |> OLinq.group_by
+        (fun (pb, res) -> Problem.compare_res pb res)
+      |> OLinq.run_list ?limit:None
+    in
+    let improved = assoc_or [] `Improvement l in
+    let mismatch = assoc_or [] `Mismatch l in
+    let disappoint = assoc_or [] `Disappoint l in
+    (* stats *)
     let stat = ref stat_empty in
     let add_res res =
       stat := (match res with
@@ -289,22 +308,12 @@ module Results = struct
         | Res.Unknown -> add_unknown_ | Res.Error -> add_error_
       ) !stat
     in
-    MStr.iter
-      (fun _ (pb, res) ->
-        add_res res;
-        match Problem.compare_res pb res with
-        | `Same -> ()
-        | `Mismatch ->
-            mismatch := (pb,res) :: !mismatch;
-        | `Improvement ->
-            improved := (pb,res) :: !improved
-      )
-      raw;
-    !improved, !mismatch, !stat
+    MStr.iter (fun _ (_, res) -> add_res res) raw;
+    improved, mismatch, disappoint, !stat
 
   let make raw =
-    let improved, mismatch, stat = analyse_ raw in
-    { raw; stat; improved; mismatch; }
+    let improved, mismatch, disappoint, stat = analyse_ raw in
+    { raw; stat; improved; disappoint; mismatch; }
 
   let of_yojson j = E.(raw_of_yojson j >|= make)
   let to_yojson t = raw_to_yojson t.raw
@@ -358,35 +367,29 @@ module ResultsComparison = struct
   }
 
   let compare (a:Results.raw) b =
-    let appeared = ref []
-    and disappeared = ref []
-    and improved = ref []
-    and regressed = ref []
-    and mismatch = ref []
-    and same = ref [] in
-    (* hack? we want to match each pair of key of a and b *)
-    ignore
-      (MStr.merge
-        (fun _ v1 v2 ->
-          begin match v1, v2 with
-          | Some (pb,res), None ->
-              disappeared := (pb, res) :: !disappeared
-          | None, Some (pb,res) ->
-              appeared := (pb, res) :: !appeared
-          | None, None -> assert false
-          | Some (pb1,res1), Some (pb2, res2) ->
-              assert (pb1.Problem.name = pb2.Problem.name);
-              match Res.compare res1 res2 with
-              | `Same -> same := (pb1,res1) :: !same
-              | `LeftBetter -> regressed := (pb1, res1, res2) :: !regressed
-              | `RightBetter -> improved := (pb1, res1, res2) :: !improved
-              | `Mismatch -> mismatch := (pb1, res1, res2) :: !mismatch
-          end;
-          None
-        ) a b
-      );
-    { appeared= !appeared; disappeared= !disappeared; mismatch= !mismatch;
-      improved= !improved; regressed= !regressed; same= !same; }
+    let module M = OLinq.AdaptMap(MStr) in
+    let a = M.of_map a |> OLinq.map snd in
+    let b = M.of_map b |> OLinq.map snd in
+    let j =
+      OLinq.join ~eq:Problem.same_name fst fst a b
+        ~merge:(fun pb (pb1,res1) (pb2,res2) ->
+          assert (pb1.Problem.name = pb2.Problem.name);
+          Some (pb, res1, res2))
+      |> OLinq.group_by (fun (_,res1,res2) -> Res.compare res1 res2)
+      |> OLinq.run_list
+    in
+    let improved = assoc_or [] `RightBetter j in
+    let regressed = assoc_or [] `LeftBetter j in
+    let mismatch = assoc_or [] `Mismatch j in
+    let same = assoc_or [] `Same j |> List.rev_map (fun (pb,r,_) -> pb,r) in
+    let disappeared =
+      OLinq.diff ~cmp:(fun (p1,_) (p2,_) -> Problem.compare_name p1 p2) a b
+      |> OLinq.run_list
+    and appeared =
+      OLinq.diff ~cmp:(fun (p1,_) (p2,_) -> Problem.compare_name p1 p2) b a
+      |> OLinq.run_list
+    in
+    { appeared; disappeared; mismatch; same; regressed; improved; }
 
   let fpf = Format.fprintf
   let pp_list_ p = Format.pp_print_list p

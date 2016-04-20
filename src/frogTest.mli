@@ -44,13 +44,14 @@ module Problem : sig
   (** [make ~file] tries to find the expected result of [file], and
       makes a problem if it finds the result *)
 
-  val compare_res : t -> Res.t -> [`Same | `Improvement | `Mismatch]
+  val compare_res : t -> Res.t -> [`Same | `Improvement | `Mismatch | `Disappoint]
   (** [compare_res pb res] compares the expected result of [pb] to
       the actual result [res], yielding one of:
 
       {ul
         {- `Same if they coincide}
         {- `Mismatch if they do not match (error)}
+        {- `Disappoint if the result is not incorrect, but less good than expected}
         {- `Improvement if unknown was expected, but sat|unsat was found}
       }
   *)
@@ -108,6 +109,7 @@ module Results : sig
     raw: raw;
     stat: stat;
     improved: (Problem.t * Res.t) list;
+    disappoint: (Problem.t * Res.t) list;
     mismatch: (Problem.t * Res.t) list;
   } [@@deriving yojson]
 

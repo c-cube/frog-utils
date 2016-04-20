@@ -19,5 +19,6 @@ PKG archimedes
 PKG cmdliner
 PKG oUnit
 PKG maki.yojson
+PKG olinq
 PKG result
 FLG -w +a-4-44-29-48
