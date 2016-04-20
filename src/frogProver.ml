@@ -96,9 +96,8 @@ let run_exec ?env ?timeout ?memory ~prover ~file () =
 
 let run_proc ?env ?timeout ?memory ~prover ~file () =
   let cmd = run_cmd ?env ?timeout ?memory ~prover ~file () in
-  let timeout_soft = FrogMisc.Opt.(timeout >|= float_of_int) in
   (* slightly extended timeout *)
-  let timeout_hard = FrogMisc.Opt.(timeout >|= (fun i->float_of_int i +. 0.5)) in
+  let timeout_hard = FrogMisc.Opt.(timeout >|= (fun i->float_of_int i +. 2.)) in
   Lwt_process.with_process_full ?timeout:timeout_hard cmd
     (fun p ->
       let res =
@@ -122,7 +121,7 @@ let run_proc ?env ?timeout ?memory ~prover ~file () =
             ([%show: (string * string array)] cmd);
           Lwt.return ("", "", res_errcode)
       in
-      match timeout_soft with
+      match timeout_hard with
         | None -> res
         | Some t ->
             let open Lwt.Infix in
