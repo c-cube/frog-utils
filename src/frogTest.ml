@@ -442,10 +442,11 @@ let run_pb_ ~config pb =
   let actual = extract_res_ ~prover:config.Config.prover out errcode in
   Lwt.return actual
 
-let run_pb ?limit ~config pb =
+let run_pb ?(caching=true) ?limit ~config pb =
   let module V = Maki.Value in
   Maki.call_exn
     ?limit
+    ~bypass:(not caching)
     ~lifetime:(`KeepFor Maki.Time.(days 2))
     ~deps:[V.pack Config.maki config; V.pack Problem.maki pb]
     ~op:Res.maki
@@ -454,13 +455,13 @@ let run_pb ?limit ~config pb =
 
 let nop2_ _ _ = Lwt.return_unit
 
-let run ?(on_solve = nop2_) ?j ?timeout ?memory ~config set =
+let run ?(on_solve = nop2_) ?(caching=true) ?j ?timeout ?memory ~config set =
   let config = Config.update ?j ?timeout ?memory config in
   let limit = Maki.Limit.create config.Config.j in
   let%lwt raw =
     Lwt_list.map_p
       (fun pb ->
-         let%lwt res = run_pb ~limit ~config pb in
+         let%lwt res = run_pb ~caching ~limit ~config pb in
          let%lwt () = on_solve pb res in
          Lwt.return (pb, res)
       )

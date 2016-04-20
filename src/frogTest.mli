@@ -149,6 +149,7 @@ end
 
 val run :
   ?on_solve:(Problem.t -> Res.t -> unit Lwt.t) ->
+  ?caching:bool ->
   ?j:int ->
   ?timeout:int ->
   ?memory:int ->
@@ -157,5 +158,6 @@ val run :
   Results.t Lwt.t
 (** Run the given prover on the given problem set, obtaining results
     after all the problems have been dealt with.
+    @param caching if true, use Maki for caching results (default true)
     @param on_solve called whenever a single problem is solved *)
 
