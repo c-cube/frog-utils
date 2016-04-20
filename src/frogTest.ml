@@ -187,11 +187,12 @@ module Config = struct
   let make ?(j=1) ?(timeout=5) ?(memory=1000) ~pat ~prover () =
     { j; timeout; memory; prover; problem_pat=pat; }
 
-  let update ?j ?timeout c =
+  let update ?j ?timeout ?memory c =
     let module O = FrogMisc.Opt in
     let j = O.get c.j j in
     let timeout = O.get c.timeout timeout in
-    { c with j; timeout; }
+    let memory = O.get c.memory memory in
+    { c with j; timeout; memory; }
 
   let of_file file =
     let module E = FrogMisc.Err in
@@ -453,8 +454,8 @@ let run_pb ?limit ~config pb =
 
 let nop2_ _ _ = Lwt.return_unit
 
-let run ?(on_solve = nop2_) ?j ?timeout ~config set =
-  let config = Config.update ?j ?timeout config in
+let run ?(on_solve = nop2_) ?j ?timeout ?memory ~config set =
+  let config = Config.update ?j ?timeout ?memory config in
   let limit = Maki.Limit.create config.Config.j in
   let%lwt raw =
     Lwt_list.map_p

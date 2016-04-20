@@ -42,7 +42,7 @@ module Run = struct
       (fun p -> FrogMisc.File.read_all p#stdout >|= String.trim)
 
   (* lwt main *)
-  let main ?j ?timeout ~save ~config ~dir () =
+  let main ?j ?timeout ?memory ~save ~config ~dir () =
     let open E in
     (* parse config *)
     Lwt.return (T.Config.of_file (Filename.concat dir config))
@@ -53,7 +53,7 @@ module Run = struct
     >>= fun pb ->
     Format.printf "run %d tests in %s@." (T.ProblemSet.size pb) dir;
     (* solve *)
-    E.ok (T.run ?j ?timeout ~on_solve ~config pb)
+    E.ok (T.run ?j ?timeout ?memory ~on_solve ~config pb)
     >>= fun results ->
     Format.printf "%a@." T.Results.print results;
     let%lwt () = match save with
@@ -97,12 +97,12 @@ end
 (* sub-command for running tests *)
 let term_run =
   let open Cmdliner in
-  let aux debug config save dir j timeout =
+  let aux debug config save dir j timeout memory =
     if debug then (
       Maki_log.set_level 5;
       Lwt_log.add_rule "*" Lwt_log.Debug;
     );
-    Lwt_main.run (Run.main ?j ?timeout ~save ~config ~dir ())
+    Lwt_main.run (Run.main ?j ?timeout ?memory ~save ~config ~dir ())
   in
   let save =
     let parse_ = function
@@ -126,8 +126,10 @@ let term_run =
   and j = Arg.(value & opt (some int) None & info ["j"] ~doc:"parallelism level")
   and timeout = Arg.(value & opt (some int) None &
     info ["t"; "timeout"] ~doc:"timeout (in s)")
+  and memory = Arg.(value & opt (some int) None &
+    info ["m"; "memory"] ~doc:"memory (in MB)")
   and doc = "test a program on every file in a directory" in
-  Term.(pure aux $ debug $ config $ save $ dir $ j $ timeout), Term.info ~doc "run"
+  Term.(pure aux $ debug $ config $ save $ dir $ j $ timeout $ memory), Term.info ~doc "run"
 
 (* sub-command to display a file *)
 let term_display =
