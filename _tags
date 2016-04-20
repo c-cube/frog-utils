@@ -1,4 +1,4 @@
-true: warn_A, warn(-4), warn(-44), warn(-29)
+true: warn(+a-4-44-29-48)
 <src>: include
 <src/lib>: include
 <**/**/*>: package(ppx_deriving_yojson), package(unix), package(lwt), \

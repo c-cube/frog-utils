@@ -20,4 +20,4 @@ PKG cmdliner
 PKG oUnit
 PKG maki.yojson
 PKG result
-FLG -w +a -w -4 -w -44 -w -29
+FLG -w +a-4-44-29-48
