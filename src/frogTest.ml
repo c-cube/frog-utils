@@ -319,9 +319,11 @@ module Results = struct
   let print out r =
     let pp_l out = fpf out "[@[<hv>%a@]]" (pp_list_ pp_pb_res_) in
     fpf out
-      "@[<hv2>results: {@,stat:%a,@ improved: %a,@ disappoint: %a@, mismatch: %a@]@,}"
+      "@[<hv2>results: {@,stat:%a,@ %-15s: %a,@ %-15s: %a,@ %-15s: %a@]@,}"
       pp_stat r.stat
-      pp_l r.improved pp_l r.disappoint pp_l r.mismatch
+      "improved" pp_l r.improved
+      "disappoint" pp_l r.disappoint
+      "mismatch" pp_l r.mismatch
 
   let maki =
     Maki.Value.make_fast "results"
