@@ -61,26 +61,12 @@ module Problem = struct
 
   let same_name t1 t2 = t1.name = t2.name
   let compare_name t1 t2 = Pervasives.compare t1.name t2.name
-  let equal t1 t2 = t1.name=t2.name && t1.expected=t2.expected
 
   (* regex + mark *)
   let m_unsat_, unsat_ = Re.(str "unsat" |> no_case |> mark)
   let m_sat_, sat_ = Re.(str "sat" |> no_case |> mark)
   let m_unknown_, unknown_ = Re.(str "unknown" |> no_case |> mark)
   let m_error_, error_ = Re.(alt [str "error"; str "fail"] |> no_case |> mark)
-
-  let re_unsat_ = Re.compile unsat_
-  let re_sat_ = Re.compile sat_
-  let re_unknown_ = Re.compile unknown_
-  let re_error_ = Re.compile error_
-
-  (* infer expected status from file name *)
-  let find_expected_str_ s =
-    if Re.execp re_unsat_ s then Some Res.Unsat
-    else if Re.execp re_sat_ s then Some Res.Sat
-    else if Re.execp re_unknown_ s then Some Res.Unknown
-    else if Re.execp re_error_ s then Some Res.Error
-    else None
 
   (* "^ #expect: (unsat|sat|unknown|error)", basically *)
   let re_expect_ = Re.(seq
@@ -91,16 +77,13 @@ module Problem = struct
 
   (* what is expected? *)
   let find_expected_ ~file =
-    match find_expected_str_ file with
-    | Some r -> Lwt.return r
-    | None ->
-        let%lwt content = FrogMisc.File.with_in ~file FrogMisc.File.read_all in
-        let g = Re.exec re_expect_ content in
-        if Re.marked g m_unsat_ then Lwt.return Res.Unsat
-          else if Re.marked g m_sat_ then Lwt.return Res.Sat
-          else if Re.marked g m_unknown_ then Lwt.return Res.Unknown
-          else if Re.marked g m_error_ then Lwt.return Res.Error
-          else Lwt.fail Not_found
+    let%lwt content = FrogMisc.File.with_in ~file FrogMisc.File.read_all in
+    let g = Re.exec re_expect_ content in
+    if Re.marked g m_unsat_ then Lwt.return Res.Unsat
+    else if Re.marked g m_sat_ then Lwt.return Res.Sat
+    else if Re.marked g m_unknown_ then Lwt.return Res.Unknown
+    else if Re.marked g m_error_ then Lwt.return Res.Error
+    else Lwt.fail Not_found
 
   let make ~file =
     try%lwt
