@@ -128,17 +128,18 @@ module ProblemSet = struct
   type t = Problem.t list
 
   let make l =
-    (* sort by alphabetic order *)
-    let l = List.sort String.compare l in
     let pool = Lwt_pool.create 30 (fun () -> Lwt.return_unit) in
     let%lwt l =
       Lwt_list.map_p
         (fun file ->
           Lwt_pool.use pool
-            (fun () -> Problem.make ~file)
-        ) l
+            (fun () -> Problem.make ~file))
+        l
     in
-    Lwt.return (FrogMisc.Err.seq_list l)
+    let l = FrogMisc.Err.seq_list l in
+    (* sort by alphabetic order *)
+    let l = FrogMisc.Err.(l >|= List.sort Problem.compare_name) in
+    Lwt.return l
 
   let size = List.length
 
@@ -451,8 +452,7 @@ let run ?(on_solve = nop2_) ?(caching=true) ?j ?timeout ?memory ~config set =
       (fun pb ->
          let%lwt res = run_pb ~caching ~limit ~config pb in
          let%lwt () = on_solve pb res in
-         Lwt.return (pb, res)
-      )
+         Lwt.return (pb, res))
       set
   in
   Lwt.return (Results.of_list raw)
