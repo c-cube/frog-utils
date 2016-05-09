@@ -17,6 +17,7 @@ type t = {
   sat : string option;
   unknown : string option;
   timeout : string option;
+  memory : string option;
 } [@@deriving yojson]
 
 let maki = Maki.Value.marshal "frog_prover"
@@ -66,7 +67,8 @@ let build_from_config config name =
   let sat = get_str_ d "sat" in
   let unknown = get_str_ d "unknown" in
   let timeout = get_str_ d "timeout" in
-  { cmd; binary; unsat; sat; unknown; timeout; }
+  let memory = get_str_ d "memory" in
+  { cmd; binary; unsat; sat; unknown; timeout; memory; }
 
 let find_config config name =
   (* check that the prover is listed *)
@@ -84,7 +86,15 @@ let of_config config =
       StrMap.add p_name prover map
     ) StrMap.empty provers
 
-let run_cmd ?env ?(timeout=5) ?(memory=1000) ~prover ~file () =
+let run_cmd ?env ?timeout ?memory ~prover ~file () =
+  let timeout = match timeout with
+    | None -> prover.timeout
+    | Some t -> t
+  in
+  let memory = match memory with
+    | None -> prover.memory
+    | Some m -> m
+  in
   Lwt_log.ign_debug_f "timeout: %d, memory: %d" timeout memory;
   let cmd = make_command ?env prover ~timeout ~memory ~file in
   let cmd = ["/bin/sh"; "-c"; cmd] in

@@ -2,6 +2,8 @@ S src/
 B _build/src
 S src/lib
 B _build/src/lib
+S src/util
+B _build/src/util
 S test/
 B _build/test
 

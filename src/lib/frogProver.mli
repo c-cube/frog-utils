@@ -19,6 +19,7 @@ type t = {
   sat : string option;
   unknown : string option;
   timeout : string option;
+  memory : string option;
 } [@@deriving yojson]
 
 val maki : t Maki.Value.ops
