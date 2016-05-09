@@ -219,14 +219,15 @@ let config_term =
 let limit_term =
   let open Cmdliner in
   let aux memory timeout =
-    {FrogTPTP.memory = some_if_pos_ memory; timeout = some_if_pos_ timeout;} in
+    { FrogTPTP.memory = memory; timeout = timeout;}
+  in
   let memory =
     let doc = "Memory limit" in
-    Arg.(value & opt int (~- 1) & info ["m"; "memory"] ~doc)
+    Arg.(value & opt (some int) None & info ["m"; "memory"] ~doc)
   in
   let timeout =
     let doc = "Time limit" in
-    Arg.(value & opt int (~- 1) & info ["t"; "timeout"] ~doc)
+    Arg.(value & opt (some int) None & info ["t"; "timeout"] ~doc)
   in
   Term.(pure aux $ memory $ timeout)
 
@@ -314,24 +315,26 @@ let run_term =
   let aux config params cmd args =
     let timeout =
       match params.FrogTPTP.timeout with
-      | (Some _) as res -> res
+      | Some res -> res
       | None ->
         begin match FrogConfig.get_int config "timeout" with
-          | exception Not_found -> None
-          | x -> Some x
+          | x -> x
+          | exception Not_found ->
+            failwith "A timeout is required (either on the command line or in the config file)"
         end
     in
     let memory =
       match params.FrogTPTP.memory with
-      | (Some _) as res -> res
+      | Some res -> res
       | None ->
         begin match FrogConfig.get_int config "memory" with
-          | exception Not_found -> None
-          | x -> Some x
+          | x -> x
+          | exception Not_found ->
+            failwith "A memory limit is required (either on the command line or in the config file)"
         end
     in
     let prover = Prover.find_config config cmd in
-    Prover.run_exec ?timeout ?memory ~prover ~file:(String.concat " " args) ()
+    Prover.run_exec ~timeout ~memory ~prover ~file:(String.concat " " args) ()
   in
   let cmd =
     let doc = "Prover to be run" in

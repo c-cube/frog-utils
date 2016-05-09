@@ -160,6 +160,7 @@ module ProblemSet = struct
 end
 
 module Config = struct
+
   type t = {
     j: int; (* number of concurrent processes *)
     timeout: int; (* timeout for each problem *)

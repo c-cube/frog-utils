@@ -13,11 +13,11 @@ type t = {
   cmd: string;
   (* the command line to run.
      possibly contains $binary, $file, $memory and $timeout *)
-  unsat : string option; (* regex for "unsat" *)
-  sat : string option;
-  unknown : string option;
-  timeout : string option;
-  memory : string option;
+  unsat :   string option;    (* regex for "unsat" *)
+  sat :     string option;      (* regex for "sat" *)
+  unknown : string option;  (* regex for "unknown" *)
+  timeout : string option;     (* regex for "timeout" *)
+  memory :  string option;      (* regex for "out of memory" *)
 } [@@deriving yojson]
 
 let maki = Maki.Value.marshal "frog_prover"
@@ -86,29 +86,21 @@ let of_config config =
       StrMap.add p_name prover map
     ) StrMap.empty provers
 
-let run_cmd ?env ?timeout ?memory ~prover ~file () =
-  let timeout = match timeout with
-    | None -> prover.timeout
-    | Some t -> t
-  in
-  let memory = match memory with
-    | None -> prover.memory
-    | Some m -> m
-  in
+let run_cmd ?env ~timeout ~memory ~prover ~file () =
   Lwt_log.ign_debug_f "timeout: %d, memory: %d" timeout memory;
   let cmd = make_command ?env prover ~timeout ~memory ~file in
   let cmd = ["/bin/sh"; "-c"; cmd] in
   "/bin/sh", Array.of_list cmd
 
-let run_exec ?env ?timeout ?memory ~prover ~file () =
-  let cmd, args = run_cmd ?env ?timeout ?memory ~prover ~file () in
+let run_exec ?env ~timeout ~memory ~prover ~file () =
+  let cmd, args = run_cmd ?env ~timeout ~memory ~prover ~file () in
   Unix.execv cmd args
 
-let run_proc ?env ?timeout ?memory ~prover ~file () =
-  let cmd = run_cmd ?env ?timeout ?memory ~prover ~file () in
+let run_proc ?env ~timeout ~memory ~prover ~file () =
+  let cmd = run_cmd ?env ~timeout ~memory ~prover ~file () in
   (* slightly extended timeout *)
-  let timeout_hard = FrogMisc.Opt.(timeout >|= (fun i->float_of_int i +. 2.)) in
-  Lwt_process.with_process_full ?timeout:timeout_hard cmd
+  let timeout_hard = (float timeout) +. 2. in
+  Lwt_process.with_process_full ~timeout:timeout_hard cmd
     (fun p ->
       let res =
         let res_errcode =
@@ -131,14 +123,11 @@ let run_proc ?env ?timeout ?memory ~prover ~file () =
             ([%show: (string * string array)] cmd);
           Lwt.return ("", "", res_errcode)
       in
-      match timeout_hard with
-        | None -> res
-        | Some t ->
-            let open Lwt.Infix in
-            (* pick the "timeout" message for this prover, if any *)
-            let str = FrogMisc.Opt.get "timeout" prover.timeout in
-            let timeout_fut = Lwt_unix.sleep t >|= fun _ -> str, "", 0 in
-            Lwt.pick [res; timeout_fut]
+      let open Lwt.Infix in
+      (* pick the "timeout" message for this prover, if any *)
+      let str = FrogMisc.Opt.get "timeout" prover.timeout in
+      let timeout_fut = Lwt_unix.sleep timeout_hard >|= fun _ -> str, "", 0 in
+      Lwt.pick [res; timeout_fut]
     )
 
 module TPTP = struct
@@ -149,22 +138,15 @@ module TPTP = struct
     in
     make_command ~env p ~timeout ~memory ~file
 
-  let run_cmd ?tptp ?timeout ?memory ~config ~prover ~file () =
+  let run_cmd ?tptp ~timeout ~memory ~config ~prover ~file () =
     let env = match tptp with
       | Some f -> Some [| "TPTP", f |]
       | None ->
-          match get_str_ config "TPTP" with
-          | None -> None
-          | Some f -> Some  [| "TPTP", f |]
+        match get_str_ config "TPTP" with
+        | None -> None
+        | Some f -> Some  [| "TPTP", f |]
     in
     let prover = find_config config prover in
-    let timeout = match timeout with
-      | Some t -> t
-      | None -> Conf.get_int ~default:30 config "timeout"
-    in
-    let memory = match memory with
-      | Some m -> m
-      | None -> Conf.get_int ~default:1000 config "memory"
-    in
     run_cmd ?env ~timeout ~memory ~prover ~file ()
+
 end
