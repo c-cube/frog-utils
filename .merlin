@@ -23,4 +23,7 @@ PKG oUnit
 PKG maki.yojson
 PKG olinq
 PKG result
+PKG opium.unix
+PKG cow
+PKG uri
 FLG -w +a-4-44-29-48

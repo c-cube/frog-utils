@@ -26,6 +26,8 @@ depends: [
     "archimedes"
     "cmdliner"
     "olinq"
+    "opium" { >= "0.15" }
+    "cow"
     "maki"
 ]
 available: [ "ocaml-version" >= "4.02.1" ]

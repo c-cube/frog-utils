@@ -8,6 +8,8 @@
 
 (** {2 Prover configurations} *)
 
+type html = FrogWeb.html
+
 module StrMap : module type of Map.Make(String)
 (** Maps indexed by strings. *)
 
@@ -37,6 +39,8 @@ val find_config : FrogConfig.t -> string -> t
 (** Parse prover description from config file, and check it is listed
     in the "provers" list *)
 
+val to_html_name : t -> html
+val to_html_full : t -> html
 
 (** {2 Prover commands} *)
 

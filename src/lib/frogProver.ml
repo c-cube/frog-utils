@@ -6,6 +6,8 @@
 module Conf = FrogConfig
 module StrMap = Map.Make(String)
 
+type html = FrogWeb.html
+
 type env = (string * string) array
 
 type t = {
@@ -21,6 +23,17 @@ type t = {
 } [@@deriving yojson]
 
 let maki = Maki.Value.marshal "frog_prover"
+
+let to_html_name p = FrogWeb.Html.string p.binary
+
+let to_html_full p =
+  let module R = FrogWeb.Record in
+  R.start
+  |> R.add_string "binary" p.binary
+  |> R.add_string "cmd" p.cmd
+  |> R.add_string_option "unsat" p.unsat
+  |> R.add_string_option "sat" p.sat
+  |> R.close
 
 (* command ready to run in a shell *)
 let make_command ?(env=[||]) p ~timeout ~memory ~file =

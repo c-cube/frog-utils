@@ -5,6 +5,8 @@
 
 type 'a or_error = [`Ok of 'a | `Error of string]
 type 'a printer = Format.formatter -> 'a -> unit
+type html = FrogWeb.html
+type uri = FrogWeb.uri
 
 module MStr : module type of Map.Make(String)
 module Prover = FrogProver
@@ -32,6 +34,7 @@ module Res : sig
 
   val print : t printer
   val maki : t Maki.Value.ops
+  val to_html : t -> html
 end
 
 module Problem : sig
@@ -58,6 +61,9 @@ module Problem : sig
 
   val print : t printer
   val maki : t Maki.Value.ops
+
+  val to_html_full : t -> html
+  val to_html_name : t -> html
 end
 
 module ProblemSet : sig
@@ -76,6 +82,7 @@ module ProblemSet : sig
 
   val print: t printer
   val maki : t Maki.Value.ops
+  val to_html : (Problem.t -> uri) -> t -> html
 end
 
 module Config : sig
@@ -90,6 +97,7 @@ module Config : sig
   val make: ?j:int -> ?timeout:int -> ?memory:int -> pat:string -> prover:Prover.t -> unit -> t
   val of_file : string -> t or_error
   val maki : t Maki.Value.ops
+  val to_html : (Prover.t -> uri) -> t -> html
 end
 
 (* TODO: serialize, then make regression tests *)
@@ -131,6 +139,9 @@ module Results : sig
 
   val print: t printer
   val maki : t Maki.Value.ops
+
+  val to_html_raw : (Problem.t -> uri) -> raw -> html
+  val to_html : (Problem.t -> uri) -> t -> html
 end
 
 module ResultsComparison : sig
@@ -147,6 +158,8 @@ module ResultsComparison : sig
 
   val print : t printer
   (** Display comparison in a readable way *)
+
+  val to_html : (Problem.t -> uri) -> t -> html
 end
 
 val run :

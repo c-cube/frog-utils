@@ -5,6 +5,8 @@
 
 type 'a or_error = [`Ok of 'a | `Error of string]
 type 'a printer = Format.formatter -> 'a -> unit
+type html = FrogWeb.html
+type uri = FrogWeb.uri
 
 module MStr = Map.Make(String)
 module Prover = FrogProver
@@ -27,13 +29,13 @@ module Res = struct
     [@@deriving yojson]
   [@@@warning "+39"]
 
-  let print out s =
-    Format.pp_print_string out (match s with
-      | Sat -> "sat"
-      | Unsat -> "unsat"
-      | Unknown -> "unknown"
-      | Error -> "error"
-    )
+  let to_string = function
+    | Sat -> "sat"
+    | Unsat -> "unsat"
+    | Unknown -> "unknown"
+    | Error -> "error"
+
+  let print out s = Format.pp_print_string out (to_string s)
 
   let compare a b = match a, b with
     | Unsat, Unsat
@@ -49,6 +51,8 @@ module Res = struct
         `Mismatch
 
   let maki : t Maki.Value.ops = Maki_yojson.make_err ~to_yojson ~of_yojson "result"
+
+  let to_html s = FrogWeb.Html.string (to_string s)
 end
 
 module Problem = struct
@@ -116,12 +120,17 @@ module Problem = struct
   let print out p =
     fpf out "@[<h>%s (expect: %a)@]" p.name Res.print p.expected
 
+  let to_string p = FrogMisc.Fmt.to_string print p
+
   let maki =
     let module V = Maki.Value in
     V.map ~descr:"problem"
       (fun p -> p.name, p.expected)
       (fun (name, expected) -> {name;expected})
       (V.pair V.file Res.maki)
+
+  let to_html_name p = FrogWeb.Html.string p.name
+  let to_html_full p = FrogWeb.Html.string (to_string p)
 end
 
 module ProblemSet = struct
@@ -157,10 +166,15 @@ module ProblemSet = struct
     fpf out "@[<hv>%a@]" (Format.pp_print_list Problem.print) set
 
   let maki = Maki.Value.set Problem.maki
+
+  let to_html uri_of_pb l =
+    let module H = FrogWeb.Html in
+    let f pb = H.a ~href:(uri_of_pb pb) (Problem.to_html_name pb) in
+    H.div ~attrs:["class", "problem_set"]
+      (H.list (List.map f l))
 end
 
 module Config = struct
-
   type t = {
     j: int; (* number of concurrent processes *)
     timeout: int; (* timeout for each problem *)
@@ -203,6 +217,18 @@ module Config = struct
     with
     | C.Error e -> E.fail e
     | Not_found -> E.fail ("invalid config file: " ^ file)
+
+  let to_html uri_of_prover c =
+    let module H = FrogWeb.Html in
+    let module R = FrogWeb.Record in
+    R.start
+    |> R.add_int "j" c.j
+    |> R.add_int "timeout" c.timeout
+    |> R.add_int "memory" c.memory
+    |> R.add_string "problems pattern" c.problem_pat
+    |> R.add "prover"
+      (H.a ~href:(uri_of_prover c.prover) (Prover.to_html_name c.prover))
+    |> R.close
 end
 
 module Results = struct
@@ -341,6 +367,20 @@ module Results = struct
             with e -> Result.Error e
           end
         | _ -> Result.Error (Failure "expected string"))
+
+  let to_html_raw uri_of_problem r =
+    let module H = FrogWeb.Html in
+    let l = MStr.fold (fun _ (pb,res) acc -> (pb,res)::acc) r [] in
+    H.Create.table ~flags:[H.Create.Tags.Headings_fst_row]
+      ~row:(fun (pb,res) ->
+        [ H.a ~href:(uri_of_problem pb) (Problem.to_html_name pb)
+        ; Res.to_html res
+        ])
+      l
+
+  (* TODO: print tables imrpoved/disappoint, then, lower, print raw *)
+  let to_html uri_of_problem t =
+    to_html_raw uri_of_problem t.raw
 end
 
 module ResultsComparison = struct
@@ -353,6 +393,7 @@ module ResultsComparison = struct
     same: (Problem.t * Res.t) list; (* same result *)
   }
 
+  (* TODO: use outer_join? to also find the disappeared/appeared *)
   let compare (a:Results.raw) b =
     let module M = OLinq.AdaptMap(MStr) in
     let a = M.of_map a |> OLinq.map snd in
@@ -400,6 +441,8 @@ module ResultsComparison = struct
       (pp_hvlist_ (pp_pb_res2 ~bold:true ~color:`Red)) t.mismatch (* RED *)
       (pp_hvlist_ (pp_pb_res2 ~bold:false ~color:`Green)) t.improved (* GREEN *)
       (pp_hvlist_ (pp_pb_res2 ~bold:true ~color:`Yellow)) t.regressed (* YELLOW *)
+
+  let to_html _ _ = assert false (* TODO! *)
 end
 
 let extract_res_ ~prover stdout errcode =

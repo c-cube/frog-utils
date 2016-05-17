@@ -110,6 +110,7 @@ end
 (** Yay formatting! *)
 module Fmt = struct
   let fpf = Format.fprintf
+  let to_string f x = Format.asprintf "%a%!" f x
 
   type color =
     [ `Red
