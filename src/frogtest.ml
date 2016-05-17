@@ -43,24 +43,44 @@ module Serve = struct
     let h = Digest.bytes pb.T.Problem.name in
     Uri.make ~path:("/problem/" ^ h) ()
 
+  let wrap_ ?(title="frogtest") h =
+    let hd = H.list [H.title (H.string title)] in
+    H.list
+      [ H.head hd
+      ; H.body h 
+      ] |> H.to_string
+
   let main _req =
     let h =
       H.list
         [ H.a ~href:(Uri.make ~path:"/results" ()) (H.string "results")
         ]
-      |> H.to_string
+      |> wrap_
     in
     `Html h |> respond'
 
   let serve_results st _req =
-    let html = T.Results.to_html_raw uri_of_pb st.results |> H.to_string in
+    let html =
+      T.Results.to_html_raw uri_of_pb st.results
+      |> wrap_ ~title:"results" in
     `Html html |> respond'
 
   let serve_problem st req =
     let pb = param req "name" in
     try
       let pb = T.MStr.find pb st.problems in
-      `Html (T.Problem.to_html_full pb |> H.to_string) |> respond'
+      (* read the problem itself *)
+      Lwt_io.with_file ~mode:Lwt_io.input pb.T.Problem.name
+        FrogMisc.File.read_all
+      >>= fun content ->
+      let h =
+        H.list
+          [ T.Problem.to_html_full pb
+          ; Cow.Xml.tag "pre" (H.string content)
+          ]
+        |> wrap_ ~title:"problem"
+      in
+      `Html h |> respond'
     with Not_found ->
       `String ("could not find problem " ^ pb) |> respond'
 
