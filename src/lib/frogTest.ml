@@ -52,7 +52,15 @@ module Res = struct
 
   let maki : t Maki.Value.ops = Maki_yojson.make_err ~to_yojson ~of_yojson "result"
 
-  let to_html s = FrogWeb.Html.string (to_string s)
+  let to_html s =
+    let module H = FrogWeb.Html in
+    let color = match s with
+      | Unsat | Sat -> "darkgreen"
+      | Unknown -> "orange"
+      | Error -> "red"
+    in
+    H.string (to_string s)
+    |> H.div ~cls:"result" ~attrs:["style", "color:"^color]
 end
 
 module Problem = struct
@@ -373,13 +381,15 @@ module Results = struct
 
   let to_html_raw uri_of_problem r =
     let module H = FrogWeb.Html in
-    let l = MStr.fold (fun _ (pb,res) acc -> (pb,res)::acc) r [] in
+    let l = MStr.fold (fun _ (pb,res) acc -> `Row (pb,res)::acc) r [] in
     H.Create.table ~flags:[H.Create.Tags.Headings_fst_row]
-      ~row:(fun (pb,res) ->
-        [ H.a ~href:(uri_of_problem pb) (Problem.to_html_name pb)
-        ; Res.to_html res
-        ])
-      l
+      ~row:(function
+        | `Head -> [H.string "problem"; H.string "result"]
+        | `Row (pb,res) ->
+          [ H.a ~href:(uri_of_problem pb) (Problem.to_html_name pb)
+          ; Res.to_html res
+          ])
+      (`Head :: l)
 
   (* TODO: print tables imrpoved/disappoint, then, lower, print raw *)
   let to_html uri_of_problem t =
