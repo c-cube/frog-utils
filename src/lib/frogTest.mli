@@ -123,6 +123,8 @@ module Results : sig
 
   val make: raw -> t
 
+  val add_raw : raw -> Problem.t -> Res.t -> raw
+
   val of_list : (Problem.t * Res.t) list -> t
 
   val of_file : file:string -> t or_error

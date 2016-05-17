@@ -322,6 +322,9 @@ module Results = struct
     MStr.iter (fun _ (_, res) -> add_res res) raw;
     improved, mismatch, disappoint, !stat
 
+  let add_raw raw pb res =
+    MStr.add pb.Problem.name (pb,res) raw
+
   let make raw =
     let improved, mismatch, disappoint, stat = analyse_ raw in
     { raw; stat; improved; disappoint; mismatch; }
