@@ -467,7 +467,15 @@ module Results = struct
         | `Row r -> to_html_raw_result_l uri_of_problem uri_of_raw_res r)
       (`Head :: l)
 
-  (* TODO: print tables good/disappoint/bad, then, lower, print raw *)
+  let to_html_summary t =
+    R.start
+    |> R.add_int "ok" (List.length t.ok)
+    |> R.add_int "improved" (List.length t.improved)
+    |> R.add_int "disappoint" (List.length t.disappoint)
+    |> R.add_int "bad" (List.length t.bad)
+    |> R.add_int "total" (MStr.cardinal t.raw)
+    |> R.close
+
   let to_html uri_of_problem uri_of_raw_res t =
     let lst_raw_res ?cls l =
       if l=[] then H.string "ø"
@@ -476,11 +484,12 @@ module Results = struct
       |> H.div ?cls
     in
     R.start
-    |> R.add "stats" (to_html_stats t.stat)
+    |> R.add "summary" (to_html_summary t)
     |> R.add "improved" (lst_raw_res t.improved)
     |> R.add "ok" (lst_raw_res t.ok)
     |> R.add "disappoint" (lst_raw_res t.disappoint)
     |> R.add "bad" (lst_raw_res t.bad)
+    |> R.add "stats" (to_html_stats t.stat)
     |> R.add "raw" (to_html_raw uri_of_problem uri_of_raw_res t.raw)
     |> R.close
 
