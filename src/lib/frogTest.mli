@@ -3,7 +3,7 @@
 
 (** {1 Tools to test a prover} *)
 
-type 'a or_error = [`Ok of 'a | `Error of string]
+type 'a or_error = 'a FrogMisc.Err.t
 type 'a printer = Format.formatter -> 'a -> unit
 type html = FrogWeb.html
 type uri = FrogWeb.uri

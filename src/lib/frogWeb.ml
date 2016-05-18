@@ -3,9 +3,12 @@
 
 (** {1 HTML Interface} *)
 
+open Result
+
+module E = FrogMisc.Err
 module Html = Cow.Html
 
-type 'a or_error = [`Ok of 'a | `Error of string]
+type 'a or_error = 'a FrogMisc.Err.t
 
 type html = Html.t
 
@@ -51,7 +54,7 @@ end
 module DB : sig
   type t = Dbm.t
   val add_json : f:('a -> json) -> t -> string -> 'a -> unit
-  val get_json : f:(json -> 'a or_error) -> t -> string -> 'a or_error
+  val get_json : f:(json -> [`Ok of 'a | `Error of string]) -> t -> string -> 'a or_error
 end = struct
   type t = Dbm.t
 
@@ -63,11 +66,11 @@ end = struct
     try
       let s = Dbm.find db k in
       let j = Yojson.Safe.from_string s in
-      f j
+      f j |> E.of_err
     with
-      | Yojson.Json_error s -> `Error ("json error: " ^ s)
+      | Yojson.Json_error s -> Error ("json error: " ^ s)
       | Not_found ->
-        `Error (Printf.sprintf "key `%s` not in database" k)
+        Error (Printf.sprintf "key `%s` not in database" k)
 end
 
 (** {2 Serve}

@@ -5,7 +5,8 @@ true: warn(+a-4-44-29-48)
 <**/**/*>: package(ppx_deriving_yojson), package(unix), package(lwt), \
             package(lwt.unix), package(lwt.preemptive), \
             package(lwt.ppx), package(ppx_deriving.std), \
-            package(ppx_deriving_yojson), package(toml), package(re.posix), \
+            package(ppx_deriving_yojson), package(toml), \
+            package(result), package(re.posix), \
             package(maki), package(maki.yojson), package(olinq), \
             package(cmdliner), package(archimedes.cairo), \
             package(opium.unix), package(cow), package(dbm), thread

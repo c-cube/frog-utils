@@ -3,14 +3,17 @@
 
 (** {1 Tools to test a prover} *)
 
-type 'a or_error = [`Ok of 'a | `Error of string]
-type 'a printer = Format.formatter -> 'a -> unit
-type html = FrogWeb.html
-type uri = FrogWeb.uri
+open Result
 
 module MStr = Map.Make(String)
 module Prover = FrogProver
+module E = FrogMisc.Err
 module W = FrogWeb
+
+type 'a or_error = 'a E.t
+type 'a printer = Format.formatter -> 'a -> unit
+type html = FrogWeb.html
+type uri = FrogWeb.uri
 
 let fpf = Format.fprintf
 let spf = Format.asprintf
@@ -107,10 +110,10 @@ module Problem = struct
         name=file;
         expected=res;
       } in
-      Lwt.return (`Ok pb)
+      Lwt.return (Ok pb)
     with e ->
       Lwt.return
-        (`Error (spf "could not find expected res for %s: %s"
+        (Error (spf "could not find expected res for %s: %s"
                 file (Printexc.to_string e)))
 
   let compare_res pb res =
@@ -159,7 +162,7 @@ module Problem = struct
       let open Opium.Std in
       let h = param req "hash" in
       match W.DB.get_json ~f:of_yojson (W.Server.db s) ("problem-" ^ h) with
-        | `Ok pb ->
+        | Ok pb ->
           (* read the problem itself *)
           Lwt_io.with_file ~mode:Lwt_io.input pb.name
             FrogMisc.File.read_all
@@ -169,7 +172,7 @@ module Problem = struct
             ; W.pre (W.Html.string content)
             ]
           |> W.Server.return_html ~title:"problem"
-        | `Error msg ->
+        | Error msg ->
           let code = Cohttp.Code.status_of_code 404 in
           let h =
             W.Html.string (Printf.sprintf "could not find problem %s: %s" h msg) in
@@ -251,7 +254,6 @@ module Config = struct
     { c with j; timeout; memory; }
 
   let of_file file =
-    let module E = FrogMisc.Err in
     let module C = FrogConfig in
     Lwt_log.ign_debug_f "parse config file `%s`..." file;
     try
@@ -318,15 +320,18 @@ module Results = struct
     let s = raw_result_to_yojson r |> Yojson.Safe.to_string in
     Sha1.string s |> Sha1.to_hex
 
-  module E = FrogMisc.Err
-
-  let raw_of_yojson (j:Yojson.Safe.json) : raw or_error =
+  let raw_of_yojson (j:Yojson.Safe.json) =
     let open E in
     let get_list_ = function
       | `List l -> E.return l
       | _ -> E.fail "expected list"
     in
-    get_list_ j >|= List.map raw_result_of_yojson >>= E.seq_list >|= raw_of_list
+    get_list_ j
+    >|= List.map raw_result_of_yojson
+    >|= List.map E.of_err
+    >>= E.seq_list
+    >|= raw_of_list
+    |> E.to_err
 
   type stat = {
     unsat: int;
@@ -393,7 +398,9 @@ module Results = struct
     let improved, ok, bad, disappoint, stat = analyse_ raw in
     { raw; stat; improved; ok; disappoint; bad; }
 
-  let of_yojson j = E.(raw_of_yojson j >|= make)
+  let of_yojson j = match raw_of_yojson j with
+    | `Ok x -> `Ok (make x)
+    | `Error s -> `Error s
   let to_yojson t = raw_to_yojson t.raw
 
   let of_list l =
@@ -403,7 +410,7 @@ module Results = struct
   let of_file ~file =
     try
       let json = Yojson.Safe.from_file file in
-      of_yojson json
+      of_yojson json |> E.of_err
     with e -> E.fail (Printexc.to_string e)
 
   let to_file t ~file = Yojson.Safe.to_file file (to_yojson t)
@@ -505,11 +512,11 @@ module Results = struct
     let handle_res req =
       let h = param req "hash" in
       begin match W.DB.get_json ~f:raw_result_of_yojson db ("raw_result-"^h) with
-        | `Ok r ->
+        | Ok r ->
           W.Server.return_html (to_html_raw_result uri_of_problem r)
-        | `Error msg ->
+        | Error e ->
           let code = Cohttp.Code.status_of_code 404 in
-          let h = H.string ("unknown result: " ^ msg) in
+          let h = H.string ("unknown result: " ^ e) in
           W.Server.return_html ~code h
       end
     (* display all the results *)

@@ -3,6 +3,7 @@
 
 (* run tests, or compare results *)
 
+open Result
 module T = FrogTest
 module Prover = FrogProver
 module E = FrogMisc.LwtErr
@@ -180,7 +181,7 @@ let parse_opt () =
 let () =
   match parse_opt () with
   | `Version | `Help | `Error `Parse | `Error `Term | `Error `Exn -> exit 2
-  | `Ok (`Ok ()) -> ()
-  | `Ok (`Error e) ->
+  | `Ok (Ok ()) -> ()
+  | `Ok (Error e) ->
       print_endline ("error: " ^ e);
       exit 1

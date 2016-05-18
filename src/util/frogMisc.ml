@@ -1,6 +1,8 @@
 
 (* This file is free software, part of frog-utils. See file "license" for more details. *)
 
+open Result
+
 module Opt = struct
   let (>>=) o f = match o with
     | None -> None
@@ -26,30 +28,42 @@ module Str = struct
 end
 
 module Err = struct
-  type 'a t = [`Ok of 'a | `Error of string]
+  type 'a t = ('a, string) result
 
-  let return x = `Ok x
-  let fail e = `Error e
+  let return x = Ok x
+  let fail e = Error e
+
+  let of_err
+    : [`Ok of 'a | `Error of string] -> 'a t
+    = function
+    | `Ok x -> Ok x
+    | `Error s -> Error s
+
+  let to_err
+    : 'a t -> [`Ok of 'a | `Error of string]
+    = function
+    | Ok x -> `Ok x
+    | Error s -> `Error s
 
   let (>>=) e f = match e with
-    | `Error e -> `Error e
-    | `Ok x -> f x
+    | Error e -> Error e
+    | Ok x -> f x
 
   let (>|=) e f = match e with
-    | `Error e -> `Error e
-    | `Ok x -> `Ok (f x)
+    | Error e -> Error e
+    | Ok x -> Ok (f x)
 
   let (<*>) f x = match f, x with
-    | `Ok f, `Ok x -> `Ok (f x)
-    | `Error e, _ -> `Error e
-    | _, `Error e -> `Error e
+    | Ok f, Ok x -> Ok (f x)
+    | Error e, _ -> Error e
+    | _, Error e -> Error e
 
   (* 'a or_error list -> 'a list or_error *)
   let seq_list l =
     let rec aux acc = function
-      | [] -> `Ok (List.rev acc)
-      | `Error e :: _ -> `Error e
-      | `Ok x :: l' -> aux (x :: acc) l'
+      | [] -> Ok (List.rev acc)
+      | Error e :: _ -> Error e
+      | Ok x :: l' -> aux (x :: acc) l'
     in
     aux [] l
 end
@@ -57,24 +71,28 @@ end
 module LwtErr = struct
   type 'a t = 'a Err.t Lwt.t
 
-  let return x = Lwt.return (`Ok x)
-  let fail e = Lwt.return (`Error e)
+  let return x = Lwt.return (Ok x)
+  let fail e = Lwt.return (Error e)
 
   let lift : 'a Err.t -> 'a t = Lwt.return
-  let ok : 'a Lwt.t -> 'a t = fun x -> Lwt.map (fun y -> `Ok y) x
+  let ok : 'a Lwt.t -> 'a t = fun x -> Lwt.map (fun y -> Ok y) x
+
+  let of_err
+    : [`Ok of 'a | `Error of string] Lwt.t -> 'a t
+    = fun e -> Lwt.map Err.of_err e
 
   let (>>=) : 'a t -> ('a -> 'b t) -> 'b t
   = fun e f ->
     Lwt.bind e (function
-      | `Error e -> Lwt.return (`Error e)
-      | `Ok x -> f x
+      | Error e -> Lwt.return (Error e)
+      | Ok x -> f x
     )
 
   let (>|=) : 'a t -> ('a -> 'b) -> 'b t
   = fun e f ->
     Lwt.map (function
-      | `Error e -> `Error e
-      | `Ok x -> `Ok (f x)
+      | Error e -> Error e
+      | Ok x -> Ok (f x)
     ) e
 end
 

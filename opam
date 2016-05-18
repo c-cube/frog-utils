@@ -25,6 +25,7 @@ depends: [
     "cairo2"
     "archimedes"
     "cmdliner"
+    "result"
     "olinq"
     "opium" { >= "0.15" }
     "cow"
