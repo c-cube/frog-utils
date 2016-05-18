@@ -10,6 +10,7 @@ type uri = FrogWeb.uri
 
 module MStr = Map.Make(String)
 module Prover = FrogProver
+module W = FrogWeb
 
 let fpf = Format.fprintf
 let spf = Format.asprintf
@@ -75,9 +76,6 @@ module Problem = struct
   let same_name t1 t2 = t1.name = t2.name
   let compare_name t1 t2 = Pervasives.compare t1.name t2.name
 
-  let hash p : string =
-    Sha1.string p.name |> Sha1.to_hex
-
   (* regex + mark *)
   let m_unsat_, unsat_ = Re.(str "unsat" |> no_case |> mark)
   let m_sat_, sat_ = Re.(str "sat" |> no_case |> mark)
@@ -141,39 +139,41 @@ module Problem = struct
       (fun (name, expected) -> {name;expected})
       (V.pair V.file Res.maki)
 
-  module W = FrogWeb
-
   let to_html_name p = W.Html.string p.name
   let to_html_full p = W.Html.string (to_string p)
+
+  let hash p : string =
+    Sha1.string p.name |> Sha1.to_hex
 
   let k_uri = W.HMap.Key.create ("uri_of_problem", fun _ -> Sexplib.Sexp.Atom "")
   let k_add = W.HMap.Key.create ("add_problem", fun _ -> Sexplib.Sexp.Atom "")
 
   let add_server s =
-    let tbl = Hashtbl.create 16 in
     (* md5(problem.name) -> problem *)
     let uri_of_pb pb =
       Uri.make ~path:("/problem/" ^ hash pb) ()
     and add_pb pb =
-      Hashtbl.replace tbl (hash pb) pb;
+      W.DB.add_json ~f:to_yojson (W.Server.db s) ("problem-" ^ hash pb) pb
     in
     let handler req =
       let open Opium.Std in
       let h = param req "hash" in
-      try
-        let pb = Hashtbl.find tbl h in
-        (* read the problem itself *)
-        Lwt_io.with_file ~mode:Lwt_io.input pb.name
-          FrogMisc.File.read_all
-        >>= fun content ->
-        W.Html.list
-          [ to_html_full pb
-          ; W.pre (W.Html.string content)
-          ]
-        |> W.Server.return_html ~title:"problem"
-      with Not_found ->
-        let code = Cohttp.Code.status_of_code 404 in
-        W.Server.return_html ~code (W.Html.string ("could not find problem " ^ h))
+      match W.DB.get_json ~f:of_yojson (W.Server.db s) ("problem-" ^ h) with
+        | `Ok pb ->
+          (* read the problem itself *)
+          Lwt_io.with_file ~mode:Lwt_io.input pb.name
+            FrogMisc.File.read_all
+          >>= fun content ->
+          W.Html.list
+            [ to_html_full pb
+            ; W.pre (W.Html.string content)
+            ]
+          |> W.Server.return_html ~title:"problem"
+        | `Error msg ->
+          let code = Cohttp.Code.status_of_code 404 in
+          let h =
+            W.Html.string (Printf.sprintf "could not find problem %s: %s" h msg) in
+          W.Server.return_html ~code h
     in
     W.Server.set s k_uri uri_of_pb;
     W.Server.set s k_add add_pb;
@@ -266,8 +266,6 @@ module Config = struct
     with
     | C.Error e -> E.fail e
     | Not_found -> E.fail ("invalid config file: " ^ file)
-
-  module W = FrogWeb
 
   let to_html uri_of_prover c =
     let module H = W.Html in
@@ -450,8 +448,6 @@ module Results = struct
           end
         | _ -> Result.Error (Failure "expected string"))
 
-  module W = FrogWeb
-
   (* display the raw result *)
   let to_html_raw_result uri_of_problem r =
     let module H = W.Html in
@@ -481,29 +477,53 @@ module Results = struct
   let to_html uri_of_problem uri_of_raw_res t =
     to_html_raw uri_of_problem uri_of_raw_res t.raw
 
-  let k_add =
-    W.HMap.Key.create ("add_result", fun _ -> Sexplib.Sexp.Atom "")
+  let k_add = W.HMap.Key.create ("add_result", fun _ -> Sexplib.Sexp.Atom "")
+  let k_set = W.HMap.Key.create ("set_results", fun _ -> Sexplib.Sexp.Atom "")
 
   let add_server s =
     let open Opium.Std in
-    let cur = ref MStr.empty in
-    let res_by_hash = Hashtbl.create 16 in
+    let module H = W.Html in
+    let cur = ref (`Partial MStr.empty) in
+    let db = W.Server.db s in
     let uri_of_problem = W.Server.get s Problem.k_uri in
     (* find raw result *)
     let handle_res req =
       let h = param req "hash" in
-      try
-        let r = Hashtbl.find res_by_hash h in
-        W.Server.return_html (to_html_raw_result uri_of_problem r)
-      with Not_found ->
-        let code = Cohttp.Code.status_of_code 404 in
-        W.Server.return_html ~code (W.Html.string "unknown result")
+      begin match W.DB.get_json ~f:raw_result_of_yojson db ("raw_result-"^h) with
+        | `Ok r ->
+          W.Server.return_html (to_html_raw_result uri_of_problem r)
+        | `Error msg ->
+          let code = Cohttp.Code.status_of_code 404 in
+          let h = H.string ("unknown result: " ^ msg) in
+          W.Server.return_html ~code h
+      end
+    (* display all the results *)
     and handle_main _ =
       let uri_of_raw_res r = Uri.make ~path:("/result/" ^ hash_raw_res r) () in
-      let h = to_html_raw uri_of_problem uri_of_raw_res !cur in
+      let is_done = match !cur with `Partial _ -> false | `Done _ -> true in
+      let h =
+        H.list
+          [ H.i (H.string ("done: " ^ string_of_bool is_done))
+          ; begin match !cur with
+            | `Done c -> to_html uri_of_problem uri_of_raw_res c
+            | `Partial c -> to_html_raw uri_of_problem uri_of_raw_res c
+            end
+          ]
+      in
       W.Server.return_html ~title:"results" h
+    and on_add r =
+      begin match !cur with
+        | `Done _ -> assert false
+        | `Partial c -> cur := `Partial (add_raw c r)
+      end;
+      let h = hash_raw_res r in
+      W.DB.add_json ~f:raw_result_to_yojson db ("raw_result-" ^ h) r;
+    and on_done r = match !cur with
+      | `Partial _ -> cur := `Done r
+      | `Done _ -> assert false
     in
-    W.Server.set s k_add (fun p -> cur := add_raw !cur p);
+    W.Server.set s k_add on_add;
+    W.Server.set s k_set on_done;
     W.Server.add_route s ~descr:"current results" "/results" handle_main;
     W.Server.add_route s "/result/:hash" handle_res;
     ()
@@ -616,18 +636,21 @@ let run_pb ?(caching=true) ?limit ~config pb =
     ~name:"frogtest.run_pb"
     (fun () -> run_pb_ ~config pb)
 
+let nop_ _ = Lwt.return_unit
 let nop2_ _ _ = Lwt.return_unit
 
-let run ?(on_solve = nop2_) ?(caching=true) ?j ?timeout ?memory ?server ~config set =
+let run ?(on_solve = nop2_) ?(on_done = nop_)
+    ?(caching=true) ?j ?timeout ?memory ?server ~config set
+  =
   let config = Config.update ?j ?timeout ?memory config in
   let limit = Maki.Limit.create config.Config.j in
   FrogMisc.Opt.iter server
-    ~f:(fun s -> 
+    ~f:(fun s ->
       Prover.add_server s;
       Problem.add_server s;
       Results.add_server s;
       Config.add_server s config;
-      FrogWeb.Server.get s Prover.k_add config.Config.prover;
+      W.Server.get s Prover.k_add config.Config.prover;
     );
   let%lwt raw =
     Lwt_list.map_p
@@ -637,9 +660,13 @@ let run ?(on_solve = nop2_) ?(caching=true) ?j ?timeout ?memory ?server ~config 
          (* add result to server? *)
          FrogMisc.Opt.iter server
            ~f:(fun s ->
-             FrogWeb.Server.get s Problem.k_add pb;
-             FrogWeb.Server.get s Results.k_add raw_res);
+             W.Server.get s Problem.k_add pb;
+             W.Server.get s Results.k_add raw_res);
          Lwt.return raw_res)
       set
   in
-  Lwt.return (Results.of_list raw)
+  let res = Results.of_list raw in
+  FrogMisc.Opt.iter server
+    ~f:(fun s -> W.Server.get s Results.k_set res);
+  let%lwt () = on_done res in
+  Lwt.return res

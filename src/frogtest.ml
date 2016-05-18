@@ -44,7 +44,7 @@ module Run = struct
       (fun p -> FrogMisc.File.read_all p#stdout >|= String.trim)
 
   (* lwt main *)
-  let main ?j ?timeout ?memory ?caching ~save ~config ~dir () =
+  let main ?j ?timeout ?memory ?caching ~db ~save ~config ~dir () =
     let open E in
     (* parse config *)
     Lwt.return (T.Config.of_file (Filename.concat dir config))
@@ -55,7 +55,7 @@ module Run = struct
     >>= fun pb ->
     Format.printf "run %d tests in %s@." (T.ProblemSet.size pb) dir;
     (* serve website *)
-    let server = W.Server.create () in
+    let server = W.Server.create ~db_path:db () in
     (* solve *)
     let main =
       E.ok (T.run ?j ?timeout ?memory ?caching ~on_solve ~server ~config pb)
@@ -104,12 +104,12 @@ end
 (* sub-command for running tests *)
 let term_run =
   let open Cmdliner in
-  let aux debug config save dir j timeout memory nocaching =
+  let aux debug config save dir j timeout memory nocaching db =
     if debug then (
       Maki_log.set_level 5;
       Lwt_log.add_rule "*" Lwt_log.Debug;
     );
-    Lwt_main.run (Run.main ?j ?timeout ?memory ~caching:(not nocaching) ~save ~config ~dir ())
+    Lwt_main.run (Run.main ?j ?timeout ?memory ~caching:(not nocaching) ~db ~save ~config ~dir ())
   in
   let save =
     let parse_ = function
@@ -135,9 +135,10 @@ let term_run =
     info ["t"; "timeout"] ~doc:"timeout (in s)")
   and memory = Arg.(value & opt (some int) None &
     info ["m"; "memory"] ~doc:"memory (in MB)")
+  and db = Arg.(value & opt string "frogtest" & info ["db"] ~doc:"path to database")
   and nocaching = Arg.(value & flag & info ["no-caching"] ~doc:"toggle caching")
   and doc = "test a program on every file in a directory" in
-  Term.(pure aux $ debug $ config $ save $ dir $ j $ timeout $ memory $ nocaching), Term.info ~doc "run"
+  Term.(pure aux $ debug $ config $ save $ dir $ j $ timeout $ memory $ nocaching $ db), Term.info ~doc "run"
 
 (* sub-command to display a file *)
 let term_display =

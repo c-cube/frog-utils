@@ -25,5 +25,6 @@ PKG olinq
 PKG result
 PKG opium.unix
 PKG cow
+PKG dbm
 PKG uri
 FLG -w +a-4-44-29-48

@@ -162,6 +162,7 @@ module Results : sig
   val to_html : (Problem.t -> uri) -> (raw_result -> uri) -> t -> html
 
   val k_add : (raw_result -> unit) FrogWeb.HMap.key
+  val k_set : (t -> unit) FrogWeb.HMap.key
   val add_server : FrogWeb.Server.t -> unit
 end
 
@@ -185,6 +186,7 @@ end
 
 val run :
   ?on_solve:(Problem.t -> Res.t -> unit Lwt.t) ->
+  ?on_done:(Results.t -> unit Lwt.t) ->
   ?caching:bool ->
   ?j:int ->
   ?timeout:int ->
