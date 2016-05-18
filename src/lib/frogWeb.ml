@@ -128,6 +128,8 @@ end = struct
 
   let set_port t p = t.port <- p
 
+  let meta_ = H.meta ~attrs:["charset","UTF-8"] H.empty
+
   let css_ =
     "body {
   background-color: #fafafa;
@@ -157,7 +159,12 @@ th {
   (* TODO: css *)
   let return_html ?title ?code h =
     let wrap_ ?(title="frog-utils") h =
-      let hd = H.list [H.title (H.string title); style (H.string css_) ] in
+      let hd =
+        H.list
+          [ meta_
+          ; H.title (H.string title)
+          ; style (H.string css_) ]
+      in
       H.list
         [ H.head hd
         ; H.body h

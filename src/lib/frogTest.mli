@@ -131,6 +131,7 @@ module Results : sig
   type t = private {
     raw: raw;
     stat: stat;
+    improved: raw_result list;
     ok: raw_result list;
     disappoint: raw_result list;
     bad: raw_result list;

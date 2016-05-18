@@ -349,6 +349,7 @@ module Results = struct
   type t = {
     raw: raw;
     stat: stat;
+    improved: raw_result list;
     ok: raw_result list;
     disappoint: raw_result list;
     bad: raw_result list;
@@ -370,7 +371,8 @@ module Results = struct
         (fun r -> Problem.compare_res r.problem r.res)
       |> OLinq.run_list ?limit:None
     in
-    let ok = assoc_or [] `Improvement l in
+    let improved = assoc_or [] `Improvement l in
+    let ok = assoc_or [] `Same l in
     let bad = assoc_or [] `Mismatch l in
     let disappoint = assoc_or [] `Disappoint l in
     (* stats *)
@@ -382,14 +384,14 @@ module Results = struct
       ) !stat
     in
     MStr.iter (fun _ r -> add_res r.res) raw;
-    ok, bad, disappoint, !stat
+    improved, ok, bad, disappoint, !stat
 
   let add_raw raw r =
     MStr.add r.problem.Problem.name r raw
 
   let make raw =
-    let ok, bad, disappoint, stat = analyse_ raw in
-    { raw; stat; ok; disappoint; bad; }
+    let improved, ok, bad, disappoint, stat = analyse_ raw in
+    { raw; stat; improved; ok; disappoint; bad; }
 
   let of_yojson j = E.(raw_of_yojson j >|= make)
   let to_yojson t = raw_to_yojson t.raw
@@ -458,7 +460,8 @@ module Results = struct
 
   let to_html_raw uri_of_problem uri_of_raw_res r =
     let l = MStr.fold (fun _ r acc -> `Row r::acc) r [] in
-    H.Create.table ~flags:[H.Create.Tags.Headings_fst_row]
+    if l = [] then H.string "ø"
+    else H.Create.table ~flags:[H.Create.Tags.Headings_fst_row]
       ~row:(function
         | `Head -> [H.string "problem"; H.string "result"]
         | `Row r -> to_html_raw_result_l uri_of_problem uri_of_raw_res r)
@@ -467,12 +470,14 @@ module Results = struct
   (* TODO: print tables good/disappoint/bad, then, lower, print raw *)
   let to_html uri_of_problem uri_of_raw_res t =
     let lst_raw_res ?cls l =
-      H.Create.table l ~flags:[]
+      if l=[] then H.string "ø"
+      else H.Create.table l ~flags:[]
         ~row:(to_html_raw_result_l uri_of_problem uri_of_raw_res)
       |> H.div ?cls
     in
     R.start
     |> R.add "stats" (to_html_stats t.stat)
+    |> R.add "improved" (lst_raw_res t.improved)
     |> R.add "ok" (lst_raw_res t.ok)
     |> R.add "disappoint" (lst_raw_res t.disappoint)
     |> R.add "bad" (lst_raw_res t.bad)
