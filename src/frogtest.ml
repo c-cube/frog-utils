@@ -74,8 +74,9 @@ module Run = struct
           Lwt_log.ign_debug "do not save result";
           Lwt.return_unit
     in
+    let%lwt _ = web in
     if T.Results.is_ok results
-    then web (* wait for webserver to return *)
+    then E.return () (* wait for webserver to return *)
     else
       E.fail (Format.asprintf "%d failure(s)" (T.Results.num_failed results))
 end
