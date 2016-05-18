@@ -17,8 +17,10 @@ module HMap = Opium_hmap
 
 (** {2 Encoding Records in HTML} *)
 
-(* make a <pre> block *)
+(* custom blocks *)
+
 let pre h = Cow.Xml.tag "pre" h
+let style h = Cow.Xml.tag "style" h
 
 module Record : sig
   type t
@@ -126,10 +128,36 @@ end = struct
 
   let set_port t p = t.port <- p
 
+  let css_ =
+    "body {
+  background-color: #fafafa;
+}
+
+h1 { font-size: larger; }
+h2 { font-size: large; }
+
+table {
+  border-collapse: collapse;
+}
+
+tr:nth-child(even) {
+  background-color:#f2f2f2;
+}
+
+table, th {
+  border: 1px solid black;
+}
+
+th {
+  text-align: left;
+  vertical-align: top;
+}
+"
+
   (* TODO: css *)
   let return_html ?title ?code h =
     let wrap_ ?(title="frog-utils") h =
-      let hd = H.list [H.title (H.string title)] in
+      let hd = H.list [H.title (H.string title); style (H.string css_) ] in
       H.list
         [ H.head hd
         ; H.body h
