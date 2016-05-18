@@ -42,6 +42,10 @@ val find_config : FrogConfig.t -> string -> t
 val to_html_name : t -> html
 val to_html_full : t -> html
 
+val k_uri : (t -> Uri.t) FrogWeb.HMap.key
+val k_add : (t -> unit) FrogWeb.HMap.key
+val add_server : FrogWeb.Server.t -> unit
+
 (** {2 Prover commands} *)
 
 type env = (string * string) array

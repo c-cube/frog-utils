@@ -64,6 +64,11 @@ module Problem : sig
 
   val to_html_full : t -> html
   val to_html_name : t -> html
+
+  val k_uri : (t -> Uri.t) FrogWeb.HMap.key
+  val k_add : (t -> unit) FrogWeb.HMap.key
+
+  val add_server: FrogWeb.Server.t -> unit
 end
 
 module ProblemSet : sig
@@ -98,12 +103,22 @@ module Config : sig
   val of_file : string -> t or_error
   val maki : t Maki.Value.ops
   val to_html : (Prover.t -> uri) -> t -> html
+
+  val add_server : FrogWeb.Server.t -> t -> unit
 end
 
 (* TODO: serialize, then make regression tests *)
 
 module Results : sig
-  type raw = (Problem.t * Res.t) MStr.t
+  type raw_result = {
+    problem: Problem.t;
+    res: Res.t;
+    stdout: string;
+    stderr: string;
+    errcode: int;
+  } [@@deriving yojson]
+
+  type raw = raw_result MStr.t
   [@@deriving yojson]
 
   type stat = private {
@@ -113,19 +128,19 @@ module Results : sig
     unknown: int;
   }
 
-  type t = {
+  type t = private {
     raw: raw;
     stat: stat;
-    improved: (Problem.t * Res.t) list;
-    disappoint: (Problem.t * Res.t) list;
-    mismatch: (Problem.t * Res.t) list;
-  } [@@deriving yojson]
+    ok: raw_result list;
+    disappoint: raw_result list;
+    bad: raw_result list;
+  }
 
   val make: raw -> t
 
-  val add_raw : raw -> Problem.t -> Res.t -> raw
+  val add_raw : raw -> raw_result -> raw
 
-  val of_list : (Problem.t * Res.t) list -> t
+  val of_list : raw_result list -> t
 
   val of_file : file:string -> t or_error
   (** Parse JSON file *)
@@ -141,9 +156,13 @@ module Results : sig
 
   val print: t printer
   val maki : t Maki.Value.ops
+  val maki_raw_res : raw_result Maki.Value.ops
 
-  val to_html_raw : (Problem.t -> uri) -> raw -> html
-  val to_html : (Problem.t -> uri) -> t -> html
+  val to_html_raw : (Problem.t -> uri) -> (raw_result -> uri) -> raw -> html
+  val to_html : (Problem.t -> uri) -> (raw_result -> uri) -> t -> html
+
+  val k_add : (raw_result -> unit) FrogWeb.HMap.key
+  val add_server : FrogWeb.Server.t -> unit
 end
 
 module ResultsComparison : sig
@@ -170,11 +189,13 @@ val run :
   ?j:int ->
   ?timeout:int ->
   ?memory:int ->
+  ?server:FrogWeb.Server.t ->
   config:Config.t ->
   ProblemSet.t ->
   Results.t Lwt.t
 (** Run the given prover on the given problem set, obtaining results
     after all the problems have been dealt with.
     @param caching if true, use Maki for caching results (default true)
+    @param server if provided, register some paths to the server
     @param on_solve called whenever a single problem is solved *)
 

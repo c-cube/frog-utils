@@ -5,11 +5,13 @@
 
 module Conf = FrogConfig
 module StrMap = Map.Make(String)
+module W = FrogWeb
 
 type html = FrogWeb.html
 
 type env = (string * string) array
 
+[@@@warning "-39"]
 type t = {
   binary: string; (* name of the program itself *)
   cmd: string;
@@ -21,19 +23,42 @@ type t = {
   timeout : string option;     (* regex for "timeout" *)
   memory :  string option;      (* regex for "out of memory" *)
 } [@@deriving yojson]
+[@@@warning "+39"]
 
 let maki = Maki.Value.marshal "frog_prover"
 
-let to_html_name p = FrogWeb.Html.string p.binary
+let to_html_name p = W.Html.string p.binary
 
 let to_html_full p =
-  let module R = FrogWeb.Record in
+  let module R = W.Record in
   R.start
   |> R.add_string "binary" p.binary
   |> R.add_string "cmd" p.cmd
   |> R.add_string_option "unsat" p.unsat
   |> R.add_string_option "sat" p.sat
   |> R.close
+
+let k_uri = W.HMap.Key.create ("uri_of_prover", fun _ -> assert false)
+let k_add = W.HMap.Key.create ("add_prover", fun _ -> assert false)
+
+let add_server s =
+  let tbl = Hashtbl.create 16 in
+  let add p = Hashtbl.replace tbl p.binary p in
+  let uri_of_prover p = Uri.make ~path:("/prover/" ^ p.binary) () in
+  let handle req =
+    let open Opium.Std in
+    let name = param req "name" in
+    try
+      let p = Hashtbl.find tbl name in
+      W.Server.return_html ~title:p.binary (to_html_full p)
+    with Not_found ->
+      let code = Cohttp.Code.status_of_code 404 in
+      W.Server.return_html ~code (W.Html.string "prover not found")
+  in
+  W.Server.set s k_add add;
+  W.Server.set s k_uri uri_of_prover;
+  W.Server.add_route s "/prover/:name" handle;
+  ()
 
 (* command ready to run in a shell *)
 let make_command ?(env=[||]) p ~timeout ~memory ~file =

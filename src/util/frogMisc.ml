@@ -10,6 +10,10 @@ module Opt = struct
     | None -> None
     | Some x -> Some (f x)
 
+  let iter ~f = function
+    | None -> ()
+    | Some x -> f x
+
   let get default x = match x with
     | None -> default
     | Some y -> y

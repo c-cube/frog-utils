@@ -6,102 +6,17 @@
 module T = FrogTest
 module Prover = FrogProver
 module E = FrogMisc.LwtErr
+module W = FrogWeb
 
 type save =
   | SaveFile of string
   | SaveCommit  (* save into a file named by the current git commit *)
   | SaveNone  (* no save *)
 
-(** {2 Serve}
-
-    A small webserver that displays results as they are built, computes
-    regressions between results, etc. *)
-module Serve = struct
-  module W = FrogWeb
-  module H = W.Html
-  module M = FrogWeb.HMap
-  open Opium.Std
-
-  type state = {
-    mutable results: T.Results.raw;
-    mutable problems: T.Problem.t T.MStr.t; (* name -> problem *)
-  }
-
-  let create_state() =
-    { results=T.MStr.empty;
-      problems=T.MStr.empty;
-    }
-
-  (* add a result *)
-  let add_res st pb res =
-    st.results <- T.Results.add_raw st.results pb res;
-    st.problems <- T.MStr.add (Digest.bytes pb.T.Problem.name) pb st.problems;
-    ()
-
-  (* md5(problem.name) -> problem *)
-  let uri_of_pb pb =
-    let h = Digest.bytes pb.T.Problem.name in
-    Uri.make ~path:("/problem/" ^ h) ()
-
-  let wrap_ ?(title="frogtest") h =
-    let hd = H.list [H.title (H.string title)] in
-    H.list
-      [ H.head hd
-      ; H.body h 
-      ] |> H.to_string
-
-  let main _req =
-    let h =
-      H.list
-        [ H.a ~href:(Uri.make ~path:"/results" ()) (H.string "results")
-        ]
-      |> wrap_
-    in
-    `Html h |> respond'
-
-  let serve_results st _req =
-    let html =
-      T.Results.to_html_raw uri_of_pb st.results
-      |> wrap_ ~title:"results" in
-    `Html html |> respond'
-
-  let serve_problem st req =
-    let pb = param req "name" in
-    try
-      let pb = T.MStr.find pb st.problems in
-      (* read the problem itself *)
-      Lwt_io.with_file ~mode:Lwt_io.input pb.T.Problem.name
-        FrogMisc.File.read_all
-      >>= fun content ->
-      let h =
-        H.list
-          [ T.Problem.to_html_full pb
-          ; Cow.Xml.tag "pre" (H.string content)
-          ]
-        |> wrap_ ~title:"problem"
-      in
-      `Html h |> respond'
-    with Not_found ->
-      `String ("could not find problem " ^ pb) |> respond'
-
-  (* loop that serves the website *)
-  let serve st =
-    let port = 8000 in
-    Lwt_log.ign_info_f "serve website on http://localhost:%d" port;
-    App.empty
-    |> get "/results" (serve_results st)
-    |> get "/problem/:name" (serve_problem st)
-    |> get "/" main
-    |> App.cmd_name "frogtest"
-    |> App.port port
-    |> App.start
-    |> E.ok
-end
-
 (** {2 Run} *)
 module Run = struct
   (* callback that prints a result *)
-  let on_solve state pb res =
+  let on_solve pb res =
     let module F = FrogMisc.Fmt in
     let pp_res out () =
       let str, c = match T.Problem.compare_res pb res with
@@ -113,7 +28,6 @@ module Run = struct
       Format.fprintf out "%a" (F.in_bold_color c Format.pp_print_string) str
     in
     Format.printf "problem %-50s %a@." (pb.T.Problem.name ^ " :") pp_res ();
-    Serve.add_res state pb res;
     Lwt.return_unit
 
   (* save result in given file *)
@@ -141,11 +55,13 @@ module Run = struct
     >>= fun pb ->
     Format.printf "run %d tests in %s@." (T.ProblemSet.size pb) dir;
     (* serve website *)
-    let state = Serve.create_state() in
-    let web = Serve.serve state in
+    let server = W.Server.create () in
     (* solve *)
-    E.ok (T.run ?j ?timeout ?memory ?caching ~on_solve:(on_solve state) ~config pb)
-    >>= fun results ->
+    let main =
+      E.ok (T.run ?j ?timeout ?memory ?caching ~on_solve ~server ~config pb)
+    in
+    let web = W.Server.run server |> E.ok in
+    main >>= fun results ->
     Format.printf "%a@." T.Results.print results;
     let%lwt () = match save with
       | SaveFile f -> save_ ~file:f results

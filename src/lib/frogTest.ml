@@ -18,6 +18,7 @@ let assoc_or def x l =
   try List.assoc x l
   with Not_found -> def
 
+
 (** {2 Result on a single problem} *)
 module Res = struct
   [@@@warning "-39"]
@@ -73,6 +74,9 @@ module Problem = struct
 
   let same_name t1 t2 = t1.name = t2.name
   let compare_name t1 t2 = Pervasives.compare t1.name t2.name
+
+  let hash p : string =
+    Sha1.string p.name |> Sha1.to_hex
 
   (* regex + mark *)
   let m_unsat_, unsat_ = Re.(str "unsat" |> no_case |> mark)
@@ -137,8 +141,43 @@ module Problem = struct
       (fun (name, expected) -> {name;expected})
       (V.pair V.file Res.maki)
 
-  let to_html_name p = FrogWeb.Html.string p.name
-  let to_html_full p = FrogWeb.Html.string (to_string p)
+  module W = FrogWeb
+
+  let to_html_name p = W.Html.string p.name
+  let to_html_full p = W.Html.string (to_string p)
+
+  let k_uri = W.HMap.Key.create ("uri_of_problem", fun _ -> assert false)
+  let k_add = W.HMap.Key.create ("add_problem", fun _ -> assert false)
+
+  let add_server s =
+    let tbl = Hashtbl.create 16 in
+    (* md5(problem.name) -> problem *)
+    let uri_of_pb pb =
+      Uri.make ~path:("/problem/" ^ hash pb) ()
+    and add_pb pb =
+      Hashtbl.replace tbl (hash pb) pb;
+    in
+    let handler req =
+      let open Opium.Std in
+      let pb = param req "name" in
+      try
+        let pb = Hashtbl.find tbl pb in
+        (* read the problem itself *)
+        Lwt_io.with_file ~mode:Lwt_io.input pb.name
+          FrogMisc.File.read_all
+        >>= fun content ->
+        W.Html.list
+          [ to_html_full pb
+          ; Cow.Xml.tag "pre" (W.Html.string content)
+          ]
+        |> W.Server.return_html ~title:"problem"
+      with Not_found ->
+        let code = Cohttp.Code.status_of_code 404 in
+        `String ("could not find problem " ^ pb) |> respond' ~code
+    in
+    W.Server.set s k_uri uri_of_pb;
+    W.Server.set s k_add add_pb;
+    W.Server.add_route s "/problem/:name" handler
 end
 
 module ProblemSet = struct
@@ -183,6 +222,7 @@ module ProblemSet = struct
 end
 
 module Config = struct
+  [@@@warning "-39"]
   type t = {
     j: int; (* number of concurrent processes *)
     timeout: int; (* timeout for each problem *)
@@ -190,6 +230,7 @@ module Config = struct
     problem_pat: string; (* regex for problems *)
     prover: Prover.t;
   } [@@deriving yojson]
+  [@@@warning "+39"]
 
   let maki : t Maki.Value.ops =
     let module V = Maki.Value in
@@ -226,9 +267,11 @@ module Config = struct
     | C.Error e -> E.fail e
     | Not_found -> E.fail ("invalid config file: " ^ file)
 
+  module W = FrogWeb
+
   let to_html uri_of_prover c =
-    let module H = FrogWeb.Html in
-    let module R = FrogWeb.Record in
+    let module H = W.Html in
+    let module R = W.Record in
     R.start
     |> R.add_int "j" c.j
     |> R.add_int "timeout" c.timeout
@@ -237,23 +280,44 @@ module Config = struct
     |> R.add "prover"
       (H.a ~href:(uri_of_prover c.prover) (Prover.to_html_name c.prover))
     |> R.close
+
+  let add_server s c =
+    let uri_of_prover = W.Server.get s Prover.k_uri in
+    let handle _ =
+      W.Server.return_html (to_html uri_of_prover c)
+    in
+    W.Server.add_route s "/config" handle
 end
 
 module Results = struct
-  type raw = (Problem.t * Res.t) MStr.t
+  type raw_result = {
+    problem: Problem.t;
+    res: Res.t;
+    stdout: string;
+    stderr: string;
+    errcode: int;
+  } [@@deriving yojson]
+
+  type raw = raw_result MStr.t
 
   let raw_of_list l =
     List.fold_left
-      (fun acc (pb,res) -> MStr.add pb.Problem.name (pb,res) acc)
+      (fun acc r -> MStr.add r.problem.Problem.name r acc)
       MStr.empty l
 
   let raw_to_yojson r : Yojson.Safe.json =
     let l = MStr.fold
-      (fun _ (pb,res) acc ->
-        (`List [Problem.to_yojson pb; Res.to_yojson res] :: acc))
+      (fun _ r acc ->
+        let j = raw_result_to_yojson r in
+        j :: acc)
       r []
     in
     `List l
+
+  (* map raw_result to a unique hex string (hash) *)
+  let hash_raw_res (r:raw_result) : string =
+    let s = raw_result_to_yojson r |> Yojson.Safe.to_string in
+    Sha1.string s |> Sha1.to_hex
 
   module E = FrogMisc.Err
 
@@ -263,16 +327,7 @@ module Results = struct
       | `List l -> E.return l
       | _ -> E.fail "expected list"
     in
-    (* parse a single (problem, res) pair *)
-    let get_pair_ j =
-      get_list_ j >>= function
-      | [a;b] ->
-          Problem.of_yojson a >>= fun a ->
-          Res.of_yojson b >>= fun b ->
-          E.return (a,b)
-      | _ -> E.fail "expected pair"
-    in
-    get_list_ j >|= List.map get_pair_ >>= E.seq_list >|= raw_of_list
+    get_list_ j >|= List.map raw_result_of_yojson >>= E.seq_list >|= raw_of_list
 
   type stat = {
     unsat: int;
@@ -295,14 +350,14 @@ module Results = struct
   type t = {
     raw: raw;
     stat: stat;
-    improved: (Problem.t * Res.t) list;
-    disappoint: (Problem.t * Res.t) list;
-    mismatch: (Problem.t * Res.t) list;
+    ok: raw_result list;
+    disappoint: raw_result list;
+    bad: raw_result list;
   }
 
-  let pp_pb_res_ out (pb, res) =
+  let pp_raw_res_ out r =
     fpf out "@[<h>problem %s (expected: %a, result: %a)@]"
-      pb.Problem.name Res.print pb.Problem.expected Res.print res
+      r.problem.Problem.name Res.print r.problem.Problem.expected Res.print r.res
 
   let pp_list_ p = Format.pp_print_list p
 
@@ -313,11 +368,11 @@ module Results = struct
       M.of_map raw
       |> OLinq.map snd
       |> OLinq.group_by
-        (fun (pb, res) -> Problem.compare_res pb res)
+        (fun r -> Problem.compare_res r.problem r.res)
       |> OLinq.run_list ?limit:None
     in
-    let improved = assoc_or [] `Improvement l in
-    let mismatch = assoc_or [] `Mismatch l in
+    let ok = assoc_or [] `Improvement l in
+    let bad = assoc_or [] `Mismatch l in
     let disappoint = assoc_or [] `Disappoint l in
     (* stats *)
     let stat = ref stat_empty in
@@ -327,15 +382,15 @@ module Results = struct
         | Res.Unknown -> add_unknown_ | Res.Error -> add_error_
       ) !stat
     in
-    MStr.iter (fun _ (_, res) -> add_res res) raw;
-    improved, mismatch, disappoint, !stat
+    MStr.iter (fun _ r -> add_res r.res) raw;
+    ok, bad, disappoint, !stat
 
-  let add_raw raw pb res =
-    MStr.add pb.Problem.name (pb,res) raw
+  let add_raw raw r =
+    MStr.add r.problem.Problem.name r raw
 
   let make raw =
-    let improved, mismatch, disappoint, stat = analyse_ raw in
-    { raw; stat; improved; disappoint; mismatch; }
+    let ok, bad, disappoint, stat = analyse_ raw in
+    { raw; stat; ok; disappoint; bad; }
 
   let of_yojson j = E.(raw_of_yojson j >|= make)
   let to_yojson t = raw_to_yojson t.raw
@@ -352,17 +407,32 @@ module Results = struct
 
   let to_file t ~file = Yojson.Safe.to_file file (to_yojson t)
 
-  let is_ok r = r.mismatch = []
-  let num_failed r = List.length r.mismatch
+  let is_ok r = r.bad = []
+  let num_failed r = List.length r.bad
 
   let print out r =
-    let pp_l out = fpf out "[@[<hv>%a@]]" (pp_list_ pp_pb_res_) in
+    let pp_l out = fpf out "[@[<hv>%a@]]" (pp_list_ pp_raw_res_) in
     fpf out
       "@[<hv2>results: {@,stat:%a,@ %-15s: %a,@ %-15s: %a,@ %-15s: %a@]@,}"
       pp_stat r.stat
-      "improved" pp_l r.improved
+      "ok" pp_l r.ok
       "disappoint" pp_l r.disappoint
-      "mismatch" pp_l r.mismatch
+      "bad" pp_l r.bad
+
+  let maki_raw_res =
+    Maki.Value.make_fast "raw_res"
+      ~serialize:(fun p ->
+        raw_result_to_yojson p |> (fun x->Yojson.Safe.to_string x) |> Maki_bencode.mk_str)
+      ~unserialize:(function
+        | Bencode.String s ->
+          begin try
+              Yojson.Safe.from_string s |> raw_result_of_yojson
+              |> (function
+                |`Ok x -> Result.Ok x
+                | `Error y -> Result.Error (Failure y))
+            with e -> Result.Error e
+          end
+        | _ -> Result.Error (Failure "expected string"))
 
   let maki =
     Maki.Value.make_fast "results"
@@ -379,21 +449,62 @@ module Results = struct
           end
         | _ -> Result.Error (Failure "expected string"))
 
-  let to_html_raw uri_of_problem r =
-    let module H = FrogWeb.Html in
-    let l = MStr.fold (fun _ (pb,res) acc -> `Row (pb,res)::acc) r [] in
+  module W = FrogWeb
+
+  (* display the raw result *)
+  let to_html_raw_result uri_of_problem r =
+    let module H = W.Html in
+    let module R = W.Record in
+    R.start
+    |> R.add "problem"
+      (H.a ~href:(uri_of_problem r.problem) (Problem.to_html_name r.problem))
+    |> R.add "result" (Res.to_html r.res)
+    |> R.add_int "errcode" r.errcode
+    |> R.add "stdout" (W.pre (H.string r.stdout))
+    |> R.add "stderr" (W.pre (H.string r.stderr))
+    |> R.close
+
+  let to_html_raw uri_of_problem uri_of_raw_res r =
+    let module H = W.Html in
+    let l = MStr.fold (fun _ r acc -> `Row r::acc) r [] in
     H.Create.table ~flags:[H.Create.Tags.Headings_fst_row]
       ~row:(function
         | `Head -> [H.string "problem"; H.string "result"]
-        | `Row (pb,res) ->
-          [ H.a ~href:(uri_of_problem pb) (Problem.to_html_name pb)
-          ; Res.to_html res
+        | `Row r ->
+          [ H.a ~href:(uri_of_problem r.problem) (Problem.to_html_name r.problem)
+          ; H.a ~href:(uri_of_raw_res r) (Res.to_html r.res)
           ])
       (`Head :: l)
 
-  (* TODO: print tables imrpoved/disappoint, then, lower, print raw *)
-  let to_html uri_of_problem t =
-    to_html_raw uri_of_problem t.raw
+  (* TODO: print tables good/disappoint/bad, then, lower, print raw *)
+  let to_html uri_of_problem uri_of_raw_res t =
+    to_html_raw uri_of_problem uri_of_raw_res t.raw
+
+  let k_add = W.HMap.Key.create ("add_result", fun _ -> assert false)
+
+  let add_server s =
+    let open Opium.Std in
+    let cur = ref MStr.empty in
+    let res_by_hash = Hashtbl.create 16 in
+    let uri_of_problem = W.Server.get s Problem.k_uri in
+    (* find raw result *)
+    let handle_res req =
+      let h = param req "hash" in
+      try
+        let r = Hashtbl.find res_by_hash h in
+        W.Server.return_html (to_html_raw_result uri_of_problem r)
+      with Not_found ->
+        let code = Cohttp.Code.status_of_code 404 in
+        W.Server.return_html ~code (W.Html.string "unknown result")
+    and handle_main _ =
+      let uri_of_raw_res r = Uri.make ~path:("/result/" ^ hash_raw_res r) () in
+      let h = to_html_raw uri_of_problem uri_of_raw_res !cur in
+      W.Server.return_html ~title:"results" h
+    in
+    W.Server.set s k_add (fun p -> cur := add_raw !cur p);
+    W.Server.add_route s "/results" handle_main;
+    W.Server.add_route s "/result/:hash" handle_res;
+    ()
 end
 
 module ResultsComparison = struct
@@ -407,15 +518,17 @@ module ResultsComparison = struct
   }
 
   (* TODO: use outer_join? to also find the disappeared/appeared *)
-  let compare (a:Results.raw) b =
+  let compare (a:Results.raw) b : t =
+    let open Results in
     let module M = OLinq.AdaptMap(MStr) in
     let a = M.of_map a |> OLinq.map snd in
     let b = M.of_map b |> OLinq.map snd in
     let j =
-      OLinq.join ~eq:Problem.same_name fst fst a b
-        ~merge:(fun pb (pb1,res1) (pb2,res2) ->
-          assert (pb1.Problem.name = pb2.Problem.name);
-          Some (pb, res1, res2))
+      OLinq.join ~eq:Problem.same_name
+        (fun r -> r.problem) (fun r -> r.problem) a b
+        ~merge:(fun pb r1 r2 ->
+          assert (r1.problem.Problem.name = r2.problem.Problem.name);
+          Some (pb, r1.res, r2.res))
       |> OLinq.group_by (fun (_,res1,res2) -> Res.compare res1 res2)
       |> OLinq.run_list
     in
@@ -424,10 +537,12 @@ module ResultsComparison = struct
     let mismatch = assoc_or [] `Mismatch j in
     let same = assoc_or [] `Same j |> List.rev_map (fun (pb,r,_) -> pb,r) in
     let disappeared =
-      OLinq.diff ~cmp:(fun (p1,_) (p2,_) -> Problem.compare_name p1 p2) a b
+      OLinq.diff ~cmp:(fun r1 r2 -> Problem.compare_name r1.problem r2.problem) a b
+      |> OLinq.map (fun r -> r.problem, r.res)
       |> OLinq.run_list
     and appeared =
-      OLinq.diff ~cmp:(fun (p1,_) (p2,_) -> Problem.compare_name p1 p2) b a
+      OLinq.diff ~cmp:(fun r1 r2 -> Problem.compare_name r1.problem r2.problem) b a
+      |> OLinq.map (fun r -> r.problem, r.res)
       |> OLinq.run_list
     in
     { appeared; disappeared; mismatch; same; regressed; improved; }
@@ -443,7 +558,6 @@ module ResultsComparison = struct
         (fun out () -> fpf out "%a -> %a" Res.print res1 Res.print res2))
       ()
 
-  (* TODO: colors! *)
   let print out t =
     let module F = FrogMisc.Fmt in
     fpf out "@[<v2>comparison: {@,appeared: %a,@ disappeared: %a,@ same: %a \
@@ -475,7 +589,7 @@ let extract_res_ ~prover stdout errcode =
 let run_pb_ ~config pb =
   Lwt_log.ign_debug_f "running %-30s..." pb.Problem.name;
   (* spawn process *)
-  let%lwt (out,_err,errcode) = Prover.run_proc
+  let%lwt (out,err,errcode) = Prover.run_proc
     ~timeout:config.Config.timeout
     ~memory:config.Config.memory
     ~prover:config.Config.prover
@@ -483,10 +597,11 @@ let run_pb_ ~config pb =
     ()
   in
   Lwt_log.ign_debug_f "output for %s: `%s`, `%s`, errcode %d"
-    pb.Problem.name out _err errcode;
+    pb.Problem.name out err errcode;
   (* parse its output *)
-  let actual = extract_res_ ~prover:config.Config.prover out errcode in
-  Lwt.return actual
+  let res = extract_res_ ~prover:config.Config.prover out errcode in
+  let raw_res = {Results. res; problem=pb; stdout=out; stderr=err; errcode} in
+  Lwt.return raw_res
 
 let run_pb ?(caching=true) ?limit ~config pb =
   let module V = Maki.Value in
@@ -495,22 +610,30 @@ let run_pb ?(caching=true) ?limit ~config pb =
     ~bypass:(not caching)
     ~lifetime:(`KeepFor Maki.Time.(days 2))
     ~deps:[V.pack Config.maki config; V.pack Problem.maki pb]
-    ~op:Res.maki
+    ~op:Results.maki_raw_res
     ~name:"frogtest.run_pb"
     (fun () -> run_pb_ ~config pb)
 
 let nop2_ _ _ = Lwt.return_unit
 
-let run ?(on_solve = nop2_) ?(caching=true) ?j ?timeout ?memory ~config set =
+let run ?(on_solve = nop2_) ?(caching=true) ?j ?timeout ?memory ?server ~config set =
   let config = Config.update ?j ?timeout ?memory config in
   let limit = Maki.Limit.create config.Config.j in
+  FrogMisc.Opt.iter server
+    ~f:(fun s -> 
+      Prover.add_server s;
+      Problem.add_server s;
+      Results.add_server s;
+    );
   let%lwt raw =
     Lwt_list.map_p
       (fun pb ->
-         let%lwt res = run_pb ~caching ~limit ~config pb in
-         let%lwt () = on_solve pb res in
-         Lwt.return (pb, res))
+         let%lwt raw_res = run_pb ~caching ~limit ~config pb in
+         let%lwt () = on_solve pb raw_res.Results.res in
+         (* add result to server? *)
+         FrogMisc.Opt.iter server
+           ~f:(fun s -> FrogWeb.Server.get s Results.k_add raw_res);
+         Lwt.return raw_res)
       set
   in
   Lwt.return (Results.of_list raw)
-
