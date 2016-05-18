@@ -419,34 +419,15 @@ module Results = struct
       "bad" pp_l r.bad
 
   let maki_raw_res =
-    Maki.Value.make_fast "raw_res"
-      ~serialize:(fun p ->
-        raw_result_to_yojson p |> (fun x->Yojson.Safe.to_string x) |> Maki_bencode.mk_str)
-      ~unserialize:(function
-        | Bencode.String s ->
-          begin try
-              Yojson.Safe.from_string s |> raw_result_of_yojson
-              |> (function
-                |`Ok x -> Result.Ok x
-                | `Error y -> Result.Error (Failure y))
-            with e -> Result.Error e
-          end
-        | _ -> Result.Error (Failure "expected string"))
+    Maki_yojson.make_err "raw_res"
+      ~to_yojson:raw_result_to_yojson
+      ~of_yojson:raw_result_of_yojson
 
+  (* FIXME: use result, not poly variant *)
   let maki =
-    Maki.Value.make_fast "results"
-      ~serialize:(fun p ->
-        to_yojson p |> (fun x->Yojson.Safe.to_string x) |> Maki_bencode.mk_str)
-      ~unserialize:(function
-        | Bencode.String s ->
-          begin try
-              Yojson.Safe.from_string s |> of_yojson
-              |> (function
-                |`Ok x -> Result.Ok x
-                | `Error y -> Result.Error (Failure y))
-            with e -> Result.Error e
-          end
-        | _ -> Result.Error (Failure "expected string"))
+    Maki_yojson.make_err "results"
+      ~to_yojson
+      ~of_yojson
 
   (* display the raw result *)
   let to_html_raw_result uri_of_problem r =
