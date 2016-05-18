@@ -146,8 +146,8 @@ module Problem = struct
   let to_html_name p = W.Html.string p.name
   let to_html_full p = W.Html.string (to_string p)
 
-  let k_uri = W.HMap.Key.create ("uri_of_problem", fun r -> Sexplib.Sexp.Atom "")
-  let k_add = W.HMap.Key.create ("add_problem", fun r -> Sexplib.Sexp.Atom "")
+  let k_uri = W.HMap.Key.create ("uri_of_problem", fun _ -> Sexplib.Sexp.Atom "")
+  let k_add = W.HMap.Key.create ("add_problem", fun _ -> Sexplib.Sexp.Atom "")
 
   let add_server s =
     let tbl = Hashtbl.create 16 in
@@ -159,25 +159,25 @@ module Problem = struct
     in
     let handler req =
       let open Opium.Std in
-      let pb = param req "name" in
+      let h = param req "hash" in
       try
-        let pb = Hashtbl.find tbl pb in
+        let pb = Hashtbl.find tbl h in
         (* read the problem itself *)
         Lwt_io.with_file ~mode:Lwt_io.input pb.name
           FrogMisc.File.read_all
         >>= fun content ->
         W.Html.list
           [ to_html_full pb
-          ; Cow.Xml.tag "pre" (W.Html.string content)
+          ; W.pre (W.Html.string content)
           ]
         |> W.Server.return_html ~title:"problem"
       with Not_found ->
         let code = Cohttp.Code.status_of_code 404 in
-        `String ("could not find problem " ^ pb) |> respond' ~code
+        W.Server.return_html ~code (W.Html.string ("could not find problem " ^ h))
     in
     W.Server.set s k_uri uri_of_pb;
     W.Server.set s k_add add_pb;
-    W.Server.add_route s "/problem/:name" handler
+    W.Server.add_route s "/problem/:hash" handler
 end
 
 module ProblemSet = struct
@@ -286,8 +286,7 @@ module Config = struct
     let handle _ =
       W.Server.return_html (to_html uri_of_prover c)
     in
-    W.Server.add_toplevel s "/config" ~descr:"configuration";
-    W.Server.add_route s "/config" handle;
+    W.Server.add_route s ~descr:"configuration" "/config" handle;
     ()
 end
 
@@ -483,7 +482,7 @@ module Results = struct
     to_html_raw uri_of_problem uri_of_raw_res t.raw
 
   let k_add =
-    W.HMap.Key.create ("add_result", fun r -> Sexplib.Sexp.Atom "")
+    W.HMap.Key.create ("add_result", fun _ -> Sexplib.Sexp.Atom "")
 
   let add_server s =
     let open Opium.Std in
@@ -505,8 +504,7 @@ module Results = struct
       W.Server.return_html ~title:"results" h
     in
     W.Server.set s k_add (fun p -> cur := add_raw !cur p);
-    W.Server.add_toplevel s "/results" ~descr:"current results";
-    W.Server.add_route s "/results" handle_main;
+    W.Server.add_route s ~descr:"current results" "/results" handle_main;
     W.Server.add_route s "/result/:hash" handle_res;
     ()
 end
@@ -638,7 +636,9 @@ let run ?(on_solve = nop2_) ?(caching=true) ?j ?timeout ?memory ?server ~config 
          let%lwt () = on_solve pb raw_res.Results.res in
          (* add result to server? *)
          FrogMisc.Opt.iter server
-           ~f:(fun s -> FrogWeb.Server.get s Results.k_add raw_res);
+           ~f:(fun s ->
+             FrogWeb.Server.get s Problem.k_add pb;
+             FrogWeb.Server.get s Results.k_add raw_res);
          Lwt.return raw_res)
       set
   in

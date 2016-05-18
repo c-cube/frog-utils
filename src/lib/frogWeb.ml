@@ -51,8 +51,7 @@ module Server : sig
   val map : t -> HMap.t
   val get : t -> 'a HMap.key -> 'a
   val set : t -> 'a HMap.key -> 'a -> unit
-  val add_route : t -> string -> Opium.Rock.Handler.t -> unit
-  val add_toplevel : t -> string -> descr:string -> unit
+  val add_route : t -> ?descr:string -> string -> Opium.Rock.Handler.t -> unit
   val return_html : ?title:string -> ?code:Cohttp.Code.status_code -> html -> Opium.Response.t Lwt.t
   val set_port : t -> int -> unit
   val run : t -> unit Lwt.t
@@ -82,11 +81,14 @@ end = struct
 
   let set st k v = st.map <- HMap.add k v st.map
 
-  let add_route t r h =
-    t.app <- Opium.Std.get r h t.app
-
-  let add_toplevel t r ~descr =
-    t.toplevel <- (r, descr) :: t.toplevel
+  let add_route t ?descr r h =
+    t.app <- Opium.Std.get r h t.app;
+    begin match descr with
+      | Some descr when not (String.contains r ':') ->
+        t.toplevel <- (r, descr) :: t.toplevel
+      | _ -> ()
+    end;
+    ()
 
   let set_port t p = t.port <- p
 
