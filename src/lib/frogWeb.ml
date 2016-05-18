@@ -40,7 +40,7 @@ end = struct
   let add_bool = add_with_ (fun b -> Html.string (string_of_bool b))
   let close l =
     Html.Create.table ~flags:[Html.Create.Tags.Headings_fst_col]
-      ~row:(fun (s,f) -> [Html.string s; f])
+      ~row:(fun (s,f) -> [Html.string s; Html.div f])
       (List.rev l)
 end
 

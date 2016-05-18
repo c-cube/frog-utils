@@ -429,10 +429,11 @@ module Results = struct
       ~to_yojson
       ~of_yojson
 
+  module H = W.Html
+  module R = W.Record
+
   (* display the raw result *)
   let to_html_raw_result uri_of_problem r =
-    let module H = W.Html in
-    let module R = W.Record in
     R.start
     |> R.add "problem"
       (H.a ~href:(uri_of_problem r.problem) (Problem.to_html_name r.problem))
@@ -442,28 +443,47 @@ module Results = struct
     |> R.add "stderr" (W.pre (H.string r.stderr))
     |> R.close
 
+  let to_html_stats s =
+    R.start
+    |> R.add_int "unsat" s.unsat
+    |> R.add_int "sat" s.sat
+    |> R.add_int "errors" s.errors
+    |> R.add_int "unknown" s.unknown
+    |> R.close
+
+  let to_html_raw_result_l uri_of_problem uri_of_raw_res r =
+    [ H.a ~href:(uri_of_problem r.problem) (Problem.to_html_name r.problem)
+    ; H.a ~href:(uri_of_raw_res r) (Res.to_html r.res)
+    ]
+
   let to_html_raw uri_of_problem uri_of_raw_res r =
-    let module H = W.Html in
     let l = MStr.fold (fun _ r acc -> `Row r::acc) r [] in
     H.Create.table ~flags:[H.Create.Tags.Headings_fst_row]
       ~row:(function
         | `Head -> [H.string "problem"; H.string "result"]
-        | `Row r ->
-          [ H.a ~href:(uri_of_problem r.problem) (Problem.to_html_name r.problem)
-          ; H.a ~href:(uri_of_raw_res r) (Res.to_html r.res)
-          ])
+        | `Row r -> to_html_raw_result_l uri_of_problem uri_of_raw_res r)
       (`Head :: l)
 
   (* TODO: print tables good/disappoint/bad, then, lower, print raw *)
   let to_html uri_of_problem uri_of_raw_res t =
-    to_html_raw uri_of_problem uri_of_raw_res t.raw
+    let lst_raw_res ?cls l =
+      H.Create.table l ~flags:[]
+        ~row:(to_html_raw_result_l uri_of_problem uri_of_raw_res)
+      |> H.div ?cls
+    in
+    R.start
+    |> R.add "stats" (to_html_stats t.stat)
+    |> R.add "ok" (lst_raw_res t.ok)
+    |> R.add "disappoint" (lst_raw_res t.disappoint)
+    |> R.add "bad" (lst_raw_res t.bad)
+    |> R.add "raw" (to_html_raw uri_of_problem uri_of_raw_res t.raw)
+    |> R.close
 
   let k_add = W.HMap.Key.create ("add_result", fun _ -> Sexplib.Sexp.Atom "")
   let k_set = W.HMap.Key.create ("set_results", fun _ -> Sexplib.Sexp.Atom "")
 
   let add_server s =
     let open Opium.Std in
-    let module H = W.Html in
     let cur = ref (`Partial MStr.empty) in
     let db = W.Server.db s in
     let uri_of_problem = W.Server.get s Problem.k_uri in
