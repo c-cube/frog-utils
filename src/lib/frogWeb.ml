@@ -108,11 +108,13 @@ end = struct
       List.map
         ~f:(fun (path,descr) -> H.a ~href:(Uri.make ~path ()) (H.string descr))
         t.toplevel
+      |> H.list
     in
     let h =
       H.list
-        (H.h1 (H.string "frog-utils")
-        :: tops)
+        [ H.h1 (H.string "frog-utils")
+        ; tops
+        ]
     in
     return_html h
 

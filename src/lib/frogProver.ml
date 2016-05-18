@@ -38,8 +38,8 @@ let to_html_full p =
   |> R.add_string_option "sat" p.sat
   |> R.close
 
-let k_uri = W.HMap.Key.create ("uri_of_prover", fun _ -> assert false)
-let k_add = W.HMap.Key.create ("add_prover", fun _ -> assert false)
+let k_uri = W.HMap.Key.create ("uri_of_prover", fun r -> Sexplib.Sexp.Atom "")
+let k_add = W.HMap.Key.create ("add_prover", fun r -> Sexplib.Sexp.Atom "")
 
 let add_server s =
   let tbl = Hashtbl.create 16 in

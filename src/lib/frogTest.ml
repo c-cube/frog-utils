@@ -146,8 +146,8 @@ module Problem = struct
   let to_html_name p = W.Html.string p.name
   let to_html_full p = W.Html.string (to_string p)
 
-  let k_uri = W.HMap.Key.create ("uri_of_problem", fun _ -> assert false)
-  let k_add = W.HMap.Key.create ("add_problem", fun _ -> assert false)
+  let k_uri = W.HMap.Key.create ("uri_of_problem", fun r -> Sexplib.Sexp.Atom "")
+  let k_add = W.HMap.Key.create ("add_problem", fun r -> Sexplib.Sexp.Atom "")
 
   let add_server s =
     let tbl = Hashtbl.create 16 in
@@ -286,7 +286,9 @@ module Config = struct
     let handle _ =
       W.Server.return_html (to_html uri_of_prover c)
     in
-    W.Server.add_route s "/config" handle
+    W.Server.add_toplevel s "/config" ~descr:"configuration";
+    W.Server.add_route s "/config" handle;
+    ()
 end
 
 module Results = struct
@@ -480,7 +482,8 @@ module Results = struct
   let to_html uri_of_problem uri_of_raw_res t =
     to_html_raw uri_of_problem uri_of_raw_res t.raw
 
-  let k_add = W.HMap.Key.create ("add_result", fun _ -> assert false)
+  let k_add =
+    W.HMap.Key.create ("add_result", fun r -> Sexplib.Sexp.Atom "")
 
   let add_server s =
     let open Opium.Std in
@@ -502,6 +505,7 @@ module Results = struct
       W.Server.return_html ~title:"results" h
     in
     W.Server.set s k_add (fun p -> cur := add_raw !cur p);
+    W.Server.add_toplevel s "/results" ~descr:"current results";
     W.Server.add_route s "/results" handle_main;
     W.Server.add_route s "/result/:hash" handle_res;
     ()
@@ -624,6 +628,8 @@ let run ?(on_solve = nop2_) ?(caching=true) ?j ?timeout ?memory ?server ~config 
       Prover.add_server s;
       Problem.add_server s;
       Results.add_server s;
+      Config.add_server s config;
+      FrogWeb.Server.get s Prover.k_add config.Config.prover;
     );
   let%lwt raw =
     Lwt_list.map_p
