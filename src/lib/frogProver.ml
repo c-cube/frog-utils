@@ -137,8 +137,8 @@ let run_exec ?env ~timeout ~memory ~prover ~file () =
 let run_proc ?env ~timeout ~memory ~prover ~file () =
   let cmd = run_cmd ?env ~timeout ~memory ~prover ~file () in
   (* slightly extended timeout *)
-  let timeout_hard = (float timeout) +. 2. in
-  Lwt_process.with_process_full ~timeout:timeout_hard cmd
+  let res =
+    Lwt_process.with_process_full ~timeout:(float timeout +. 1.) cmd
     (fun p ->
       let res =
         let res_errcode =
@@ -151,9 +151,17 @@ let run_proc ?env ~timeout ~memory ~prover ~file () =
         in
         try%lwt
           let%lwt () = Lwt_io.close p#stdin in
-          let%lwt res_out = Lwt_io.read p#stdout
-          and res_err = Lwt_io.read p#stderr
-          and res_errcode = res_errcode in
+          let out = Lwt_io.read p#stdout in
+          let err = Lwt_io.read p#stderr in
+          let%lwt res_errcode = res_errcode in
+          Lwt_log.ign_debug_f "errcode: %d\n" res_errcode;
+          (* now finish reading *)
+          Lwt_log.ign_debug_f "reading...\n";
+          let%lwt res_out = out in
+          let%lwt res_err = err in
+          Lwt_log.ign_debug_f "closing...\n";
+          let%lwt _ = p#close in
+          Lwt_log.ign_debug_f "done closing & reading, return\n";
           Lwt.return (res_out, res_err, res_errcode)
         with e ->
           let%lwt res_errcode = res_errcode in
@@ -161,12 +169,14 @@ let run_proc ?env ~timeout ~memory ~prover ~file () =
             ([%show: (string * string array)] cmd);
           Lwt.return ("", "", res_errcode)
       in
-      let open Lwt.Infix in
-      (* pick the "timeout" message for this prover, if any *)
-      let str = FrogMisc.Opt.get "timeout" prover.timeout in
-      let timeout_fut = Lwt_unix.sleep timeout_hard >|= fun _ -> str, "", 0 in
-      Lwt.pick [res; timeout_fut]
+      res
     )
+  in
+  let open Lwt.Infix in
+  (* pick the "timeout" message for this prover, if any *)
+  let str = FrogMisc.Opt.get "timeout" prover.timeout in
+  let timeout_fut = Lwt_unix.sleep (float timeout +. 3.) >|= fun _ -> str, "", 0 in
+  Lwt.pick [res; timeout_fut]
 
 module TPTP = struct
   let make_command ?tptp p ~timeout ~memory ~file =
