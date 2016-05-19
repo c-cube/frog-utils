@@ -144,9 +144,9 @@ let run_proc ?env ~timeout ~memory ~prover ~file () =
         let res_errcode =
           Lwt.map
             (function
-              | Unix.WEXITED e -> e
-              | Unix.WSIGNALED _
-              | Unix.WSTOPPED _ -> 128)
+              | Unix.WEXITED e
+              | Unix.WSIGNALED e
+              | Unix.WSTOPPED e -> e)
             p#status
         in
         try%lwt
