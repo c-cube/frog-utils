@@ -134,28 +134,38 @@ end = struct
   let meta_ = H.meta ~attrs:["charset","UTF-8"] H.empty
 
   let css_ =
-    "body {
+"body {
+  width: 80%;
+  margin-left : auto;
+  margin-right: auto;
   background-color: #fafafa;
 }
 
 h1 { font-size: larger; }
 h2 { font-size: large; }
 
+div {
+  padding: 10px;
+  border: 1px solid black;
+  overflow: auto;
+}
+
 table {
+  border: 1px solid black;
   border-collapse: collapse;
 }
 
-tr:nth-child(even) {
-  background-color:#f2f2f2;
+tr:hover {
+  background-color: #f2f2f2;
 }
 
-table, th {
-  border: 1px solid black;
+th, td {
 }
 
-th {
+th, td {
+  padding: 5px;
   text-align: left;
-  vertical-align: top;
+  vertical-align: center;
 }
 "
 

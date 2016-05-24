@@ -65,7 +65,7 @@ module Res = struct
       | Error -> "red"
     in
     H.string (to_string s)
-    |> H.div ~cls:"result" ~attrs:["style", "color:"^color]
+    |> H.span ~cls:"result" ~attrs:["style", "color:"^color]
 end
 
 module Problem = struct
@@ -475,13 +475,16 @@ module Results = struct
       (`Head :: l)
 
   let to_html_summary t =
-    R.start
-    |> R.add_int "ok" (List.length t.ok)
-    |> R.add_int "improved" (List.length t.improved)
-    |> R.add_int "disappoint" (List.length t.disappoint)
-    |> R.add_int "bad" (List.length t.bad)
-    |> R.add_int "total" (MStr.cardinal t.raw)
-    |> R.close
+    H.Create.table
+      ~flags:[H.Create.Tags.Headings_fst_col]
+      ~row:(fun (s, i) -> [H.string s; H.int i])
+      [
+      "ok", (List.length t.ok);
+      "improved", (List.length t.improved);
+      "disappoint", (List.length t.disappoint);
+      "bad", (List.length t.bad);
+      "total", (MStr.cardinal t.raw);
+      ]
 
   let to_html uri_of_problem uri_of_raw_res t =
     let lst_raw_res ?cls l =
