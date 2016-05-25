@@ -1,7 +1,7 @@
 
 (* This file is free software, part of frog-utils. See file "license" for more details. *)
 
-type t = private {
+type t = {
   name: string;  (* filename *)
   expected: FrogRes.t; (* result expected *)
 } [@@deriving yojson]

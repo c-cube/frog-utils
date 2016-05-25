@@ -16,6 +16,12 @@ let to_string = function
   | Unknown -> "unknown"
   | Error -> "error"
 
+let of_string = function
+  | "sat" -> Sat
+  | "unsat" -> Unsat
+  | "error" -> Error
+  | "unknown" | _ -> Unknown
+
 let print out s = Format.pp_print_string out (to_string s)
 
 let compare a b = match a, b with

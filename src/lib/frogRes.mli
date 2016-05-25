@@ -20,6 +20,9 @@ val compare: t -> t -> [`Same | `LeftBetter | `RightBetter | `Mismatch]
     }
 *)
 
+val to_string : t -> string
+val of_string : string -> t
+
 val print : Format.formatter -> t -> unit
 val maki : t Maki.Value.ops
 val to_html : t -> FrogWeb.html
