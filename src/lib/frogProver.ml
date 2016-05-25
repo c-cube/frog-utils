@@ -134,13 +134,16 @@ let run_exec ?env ~timeout ~memory ~prover ~file () =
   let cmd, args = run_cmd ?env ~timeout ~memory ~prover ~file () in
   Unix.execv cmd args
 
-let run_proc ?env ~timeout ~memory ~prover ~file () =
+let run_proc ?env ~timeout ~memory ~prover ~pb () =
+  let file = pb.FrogProblem.name in
   let cmd = run_cmd ?env ~timeout ~memory ~prover ~file () in
+  let start = Unix.gettimeofday () in
   (* slightly extended timeout *)
   let res =
     Lwt_process.with_process_full ~timeout:(float timeout +. 1.) cmd
     (fun p ->
       let res =
+        let rtime = Unix.gettimeofday () -. start in
         let res_errcode =
           Lwt.map
             (function
@@ -153,21 +156,32 @@ let run_proc ?env ~timeout ~memory ~prover ~file () =
           let%lwt () = Lwt_io.close p#stdin in
           let out = Lwt_io.read p#stdout in
           let err = Lwt_io.read p#stderr in
-          let%lwt res_errcode = res_errcode in
-          Lwt_log.ign_debug_f "errcode: %d\n" res_errcode;
+          let%lwt errcode = res_errcode in
+          Lwt_log.ign_debug_f "errcode: %d\n" errcode;
           (* now finish reading *)
           Lwt_log.ign_debug_f "reading...\n";
-          let%lwt res_out = out in
-          let%lwt res_err = err in
+          let%lwt stdout = out in
+          let%lwt stderr = err in
           Lwt_log.ign_debug_f "closing...\n";
           let%lwt _ = p#close in
           Lwt_log.ign_debug_f "done closing & reading, return\n";
-          Lwt.return (res_out, res_err, res_errcode)
+          let%lwt rusage = p#rusage in
+          let utime = rusage.Lwt_unix.ru_utime in
+          let stime = rusage.Lwt_unix.ru_stime in
+          Lwt.return {
+            FrogMap.problem = pb;
+            res = FrogRes.Unknown;
+            stdout; stderr; errcode;
+            rtime; utime; stime; }
         with e ->
-          let%lwt res_errcode = res_errcode in
+          let%lwt errcode = res_errcode in
           Lwt_log.ign_debug_f ~exn:e "error while running %s"
             ([%show: (string * string array)] cmd);
-          Lwt.return ("", "", res_errcode)
+          Lwt.return {
+            FrogMap.problem = pb;
+            res = FrogRes.Unknown;
+            stdout = ""; stderr = ""; errcode;
+            rtime; utime = 0.; stime = 0.; }
       in
       res
     )
@@ -175,7 +189,12 @@ let run_proc ?env ~timeout ~memory ~prover ~file () =
   let open Lwt.Infix in
   (* pick the "timeout" message for this prover, if any *)
   let str = FrogMisc.Opt.get "timeout" prover.timeout in
-  let timeout_fut = Lwt_unix.sleep (float timeout +. 3.) >|= fun _ -> str, "", 0 in
+  let timeout_fut = Lwt_unix.sleep (float timeout +. 3.) >|=
+    fun _ -> {
+      FrogMap.problem = pb; res = FrogRes.Unknown;
+      stdout = str; stderr =  ""; errcode = 0;
+      rtime = float timeout +. 3.; stime = 0.; utime = 0.; }
+  in
   Lwt.pick [res; timeout_fut]
 
 module TPTP = struct

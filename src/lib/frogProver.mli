@@ -89,9 +89,9 @@ val run_proc :
   timeout:int ->
   memory:int ->
   prover:t ->
-  file:string ->
+  pb:FrogProblem.t ->
   unit ->
-  (string * string * int) Lwt.t
+  FrogMap.raw_result Lwt.t
 (** Runs the prover in a sub-process, and returns a tuple
     [stdout, stderr, errcode] *)
 

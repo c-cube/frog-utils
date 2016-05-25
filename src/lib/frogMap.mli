@@ -9,6 +9,9 @@ type raw_result = {
   stdout: string;
   stderr: string;
   errcode: int;
+  rtime : float;
+  utime : float;
+  stime : float;
 } [@@deriving yojson]
 
 type raw = raw_result MStr.t

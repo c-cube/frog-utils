@@ -173,19 +173,18 @@ let extract_res_ ~prover stdout errcode =
 let run_pb_ ~config pb =
   Lwt_log.ign_debug_f "running %-30s..." pb.Problem.name;
   (* spawn process *)
-  let%lwt (out,err,errcode) = Prover.run_proc
+  let%lwt result = Prover.run_proc
     ~timeout:config.Config.timeout
     ~memory:config.Config.memory
     ~prover:config.Config.prover
-    ~file:pb.Problem.name
+    ~pb
     ()
   in
   Lwt_log.ign_debug_f "output for %s: `%s`, `%s`, errcode %d"
-    pb.Problem.name out err errcode;
+    pb.Problem.name result.FrogMap.stdout result.FrogMap.stderr result.FrogMap.errcode;
   (* parse its output *)
-  let res = extract_res_ ~prover:config.Config.prover out errcode in
-  let raw_res = {Results. res; problem=pb; stdout=out; stderr=err; errcode} in
-  Lwt.return raw_res
+  let res = extract_res_ ~prover:config.Config.prover result.FrogMap.stdout result.FrogMap.errcode in
+  Lwt.return { result with FrogMap.res }
 
 let run_pb ?(caching=true) ?limit ~config pb =
   let module V = Maki.Value in

@@ -21,7 +21,10 @@ type raw_result = {
   stdout: string;
   stderr: string;
   errcode: int;
-} [@@deriving yojson]
+  rtime : (float [@default 0.]);
+  utime : (float [@default 0.]);
+  stime : (float [@default 0.]);
+} [@@deriving yojson {strict=false}]
 
 type raw = raw_result MStr.t
 
