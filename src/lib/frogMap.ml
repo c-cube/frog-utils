@@ -2,6 +2,7 @@
 (* This file is free software, part of frog-utils. See file "license" for more details. *)
 
 open Result
+open FrogDB
 
 module W = FrogWeb
 module H = W.Html
@@ -47,11 +48,6 @@ let raw_to_yojson r : Yojson.Safe.json =
 let assoc_or def x l =
   try List.assoc x l
   with Not_found -> def
-
-(* map raw_result to a unique hex string (hash) *)
-let hash_raw_res (r:raw_result) : string =
-  let s = raw_result_to_yojson r |> Yojson.Safe.to_string in
-  Sha1.string s |> Sha1.to_hex
 
 let raw_of_yojson (j:Yojson.Safe.json) =
   let open E in
@@ -171,6 +167,48 @@ let maki =
     ~to_yojson
     ~of_yojson
 
+
+(* DB management *)
+let init_db t =
+  Sqlexpr.execute t [%sql
+    "CREATE TABLE IF NOT EXISTS results (
+      id INT PRIMARY KEY AUTOINCREMENT,
+      prover STRING, problem STRING, res STRING,
+      stdout STRING, stderr STRING, errcode INT,
+      rtime REAL, utime REAL, stime REAL)"]
+
+let import db (prover_hash, problem_hash, res_s,
+               stdout, stderr, errcode, rtime, utime, stime) =
+  match FrogProver.find db prover_hash with
+  | Some prover ->
+    begin match FrogProblem.find db problem_hash with
+      | Some problem ->
+        let res = FrogRes.of_string res_s in
+        Some { prover; problem; res; stdout; stderr;
+               errcode; rtime; utime; stime; }
+      | None -> None
+    end
+  | None -> None
+
+let find db prover problem =
+  match Sqlexpr.select_one_maybe db [%sqlc
+          "SELECT @s{prover}, @s{problem}, @s{res},
+                  @s{stdout}, @s{stderr}, @d{errcode},
+                  @f{rtime}, @f{utime}, @f{stime}
+            FROM results
+            WHERE prover=%s AND problem=%s"] prover problem with
+  | Some x -> import db x
+  | None -> None
+
+let db_add db t =
+  let () = FrogProver.db_add db t.prover in
+  let () = FrogProblem.db_add db t.problem in
+  let prover_hash = FrogProver.hash t.prover in
+  let problem_hash = FrogProblem.hash t.problem in
+  Sqlexpr.execute db [%sql "INSERT INTO results VALUES (%s,%s,%s,%s,%s,%d,%f,%f,%f)"]
+    prover_hash problem_hash (FrogRes.to_string t.res)
+    t.stdout t.stderr t.errcode t.rtime t.utime t.stime
+
 (* display the raw result *)
 let to_html_raw_result uri_of_problem r =
   R.start
@@ -239,22 +277,24 @@ let k_set = W.HMap.Key.create ("set_results", fun _ -> Sexplib.Sexp.Atom "")
 let add_server s =
   let open Opium.Std in
   let cur = ref (`Partial MStr.empty) in
-  let db = W.Server.db s in
   let uri_of_problem = W.Server.get s Problem.k_uri in
   (* find raw result *)
   let handle_res req =
-    let h = param req "hash" in
-    begin match W.DB.get_json ~f:raw_result_of_yojson db ("raw_result-"^h) with
-      | Ok r ->
-        W.Server.return_html (to_html_raw_result uri_of_problem r)
-      | Error e ->
+    let pb = param req "poblem" in
+    let prover = param req "prover" in
+    begin match find (W.Server.db s) prover pb with
+      | Some res ->
+        W.Server.return_html (to_html_raw_result uri_of_problem res)
+      | None ->
         let code = Cohttp.Code.status_of_code 404 in
-        let h = H.string ("unknown result: " ^ e) in
+        let h = H.string ("could not find result") in
         W.Server.return_html ~code h
     end
   (* display all the results *)
   and handle_main _ =
-    let uri_of_raw_res r = Uri.make ~path:("/result/" ^ hash_raw_res r) () in
+    let uri_of_raw_res r = Uri.make
+        ~path:(Printf.sprintf "/result/%s/%s"
+                 (FrogProver.hash r.prover) (FrogProblem.hash r.problem)) () in
     let is_done = match !cur with `Partial _ -> false | `Done _ -> true in
     let h =
       H.list
@@ -271,8 +311,7 @@ let add_server s =
       | `Done _ -> assert false
       | `Partial c -> cur := `Partial (add_raw c r)
     end;
-    let h = hash_raw_res r in
-    W.DB.add_json ~f:raw_result_to_yojson db ("raw_result-" ^ h) r;
+    db_add (W.Server.db s) r
   and on_done r = match !cur with
     | `Partial _ -> cur := `Done r
     | `Done _ -> assert false
@@ -280,5 +319,5 @@ let add_server s =
   W.Server.set s k_add on_add;
   W.Server.set s k_set on_done;
   W.Server.add_route s ~descr:"current results" "/results" handle_main;
-  W.Server.add_route s "/result/:hash" handle_res;
+  W.Server.add_route s "/result/:prover/:problem" handle_res;
   ()

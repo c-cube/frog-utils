@@ -49,30 +49,6 @@ end = struct
       (List.rev l)
 end
 
-(** {2 Db} *)
-
-module DB : sig
-  type t = Dbm.t
-  val add_json : f:('a -> json) -> t -> string -> 'a -> unit
-  val get_json : f:(json -> [`Ok of 'a | `Error of string]) -> t -> string -> 'a or_error
-end = struct
-  type t = Dbm.t
-
-  let add_json ~f db k v =
-    let v' = Yojson.Safe.to_string (f v) in
-    Dbm.replace db k v'
-
-  let get_json ~f db k =
-    try
-      let s = Dbm.find db k in
-      let j = Yojson.Safe.from_string s in
-      f j |> E.of_err
-    with
-      | Yojson.Json_error s -> Error ("json error: " ^ s)
-      | Not_found ->
-        Error (Printf.sprintf "key `%s` not in database" k)
-end
-
 (** {2 Serve}
 
     A small webserver that displays results as they are built, computes
@@ -84,7 +60,7 @@ module Server : sig
   val map : t -> HMap.t
   val get : t -> 'a HMap.key -> 'a
   val set : t -> 'a HMap.key -> 'a -> unit
-  val db : t -> DB.t
+  val db : t -> FrogDB.Sqlexpr.db
   val add_route : t -> ?descr:string -> string -> Opium.Rock.Handler.t -> unit
   val return_html : ?title:string -> ?code:Cohttp.Code.status_code -> html -> Opium.Response.t Lwt.t
   val set_port : t -> int -> unit
@@ -94,7 +70,7 @@ end = struct
   open Opium.Std
 
   type t = {
-    db: DB.t;
+    db: FrogDB.Sqlexpr.db;
     mutable map : HMap.t;
     mutable toplevel : (string * string) list; (* toplevel URLs *)
     mutable port: int;
@@ -102,7 +78,7 @@ end = struct
   }
 
   let create ~db_path () =
-    let db = Dbm.opendbm db_path [Dbm.Dbm_create; Dbm.Dbm_rdwr] 0o644 in
+    let db = FrogDB.Sqlexpr.open_db db_path in
     { map=HMap.empty;
       db;
       toplevel=[];

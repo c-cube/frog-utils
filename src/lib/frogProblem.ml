@@ -2,6 +2,7 @@
 (* This file is free software, part of frog-utils. See file "license" for more details. *)
 
 open Result
+open FrogDB
 
 module W = FrogWeb
 module Res = FrogRes
@@ -81,27 +82,49 @@ let maki =
     (fun (name, expected) -> {name;expected})
     (V.pair V.file Res.maki)
 
-let to_html_name p = W.Html.string p.name
-let to_html_full p = W.Html.string (to_string p)
-
+(* Hashes of problems *)
 let hash p : string =
   Sha1.string p.name |> Sha1.to_hex
+
+(* DB management *)
+let db_init t =
+  Sqlexpr.execute t [%sql
+    "CREATE TABLE IF NOT EXISTS problems (
+      id INT PRIMARY KEY AUTOINCREMENT,
+      hash STRING UNIQUE,
+      name STRING,
+      expected STRING)"]
+
+let find db h =
+  match Sqlexpr.select_one_maybe db [%sqlc
+          "SELECT (@s{name},@s{expected}) FROM problems WHERE hash=%s"] h with
+  | Some (name, s) ->
+    let expected = FrogRes.of_string s in
+    Some { name; expected; }
+  | None -> None
+
+let db_add db t =
+  Sqlexpr.execute db [%sqlc
+    "INSERT OR IGNORE INTO problems(hash,name,expected) VALUES (%s,%s,%s)"]
+    (hash t) t.name (FrogRes.to_string t.expected)
+
+
+(* HTML server *)
+let to_html_name p = W.Html.string p.name
+let to_html_full p = W.Html.string (to_string p)
 
 let k_uri = W.HMap.Key.create ("uri_of_problem", fun _ -> Sexplib.Sexp.Atom "")
 let k_add = W.HMap.Key.create ("add_problem", fun _ -> Sexplib.Sexp.Atom "")
 
 let add_server s =
   (* md5(problem.name) -> problem *)
-  let uri_of_pb pb =
-    Uri.make ~path:("/problem/" ^ hash pb) ()
-  and add_pb pb =
-    W.DB.add_json ~f:to_yojson (W.Server.db s) ("problem-" ^ hash pb) pb
-  in
+  let uri_of_pb pb = Uri.make ~path:("/problem/" ^ hash pb) () in
+  let add_pb pb = db_add (W.Server.db s) pb in
   let handler req =
     let open Opium.Std in
     let h = param req "hash" in
-    match W.DB.get_json ~f:of_yojson (W.Server.db s) ("problem-" ^ h) with
-    | Ok pb ->
+    match find (W.Server.db s) h with
+    | Some pb ->
       (* read the problem itself *)
       Lwt_io.with_file ~mode:Lwt_io.input pb.name
         FrogMisc.File.read_all
@@ -111,12 +134,13 @@ let add_server s =
         ; W.pre (W.Html.string content)
         ]
       |> W.Server.return_html ~title:"problem"
-    | Error msg ->
+    | None ->
       let code = Cohttp.Code.status_of_code 404 in
       let h =
-        W.Html.string (Printf.sprintf "could not find problem %s: %s" h msg) in
+        W.Html.string (Printf.sprintf "could not find problem %s" h) in
       W.Server.return_html ~code h
   in
   W.Server.set s k_uri uri_of_pb;
   W.Server.set s k_add add_pb;
   W.Server.add_route s "/problem/:hash" handler
+

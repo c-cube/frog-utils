@@ -3,13 +3,13 @@
 
 (** {1 Run Prover} *)
 
+open FrogDB
+
 module Conf = FrogConfig
 module StrMap = Map.Make(String)
 module W = FrogWeb
 
 type html = FrogWeb.html
-
-type env = (string * string) array
 
 [@@@warning "-39"]
 type t = {
@@ -60,6 +60,7 @@ let find_config config name =
     then failwith ("prover " ^ name ^ " not listed in config");
   build_from_config config name
 
+
 (* make a list of provers from the given config *)
 let of_config config =
   let provers = Conf.get_string_list ~default:[] config "provers" in
@@ -68,6 +69,32 @@ let of_config config =
       let prover = build_from_config config p_name in
       StrMap.add p_name prover map
     ) StrMap.empty provers
+
+(* DB interaction *)
+let hash t = Lwt_main.run (Maki.Value.to_string maki t)
+
+let db_init t =
+  Sqlexpr.execute t [%sql
+    "CREATE TABLE IF NOT EXISTS provers (
+        id INT PRIMARY KEY AUTOINCREMENT,
+        hash STRING UNIQUE,
+        contents STRING)"]
+
+let find db hash =
+  match Sqlexpr.select_one_maybe db [%sqlc
+          "SELECT @s{contents} FROM PROVERS WHERE hash=%s"] hash with
+  | Some s ->
+    begin match of_yojson (Yojson.Safe.from_string s) with
+      | `Ok t -> Some t
+      | `Error _ -> None
+    end
+  | None -> None
+
+let db_add db t =
+  Sqlexpr.execute db [%sqlc "INSERT OR IGNORE INTO provers(hash,contents) VALUES (%s,%s)"]
+    (hash t) (Yojson.Safe.to_string (to_yojson t))
+
+(* HTML server *)
 let to_html_name p = W.Html.string p.binary
 
 let to_html_full p =
@@ -79,24 +106,23 @@ let to_html_full p =
   |> R.add_string_option "sat" p.sat
   |> R.close
 
-let k_uri = W.HMap.Key.create ("uri_of_prover", fun r -> Sexplib.Sexp.Atom "")
-let k_add = W.HMap.Key.create ("add_prover", fun r -> Sexplib.Sexp.Atom "")
+let k_uri = W.HMap.Key.create ("uri_of_prover", fun _ -> Sexplib.Sexp.Atom "")
+let k_add = W.HMap.Key.create ("add_prover", fun _ -> Sexplib.Sexp.Atom "")
 
 let add_server s =
-  let tbl = Hashtbl.create 16 in
-  let add p = Hashtbl.replace tbl p.binary p in
-  let uri_of_prover p = Uri.make ~path:("/prover/" ^ p.binary) () in
+  let uri_of_prover p = Uri.make ~path:("/prover/" ^ hash p) () in
+  let add_prover p = db_add (W.Server.db s) p in
   let handle req =
     let open Opium.Std in
-    let name = param req "name" in
-    try
-      let p = Hashtbl.find tbl name in
-      W.Server.return_html ~title:p.binary (to_html_full p)
-    with Not_found ->
+    let h = param req "hash" in
+    match find (W.Server.db s) h with
+    | Some prover ->
+      W.Server.return_html ~title:prover.binary (to_html_full prover)
+    | None ->
       let code = Cohttp.Code.status_of_code 404 in
       W.Server.return_html ~code (W.Html.string "prover not found")
   in
-  W.Server.set s k_add add;
+  W.Server.set s k_add add_prover;
   W.Server.set s k_uri uri_of_prover;
   W.Server.add_route s "/prover/:name" handle;
   ()

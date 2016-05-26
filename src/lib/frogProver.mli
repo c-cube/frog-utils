@@ -39,6 +39,10 @@ val find_config : FrogConfig.t -> string -> t
 (** Parse prover description from config file, and check it is listed
     in the "provers" list *)
 
+val hash : t -> string
+val db_add : FrogDB.Sqlexpr.db -> t -> unit
+val find : FrogDB.Sqlexpr.db -> string -> t option
+
 val to_html_name : t -> html
 val to_html_full : t -> html
 

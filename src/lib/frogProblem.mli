@@ -29,6 +29,10 @@ val compare_res : t -> FrogRes.t -> [`Same | `Improvement | `Mismatch | `Disappo
 val print : Format.formatter -> t -> unit
 val maki : t Maki.Value.ops
 
+val hash : t -> string
+val db_add : FrogDB.Sqlexpr.db -> t -> unit
+val find : FrogDB.Sqlexpr.db -> string -> t option
+
 val to_html_full : t -> FrogWeb.html
 val to_html_name : t -> FrogWeb.html
 
