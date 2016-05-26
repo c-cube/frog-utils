@@ -173,7 +173,7 @@ let extract_res_ ~prover stdout errcode =
 let run_pb_ ~config pb =
   Lwt_log.ign_debug_f "running %-30s..." pb.Problem.name;
   (* spawn process *)
-  let%lwt result = Prover.run_proc
+  let%lwt result = FrogCmd.run_proc
     ~timeout:config.Config.timeout
     ~memory:config.Config.memory
     ~prover:config.Config.prover

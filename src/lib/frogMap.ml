@@ -9,6 +9,7 @@ module R = W.Record
 module E = FrogMisc.Err
 
 module Res = FrogRes
+module Prover = FrogProver
 module Problem = FrogProblem
 
 module MStr = Map.Make(String)
@@ -16,6 +17,7 @@ module MStr = Map.Make(String)
 let fpf = Format.fprintf
 
 type raw_result = {
+  prover : Prover.t;
   problem: Problem.t;
   res: Res.t;
   stdout: string;

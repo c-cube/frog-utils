@@ -4,6 +4,7 @@
 module MStr : Map.S with type key = string
 
 type raw_result = {
+  prover : FrogProver.t;
   problem: FrogProblem.t;
   res: FrogRes.t;
   stdout: string;

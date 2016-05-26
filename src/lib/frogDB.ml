@@ -40,7 +40,7 @@ let prover_id db t =
   S.select_one_maybe db [%sqlc "SELECT @L{id} FROM provers WHERE name=%s"] (prover_uniq t)
 
 let find_prover db id =
-  let s = S.select_one db [%sqlc "SELECT @s{contents} FROM PROVERS WHERE id=%d"] id in
+  let s = S.select_one db [%sqlc "SELECT @s{contents} FROM PROVERS WHERE id=%L"] id in
   match FrogProver.of_yojson (Yojson.Safe.from_string s) with
   | `Ok t -> t
   | `Error _ -> assert false
@@ -56,7 +56,7 @@ let problem_id db t =
   S.select_one_maybe db [%sqlc "SELECT @L{id} FROM problems WHERE name=%s"] (problem_uniq t)
 
 let find_problem db id =
-  let name, s = S.select_one db [%sqlc "SELECT (@s{name},@s{expected}) FROM problems WHERE id=%d "] id in
+  let name, s = S.select_one db [%sqlc "SELECT (@s{name},@s{expected}) FROM problems WHERE id=%L"] id in
   let expected = FrogRes.of_string s in
   { FrogProblem.name; expected; }
 
@@ -66,7 +66,7 @@ let add_problem db t =
 
 
 (* Add bench/test results *)
-let add_result db prover t =
+let add_result_aux db prover t =
   let open FrogMap in
   let () = add_problem db t.problem in
   match problem_id db t.problem with
@@ -75,12 +75,18 @@ let add_result db prover t =
       prover problem (FrogRes.to_string t.res) t.stdout t.stderr t.errcode t.rtime t.utime t.stime
   | None -> assert false (* we just added the problem before, so this case shouldn't happen *)
 
+let add_result db t =
+  let () = add_prover db t.FrogMap.prover in
+  match prover_id db t.FrogMap.prover with
+  | Some id -> add_result_aux db id t
+  | None -> assert false
+
 let add_list db t l =
   let () = add_prover db t in
   match prover_id db t with
   | Some id ->
     S.transaction db (fun db ->
-        List.iter (add_result db id) l)
+        List.iter (add_result_aux db id) l)
   | None -> assert false (* once again, shouldn't happen becaue we just inserted the prover *)
 
 

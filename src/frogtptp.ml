@@ -334,7 +334,7 @@ let run_term =
         end
     in
     let prover = Prover.find_config config cmd in
-    Prover.run_exec ~timeout ~memory ~prover ~file:(String.concat " " args) ()
+    FrogCmd.run_exec ~timeout ~memory ~prover ~file:(String.concat " " args) ()
   in
   let cmd =
     let doc = "Prover to be run" in
