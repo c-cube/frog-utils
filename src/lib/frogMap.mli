@@ -56,6 +56,8 @@ val print: Format.formatter -> t -> unit
 val maki : t Maki.Value.ops
 val maki_raw_res : raw_result Maki.Value.ops
 
+val db_init : FrogDB.Sqlexpr.db -> unit
+
 val to_html_raw : (FrogProblem.t -> FrogWeb.uri) -> (raw_result -> FrogWeb.uri) -> raw -> FrogWeb.html
 val to_html : (FrogProblem.t -> FrogWeb.uri) -> (raw_result -> FrogWeb.uri) -> t -> FrogWeb.html
 

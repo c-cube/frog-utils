@@ -40,8 +40,10 @@ val find_config : FrogConfig.t -> string -> t
     in the "provers" list *)
 
 val hash : t -> string
+val db_init : FrogDB.Sqlexpr.db -> unit
 val db_add : FrogDB.Sqlexpr.db -> t -> unit
 val find : FrogDB.Sqlexpr.db -> string -> t option
+val find_all : FrogDB.Sqlexpr.db -> t list
 
 val to_html_name : t -> html
 val to_html_full : t -> html

@@ -25,7 +25,26 @@ type t = {
 } [@@deriving yojson]
 [@@@warning "+39"]
 
-let maki = Maki.Value.marshal "frog_prover"
+let string_opt =
+  Maki.Value.(
+    map
+      (function Some s -> s | None -> "")
+      (function "" -> None | s -> Some s)
+      string
+  )
+
+let maki =
+  Maki.Value.(
+    map
+      (fun t -> ((t.binary, t.cmd), (t.unsat, t.sat), (t.unknown, t.timeout, t.memory)))
+      (fun ((binary, cmd), (unsat, sat), (unknown, timeout, memory)) ->
+         { binary; cmd; unsat; sat; unknown; timeout; memory })
+      (triple
+         (pair program string)
+         (pair string_opt string_opt)
+         (triple string_opt string_opt string_opt)
+      )
+  )
 
 let get_str_ d x =
   try Some (Conf.get_string d x)
@@ -71,24 +90,29 @@ let of_config config =
     ) StrMap.empty provers
 
 (* DB interaction *)
-let hash t = Lwt_main.run (Maki.Value.to_string maki t)
+let hash t =
+  Sha1.string @@ Lwt_main.run (Maki.Value.to_string maki t)
+  |> Sha1.to_hex
 
 let db_init t =
   Sqlexpr.execute t [%sql
     "CREATE TABLE IF NOT EXISTS provers (
-        id INT PRIMARY KEY AUTOINCREMENT,
-        hash STRING UNIQUE,
+        hash STRING PRIMARY KEY,
         contents STRING)"]
+
+let find_aux s =
+  match of_yojson (Yojson.Safe.from_string s) with
+  | `Ok t -> t
+  | `Error _ -> assert false
 
 let find db hash =
   match Sqlexpr.select_one_maybe db [%sqlc
-          "SELECT @s{contents} FROM PROVERS WHERE hash=%s"] hash with
-  | Some s ->
-    begin match of_yojson (Yojson.Safe.from_string s) with
-      | `Ok t -> Some t
-      | `Error _ -> None
-    end
+          "SELECT @s{contents} FROM provers WHERE hash=%s"] hash with
+  | Some s -> Some (find_aux s)
   | None -> None
+
+let find_all db =
+  Sqlexpr.select_f db find_aux [%sqlc "SELECT @s{contents} FROM provers"]
 
 let db_add db t =
   Sqlexpr.execute db [%sqlc "INSERT OR IGNORE INTO provers(hash,contents) VALUES (%s,%s)"]

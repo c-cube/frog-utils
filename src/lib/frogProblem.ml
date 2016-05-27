@@ -90,18 +90,23 @@ let hash p : string =
 let db_init t =
   Sqlexpr.execute t [%sql
     "CREATE TABLE IF NOT EXISTS problems (
-      id INT PRIMARY KEY AUTOINCREMENT,
-      hash STRING UNIQUE,
+      hash STRING PRIMARY KEY,
       name STRING,
       expected STRING)"]
 
+let find_aux (name, s) =
+  let expected = FrogRes.of_string s in
+  { name; expected; }
+
 let find db h =
   match Sqlexpr.select_one_maybe db [%sqlc
-          "SELECT (@s{name},@s{expected}) FROM problems WHERE hash=%s"] h with
-  | Some (name, s) ->
-    let expected = FrogRes.of_string s in
-    Some { name; expected; }
+          "SELECT @s{name},@s{expected} FROM problems WHERE hash=%s"] h with
+  | Some x -> Some (find_aux x)
   | None -> None
+
+let find_all db =
+  Sqlexpr.select_f db find_aux [%sqlc
+      "SELECT @s{name},@s{expected} FROM problems"]
 
 let db_add db t =
   Sqlexpr.execute db [%sqlc

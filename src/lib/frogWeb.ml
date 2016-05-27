@@ -55,7 +55,7 @@ end
     regressions between results, etc. *)
 module Server : sig
   type t
-  val create: db_path:string -> unit -> t
+  val create: db_path:string -> ?db_init:(FrogDB.Sqlexpr.db -> unit) list -> unit -> t
   val update : t -> (HMap.t -> HMap.t) -> unit
   val map : t -> HMap.t
   val get : t -> 'a HMap.key -> 'a
@@ -77,8 +77,15 @@ end = struct
     mutable app : App.t;
   }
 
-  let create ~db_path () =
-    let db = FrogDB.Sqlexpr.open_db db_path in
+  let create ~db_path ?(db_init=[]) () =
+    let buf = Buffer.create 32 in
+    Buffer.add_substitute buf
+        (function
+          | "HOME" as s -> Sys.getenv s
+          | _ -> raise Not_found
+        ) db_path;
+    let db = FrogDB.Sqlexpr.open_db (Buffer.contents buf) in
+    List.iter ((|>) db) db_init;
     { map=HMap.empty;
       db;
       toplevel=[];

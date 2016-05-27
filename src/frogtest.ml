@@ -56,7 +56,16 @@ module Run = struct
     >>= fun pb ->
     Format.printf "run %d tests in %s@." (T.ProblemSet.size pb) dir;
     (* serve website *)
-    let server = if web then Some (W.Server.create ~db_path:db ()) else None in
+    let server =
+      if web then
+        Some (W.Server.create
+                ~db_path:db
+                ~db_init:[
+                  FrogProver.db_init;
+                  FrogProblem.db_init;
+                  FrogMap.db_init;
+                ]())
+      else None in
     (* solve *)
     let main =
       E.ok (T.run ?j ?timeout ?memory ?caching ~on_solve ?server ~config pb)
@@ -127,20 +136,29 @@ let term_run =
     in Arg.(value & opt (parse_,print_) SaveNone &
       info ["s"; "save"] ~doc:"indicate where to save results")
   in
-  let debug = Arg.(value & flag & info ["d"; "debug"] ~doc:"enable debug")
-  and config = Arg.(value & opt string "test.toml" &
+  let debug =
+    Arg.(value & flag & info ["d"; "debug"] ~doc:"enable debug")
+  and config =
+    Arg.(value & opt string "test.toml" &
     info ["c"; "config"] ~doc:"configuration file (in target directory)")
-  and dir = Arg.(value & pos 0 string "./" &
+  and dir =
+    Arg.(value & pos 0 string "./" &
     info [] ~docv:"DIR" ~doc:"target directory (containing tests)")
-  and j = Arg.(value & opt (some int) None & info ["j"] ~doc:"parallelism level")
-  and timeout = Arg.(value & opt (some int) None &
-    info ["t"; "timeout"] ~doc:"timeout (in s)")
-  and memory = Arg.(value & opt (some int) None &
-    info ["m"; "memory"] ~doc:"memory (in MB)")
-  and web = Arg.(value & flag & info ["web"] ~doc:"embedded web server")
-  and db = Arg.(value & opt string "frogtest" & info ["db"] ~doc:"path to database")
-  and nocaching = Arg.(value & flag & info ["no-caching"] ~doc:"toggle caching")
-  and doc = "test a program on every file in a directory" in
+  and j =
+    Arg.(value & opt (some int) None & info ["j"] ~doc:"parallelism level")
+  and timeout =
+    Arg.(value & opt (some int) None & info ["t"; "timeout"] ~doc:"timeout (in s)")
+  and memory =
+    Arg.(value & opt (some int) None & info ["m"; "memory"] ~doc:"memory (in MB)")
+  and web =
+    Arg.(value & flag & info ["web"] ~doc:"embedded web server")
+  and db =
+    Arg.(value & opt string "$HOME/.frogdb.sql" & info ["db"] ~doc:"path to database")
+  and nocaching =
+    Arg.(value & flag & info ["no-caching"] ~doc:"toggle caching")
+  and doc =
+    "test a program on every file in a directory"
+  in
   Term.(pure aux $ debug $ config $ save $ dir $ j $ timeout $ memory $ nocaching $ web $ db), Term.info ~doc "run"
 
 (* sub-command to display a file *)

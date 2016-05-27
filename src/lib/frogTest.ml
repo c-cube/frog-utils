@@ -227,7 +227,6 @@ let run ?(on_solve = nop2_) ?(on_done = nop_)
       set
   in
   let res = Results.of_list raw in
-  FrogMisc.Opt.iter server
-    ~f:(fun s -> W.Server.get s Results.k_set res);
   let%lwt () = on_done res in
   Lwt.return res
+

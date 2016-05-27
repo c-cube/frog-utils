@@ -30,4 +30,4 @@ PKG uri
 PKG sqlexpr
 PKG sqlexpr.ppx
 
-FLG -w +a-4-44-29-48
+#FLG -w +a-4-44-29-48

@@ -167,14 +167,12 @@ let maki =
     ~to_yojson
     ~of_yojson
 
-
 (* DB management *)
-let init_db t =
+let db_init t =
   Sqlexpr.execute t [%sql
     "CREATE TABLE IF NOT EXISTS results (
-      id INT PRIMARY KEY AUTOINCREMENT,
       prover STRING, problem STRING, res STRING,
-      stdout STRING, stderr STRING, errcode INT,
+      stdout STRING, stderr STRING, errcode INTEGER,
       rtime REAL, utime REAL, stime REAL)"]
 
 let import db (prover_hash, problem_hash, res_s,
@@ -210,6 +208,9 @@ let db_add db t =
     t.stdout t.stderr t.errcode t.rtime t.utime t.stime
 
 (* display the raw result *)
+let to_html_raw_result_name uri_of_raw r =
+  H.a ~href:(uri_of_raw r) (H.string (FrogRes.to_string r.res))
+
 let to_html_raw_result uri_of_problem r =
   R.start
   |> R.add "problem"
@@ -271,17 +272,37 @@ let to_html uri_of_problem uri_of_raw_res t =
   |> R.add "raw" (to_html_raw uri_of_problem uri_of_raw_res t.raw)
   |> R.close
 
+let to_html_db uri_of_prover uri_of_pb uri_of_raw db =
+  let pbs = List.map (fun x -> `Pb x) @@ List.sort
+      (fun p p' -> compare p.FrogProblem.name p'.FrogProblem.name)
+      (FrogProblem.find_all db) in
+  let provers = List.sort
+      (fun p p' -> compare p.FrogProver.binary p'.FrogProver.binary)
+      (FrogProver.find_all db) in
+  H.Create.table (`Head :: pbs) ~flags:[H.Create.Tags.Headings_fst_row]
+    ~row:(function
+        | `Head ->
+          H.string "Problems" :: (List.map FrogProver.to_html_name provers)
+        | `Pb pb ->
+          FrogProblem.to_html_name pb :: List.map (
+            fun prover ->
+              match find db (FrogProver.hash prover) (FrogProblem.hash pb) with
+              | Some raw -> to_html_raw_result_name uri_of_raw raw
+              | None -> H.string "no result"
+          ) provers
+      )
+
 let k_add = W.HMap.Key.create ("add_result", fun _ -> Sexplib.Sexp.Atom "")
 let k_set = W.HMap.Key.create ("set_results", fun _ -> Sexplib.Sexp.Atom "")
 
 let add_server s =
   let open Opium.Std in
-  let cur = ref (`Partial MStr.empty) in
   let uri_of_problem = W.Server.get s Problem.k_uri in
+  let uri_of_prover = W.Server.get s Prover.k_uri in
   (* find raw result *)
   let handle_res req =
-    let pb = param req "poblem" in
     let prover = param req "prover" in
+    let pb = param req "problem" in
     begin match find (W.Server.db s) prover pb with
       | Some res ->
         W.Server.return_html (to_html_raw_result uri_of_problem res)
@@ -293,31 +314,13 @@ let add_server s =
   (* display all the results *)
   and handle_main _ =
     let uri_of_raw_res r = Uri.make
-        ~path:(Printf.sprintf "/result/%s/%s"
+        ~path:(Printf.sprintf "/raw/%s/%s"
                  (FrogProver.hash r.prover) (FrogProblem.hash r.problem)) () in
-    let is_done = match !cur with `Partial _ -> false | `Done _ -> true in
-    let h =
-      H.list
-        [ H.i (H.string ("done: " ^ string_of_bool is_done))
-        ; begin match !cur with
-          | `Done c -> to_html uri_of_problem uri_of_raw_res c
-          | `Partial c -> to_html_raw uri_of_problem uri_of_raw_res c
-        end
-        ]
-    in
+    let h = to_html_db uri_of_prover uri_of_problem uri_of_raw_res (W.Server.db s) in
     W.Server.return_html ~title:"results" h
-  and on_add r =
-    begin match !cur with
-      | `Done _ -> assert false
-      | `Partial c -> cur := `Partial (add_raw c r)
-    end;
-    db_add (W.Server.db s) r
-  and on_done r = match !cur with
-    | `Partial _ -> cur := `Done r
-    | `Done _ -> assert false
-  in
+  and on_add r = db_add (W.Server.db s) r in
   W.Server.set s k_add on_add;
-  W.Server.set s k_set on_done;
   W.Server.add_route s ~descr:"current results" "/results" handle_main;
-  W.Server.add_route s "/result/:prover/:problem" handle_res;
+  W.Server.add_route s "/raw/:prover/:problem" handle_res;
   ()
+
