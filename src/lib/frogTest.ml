@@ -159,19 +159,6 @@ module ResultsComparison = struct
   let to_html _ _ = assert false (* TODO! *)
 end
 
-let extract_res_ ~prover stdout errcode =
-  (* find if [re: re option] is present in [stdout] *)
-  let find_opt_ re = match re with
-    | None -> false
-    | Some re -> Re.execp (Re_posix.compile_pat re) stdout
-  in
-  if errcode <> 0 then Res.Error
-  else if find_opt_ prover.Prover.sat then Res.Sat
-  else if find_opt_ prover.Prover.unsat then Res.Unsat
-  else if (find_opt_ prover.Prover.timeout || find_opt_ prover.Prover.unknown)
-  then Res.Unknown
-  else Res.Error
-
 (* run one particular test *)
 let run_pb_ ~config prover pb =
   Lwt_log.ign_debug_f "running %-15s/%-30s..."
@@ -180,17 +167,13 @@ let run_pb_ ~config prover pb =
   let%lwt result = FrogCmd.run_proc
       ~timeout:config.Config.timeout
       ~memory:config.Config.memory
-      ~prover:prover
-      ~pb
-      ()
+      ~prover ~pb ()
   in
   Lwt_log.ign_debug_f "output for %s/%s: `%s`, `%s`, errcode %d"
     prover.FrogProver.binary pb.Problem.name
     result.FrogMap.stdout result.FrogMap.stderr
     result.FrogMap.errcode;
-  (* parse its output *)
-  let res = extract_res_ ~prover result.FrogMap.stdout result.FrogMap.errcode in
-  Lwt.return { result with FrogMap.res }
+  Lwt.return result
 
 let run_pb ?(caching=true) ?limit ~config prover pb =
   let module V = Maki.Value in
@@ -198,15 +181,17 @@ let run_pb ?(caching=true) ?limit ~config prover pb =
     ?limit
     ~bypass:(not caching)
     ~lifetime:(`KeepFor Maki.Time.(days 2))
-    ~deps:[V.pack Config.maki config; V.pack Problem.maki pb]
+    ~deps:[V.pack V.int config.Config.timeout;
+           V.pack V.int config.Config.memory;
+           V.pack Prover.maki prover;
+           V.pack Problem.maki pb]
     ~op:Results.maki_raw_res
     ~name:"frogtest.run_pb"
     (fun () -> run_pb_ ~config prover pb)
 
 let nop_ _ = Lwt.return_unit
-let nop2_ _ _ = Lwt.return_unit
 
-let run ?(on_solve = nop2_) ?(on_done = nop_)
+let run ?(on_solve = nop_) ?(on_done = nop_)
     ?(caching=true) ?j ?timeout ?memory ?server ~config set
   =
   let config = Config.update ?j ?timeout ?memory config in
@@ -221,16 +206,15 @@ let run ?(on_solve = nop2_) ?(on_done = nop_)
       );
   let%lwt raw =
     Lwt_list.map_p (fun prover ->
-        Lwt_list.map_p
-          (fun pb ->
-             let%lwt raw_res = run_pb ~caching ~limit ~config prover pb in
-             let%lwt () = on_solve pb raw_res.Results.res in
-             (* add result to server? *)
-             FrogMisc.Opt.iter server
-               ~f:(fun s ->
-                   W.Server.get s Problem.k_add pb;
-                   W.Server.get s Results.k_add raw_res);
-             Lwt.return raw_res)
+        Lwt_list.map_p (fun pb ->
+            let%lwt raw_res = run_pb ~caching ~limit ~config prover pb in
+            let%lwt () = on_solve raw_res in
+            (* add result to server? *)
+            FrogMisc.Opt.iter server
+              ~f:(fun s ->
+                  W.Server.get s Problem.k_add pb;
+                  W.Server.get s Results.k_add raw_res);
+            Lwt.return raw_res)
           set)
       config.Config.provers
   in

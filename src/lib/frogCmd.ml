@@ -1,11 +1,25 @@
 
 (* This file is free software, part of frog-utils. See file "license" for more details. *)
 
-open FrogProver
-
+module Res = FrogRes
 module Conf = FrogConfig
+module Prover = FrogProver
 
 type env = (string * string) array
+
+let extract_res_ ~prover stdout stderr errcode =
+  (* find if [re: re option] is present in [stdout] *)
+  let find_opt_ re = match re with
+    | None -> false
+    | Some re ->
+      Re.execp (Re_posix.compile_pat re) stdout ||
+      Re.execp (Re_posix.compile_pat re) stderr
+  in
+  if errcode = 0 && find_opt_ prover.Prover.sat then Res.Sat
+  else if errcode = 0 && find_opt_ prover.Prover.unsat then Res.Unsat
+  else if (find_opt_ prover.Prover.timeout || find_opt_ prover.Prover.unknown)
+  then Res.Unknown
+  else Res.Error
 
 (* command ready to run in a shell *)
 let make_command ?(env=[||]) p ~timeout ~memory ~file =
@@ -16,7 +30,7 @@ let make_command ?(env=[||]) p ~timeout ~memory ~file =
         | "memory" -> string_of_int memory
         | "timeout" | "time" -> string_of_int timeout
         | "file" -> file
-        | "binary" -> p.binary
+        | "binary" -> p.Prover.binary
         | _ -> raise Not_found)
       s
   in
@@ -26,7 +40,7 @@ let make_command ?(env=[||]) p ~timeout ~memory ~file =
   Array.iter
     (fun (key,value) -> add_str (key ^ "=" ^ value ^ " "))
     env;
-  add_str p.cmd;
+  add_str p.Prover.cmd;
   Buffer.contents buf
 
 let run_cmd ?env ~timeout ~memory ~prover ~file () =
@@ -73,9 +87,9 @@ let run_proc ?env ~timeout ~memory ~prover ~pb () =
           let%lwt rusage = p#rusage in
           let utime = rusage.Lwt_unix.ru_utime in
           let stime = rusage.Lwt_unix.ru_stime in
+          let res = extract_res_ ~prover stdout stderr errcode in
           Lwt.return {
-            FrogMap.problem = pb; prover;
-            res = FrogRes.Unknown;
+            FrogMap.problem = pb; prover; res;
             stdout; stderr; errcode;
             rtime; utime; stime; }
         with e ->
@@ -93,7 +107,7 @@ let run_proc ?env ~timeout ~memory ~prover ~pb () =
   in
   let open Lwt.Infix in
   (* pick the "timeout" message for this prover, if any *)
-  let str = FrogMisc.Opt.get "timeout" prover.timeout in
+  let str = FrogMisc.Opt.get "timeout" prover.Prover.timeout in
   let timeout_fut = Lwt_unix.sleep (float timeout +. 3.) >|=
     fun _ -> {
       FrogMap.problem = pb; prover; res = FrogRes.Unknown;
@@ -122,7 +136,7 @@ module TPTP = struct
         | None -> None
         | Some f -> Some  [| "TPTP", f |]
     in
-    let prover = find_config config prover in
+    let prover = Prover.find_config config prover in
     run_cmd ?env ~timeout ~memory ~prover ~file ()
 
 end

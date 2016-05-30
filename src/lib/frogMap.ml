@@ -287,12 +287,14 @@ let to_html_db uri_of_prover uri_of_pb uri_of_raw db =
   H.Create.table (`Head :: pbs) ~flags:[H.Create.Tags.Headings_fst_row]
     ~row:(function
         | `Head ->
-          H.string "Problems" :: (
+          H.string "Problem" ::
+          H.string "Expected" :: (
             List.map (fun x ->
                 H.a ~href:(uri_of_prover x) (FrogProver.to_html_name x)
               ) provers)
         | `Pb pb ->
           H.a ~href:(uri_of_pb pb) (FrogProblem.to_html_name pb) ::
+          FrogRes.to_html pb.FrogProblem.expected ::
           List.map (
             fun prover ->
               match find db (FrogProver.hash prover) (FrogProblem.hash pb) with

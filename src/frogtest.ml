@@ -17,10 +17,11 @@ type save =
 (** {2 Run} *)
 module Run = struct
   (* callback that prints a result *)
-  let on_solve pb res =
+  let on_solve res =
     let module F = FrogMisc.Fmt in
     let pp_res out () =
-      let str, c = match T.Problem.compare_res pb res with
+      let str, c =
+        match T.Problem.compare_res res.FrogMap.problem res.FrogMap.res with
         | `Same -> "ok", `Green
         | `Improvement -> "ok (improved)", `Blue
         | `Disappoint -> "disappoint", `Yellow
@@ -28,7 +29,9 @@ module Run = struct
       in
       Format.fprintf out "%a" (F.in_bold_color c Format.pp_print_string) str
     in
-    Format.printf "problem %-50s %a@." (pb.T.Problem.name ^ " :") pp_res ();
+    Format.printf "%-20s%-50s %a@."
+      (Filename.basename res.FrogMap.prover.FrogProver.binary)
+      (res.FrogMap.problem.FrogProblem.name ^ " :") pp_res ();
     Lwt.return_unit
 
   (* save result in given file *)
@@ -53,8 +56,8 @@ module Run = struct
     (* build problem set (exclude config file!) *)
     let problem_pat = Re_posix.compile_pat config.T.Config.problem_pat in
     T.ProblemSet.of_dir ~filter:(Re.execp problem_pat) dir
-    >>= fun pb ->
-    Format.printf "run %d tests in %s@." (T.ProblemSet.size pb) dir;
+    >>= fun pbs ->
+    Format.printf "run %d tests in %s@." (T.ProblemSet.size pbs) dir;
     (* serve website *)
     let server =
       if web then
@@ -68,7 +71,7 @@ module Run = struct
       else None in
     (* solve *)
     let main =
-      E.ok (T.run ?j ?timeout ?memory ?caching ~on_solve ?server ~config pb)
+      E.ok (T.run ?j ?timeout ?memory ?caching ~on_solve ?server ~config pbs)
     in
     let web = FrogMisc.Opt.((server >|= W.Server.run) |> get Lwt.return_unit) |> E.ok in
     main >>= fun results ->

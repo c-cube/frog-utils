@@ -64,7 +64,7 @@ module ResultsComparison : sig
 end
 
 val run :
-  ?on_solve:(Problem.t -> Res.t -> unit Lwt.t) ->
+  ?on_solve:(FrogMap.raw_result -> unit Lwt.t) ->
   ?on_done:(Results.t -> unit Lwt.t) ->
   ?caching:bool ->
   ?j:int ->
