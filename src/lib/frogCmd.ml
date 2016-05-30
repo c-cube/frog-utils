@@ -48,7 +48,6 @@ let run_proc ?env ~timeout ~memory ~prover ~pb () =
     Lwt_process.with_process_full ~timeout:(float timeout +. 1.) cmd
     (fun p ->
       let res =
-        let rtime = Unix.gettimeofday () -. start in
         let res_errcode =
           Lwt.map
             (function
@@ -63,6 +62,7 @@ let run_proc ?env ~timeout ~memory ~prover ~pb () =
           let err = Lwt_io.read p#stderr in
           let%lwt errcode = res_errcode in
           Lwt_log.ign_debug_f "errcode: %d\n" errcode;
+          let rtime = Unix.gettimeofday () -. start in
           (* now finish reading *)
           Lwt_log.ign_debug_f "reading...\n";
           let%lwt stdout = out in
@@ -86,7 +86,7 @@ let run_proc ?env ~timeout ~memory ~prover ~pb () =
             FrogMap.problem = pb; prover;
             res = FrogRes.Unknown;
             stdout = ""; stderr = ""; errcode;
-            rtime; utime = 0.; stime = 0.; }
+            rtime = 0.; utime = 0.; stime = 0.; }
       in
       res
     )

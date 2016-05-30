@@ -209,14 +209,19 @@ let db_add db t =
 
 (* display the raw result *)
 let to_html_raw_result_name uri_of_raw r =
-  H.a ~href:(uri_of_raw r) (H.string (FrogRes.to_string r.res))
+  H.a ~href:(uri_of_raw r) (FrogRes.to_html r.res)
 
-let to_html_raw_result uri_of_problem r =
+let to_html_raw_result uri_of_prover uri_of_problem r =
   R.start
+  |> R.add "prover"
+    (H.a ~href:(uri_of_prover r.prover) (FrogProver.to_html_name r.prover))
   |> R.add "problem"
     (H.a ~href:(uri_of_problem r.problem) (Problem.to_html_name r.problem))
   |> R.add "result" (Res.to_html r.res)
   |> R.add_int "errcode" r.errcode
+  |> R.add_string "real time" (Printf.sprintf "%.3f" r.rtime)
+  |> R.add_string "user time" (Printf.sprintf "%.3f" r.utime)
+  |> R.add_string "system time" (Printf.sprintf "%.3f" r.stime)
   |> R.add "stdout" (W.pre (H.string r.stdout))
   |> R.add "stderr" (W.pre (H.string r.stderr))
   |> R.close
@@ -282,13 +287,17 @@ let to_html_db uri_of_prover uri_of_pb uri_of_raw db =
   H.Create.table (`Head :: pbs) ~flags:[H.Create.Tags.Headings_fst_row]
     ~row:(function
         | `Head ->
-          H.string "Problems" :: (List.map FrogProver.to_html_name provers)
+          H.string "Problems" :: (
+            List.map (fun x ->
+                H.a ~href:(uri_of_prover x) (FrogProver.to_html_name x)
+              ) provers)
         | `Pb pb ->
-          FrogProblem.to_html_name pb :: List.map (
+          H.a ~href:(uri_of_pb pb) (FrogProblem.to_html_name pb) ::
+          List.map (
             fun prover ->
               match find db (FrogProver.hash prover) (FrogProblem.hash pb) with
               | Some raw -> to_html_raw_result_name uri_of_raw raw
-              | None -> H.string "no result"
+              | None -> H.string "<none>"
           ) provers
       )
 
@@ -305,7 +314,7 @@ let add_server s =
     let pb = param req "problem" in
     begin match find (W.Server.db s) prover pb with
       | Some res ->
-        W.Server.return_html (to_html_raw_result uri_of_problem res)
+        W.Server.return_html (to_html_raw_result uri_of_prover uri_of_problem res)
       | None ->
         let code = Cohttp.Code.status_of_code 404 in
         let h = H.string ("could not find result") in
@@ -317,7 +326,8 @@ let add_server s =
         ~path:(Printf.sprintf "/raw/%s/%s"
                  (FrogProver.hash r.prover) (FrogProblem.hash r.problem)) () in
     let h = to_html_db uri_of_prover uri_of_problem uri_of_raw_res (W.Server.db s) in
-    W.Server.return_html ~title:"results" h
+    W.Server.return_html ~title:"results"
+      (W.Html.list [ W.Html.h2 (W.Html.string "Results"); h])
   and on_add r = db_add (W.Server.db s) r in
   W.Server.set s k_add on_add;
   W.Server.add_route s ~descr:"current results" "/results" handle_main;

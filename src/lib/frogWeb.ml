@@ -22,30 +22,34 @@ module HMap = Opium_hmap
 
 (* custom blocks *)
 
-let pre h = Cow.Xml.tag "pre" h
+let pre h = Cow.Xml.tag ~attrs:["class", "raw"] "pre" h
 let style h = Cow.Xml.tag "style" h
 
 module Record : sig
   type t
   val start : t
-  val add : string -> html -> t -> t
-  val add_int : string -> int -> t -> t
-  val add_string : string -> string -> t -> t
-  val add_string_option : string -> string option -> t -> t
-  val add_bool : string -> bool -> t -> t
+  val add               : string -> html -> t -> t
+  val add_int           : ?raw:bool -> string -> int -> t -> t
+  val add_float         : ?raw:bool -> string -> float -> t -> t
+  val add_string        : ?raw:bool -> string -> string -> t -> t
+  val add_string_option : ?raw:bool -> string -> string option -> t -> t
+  val add_bool          : ?raw:bool -> string -> bool -> t -> t
   val close : t -> html
 end = struct
   type t = (string * html) list
   let start = []
   let add s f l = (s, f) :: l
-  let add_with_ fun_ s f l = add s (fun_ f) l
+  let add_with_ fun_ ?(raw=false) s f l =
+    let body = fun_ f in
+    add s (if raw then pre body else Html.div body) l
   let add_int = add_with_ Html.int
+  let add_float = add_with_ Html.float
   let add_string = add_with_ Html.string
   let add_string_option = add_with_ (function None -> Html.empty | Some s -> Html.string s)
   let add_bool = add_with_ (fun b -> Html.string (string_of_bool b))
   let close l =
     Html.Create.table ~flags:[Html.Create.Tags.Headings_fst_col]
-      ~row:(fun (s,f) -> [Html.string s; Html.div f])
+      ~row:(fun (s,f) -> [Html.string s; f])
       (List.rev l)
 end
 
@@ -116,8 +120,8 @@ end = struct
 
   let meta_ = H.meta ~attrs:["charset","UTF-8"] H.empty
 
-  let css_ =
-"body {
+  let css_ = "
+body {
   width: 80%;
   margin-left : auto;
   margin-right: auto;
@@ -128,9 +132,13 @@ h1 { font-size: larger; }
 h2 { font-size: large; }
 
 div {
-  padding: 10px;
-  border: 1px solid black;
-  overflow: auto;
+  padding: 5px;
+}
+
+pre.raw {
+  magin: 0px;
+  padding: 5px;
+  background-color: lightgrey;
 }
 
 table {
@@ -142,11 +150,20 @@ tr:hover {
   background-color: #f2f2f2;
 }
 
-th, td {
+td: nth-of-type(even) {
+  background-color: #f2f2f2;
+}
+
+tr {
+  border: 1px solid lightgrey;
+}
+
+td:nth-of-type(1) {
+  border: 1ps solid lightgrey;
 }
 
 th, td {
-  padding: 5px;
+  padding: 10px 20px;
   text-align: left;
   vertical-align: center;
 }

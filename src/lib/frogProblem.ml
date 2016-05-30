@@ -115,8 +115,7 @@ let db_add db t =
 
 
 (* HTML server *)
-let to_html_name p = W.Html.string p.name
-let to_html_full p = W.Html.string (to_string p)
+let to_html_name p = W.Html.string (Filename.basename p.name)
 
 let k_uri = W.HMap.Key.create ("uri_of_problem", fun _ -> Sexplib.Sexp.Atom "")
 let k_add = W.HMap.Key.create ("add_problem", fun _ -> Sexplib.Sexp.Atom "")
@@ -135,8 +134,12 @@ let add_server s =
         FrogMisc.File.read_all
       >>= fun content ->
       W.Html.list
-        [ to_html_full pb
-        ; W.pre (W.Html.string content)
+        [ W.Html.h2 (to_html_name pb)
+        ; W.Record.start
+          |> W.Record.add "path" (W.Html.string pb.name)
+          |> W.Record.add "expected" (FrogRes.to_html pb.expected)
+          |> W.Record.add "contents" (W.pre (W.Html.string content))
+          |> W.Record.close
         ]
       |> W.Server.return_html ~title:"problem"
     | None ->
