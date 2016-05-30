@@ -72,7 +72,8 @@ module Run = struct
     in
     let web = FrogMisc.Opt.((server >|= W.Server.run) |> get Lwt.return_unit) |> E.ok in
     main >>= fun results ->
-    Format.printf "%a@." T.Results.print results;
+    List.iter (fun x -> Format.printf "%a@." T.Results.print x) results;
+    (*
     let%lwt () = match save with
       | SaveFile f -> save_ ~file:f results
       | SaveCommit ->
@@ -83,11 +84,14 @@ module Run = struct
           Lwt_log.ign_debug "do not save result";
           Lwt.return_unit
     in
+    *)
     let%lwt _ = web in
-    if T.Results.is_ok results
+    if List.for_all T.Results.is_ok results
     then E.return () (* wait for webserver to return *)
     else
-      E.fail (Format.asprintf "%d failure(s)" (T.Results.num_failed results))
+      E.fail (Format.asprintf "%d failure(s)" (
+          List.fold_left (+) 0 @@
+          List.map T.Results.num_failed results))
 end
 
 (** {2 Display Results} *)

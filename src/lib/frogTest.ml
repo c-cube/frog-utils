@@ -32,7 +32,7 @@ module Config = struct
     timeout: int; (* timeout for each problem *)
     memory: int;
     problem_pat: string; (* regex for problems *)
-    prover: Prover.t;
+    provers: Prover.t list;
   } [@@deriving yojson]
   [@@@warning "+39"]
 
@@ -40,12 +40,12 @@ module Config = struct
     let module V = Maki.Value in
     let json =  Maki_yojson.make_err ~of_yojson ~to_yojson "config_json" in
     V.map ~descr:"config"
-      (fun t -> t, t.prover.Prover.binary)
+      (fun t -> t, t.provers)
       (fun (t,_) -> t)
-      (V.pair json V.program)
+      (V.pair json (V.set FrogProver.maki))
 
-  let make ?(j=1) ?(timeout=5) ?(memory=1000) ~pat ~prover () =
-    { j; timeout; memory; prover; problem_pat=pat; }
+  let make ?(j=1) ?(timeout=5) ?(memory=1000) ~pat ~provers () =
+    { j; timeout; memory; provers; problem_pat=pat; }
 
   let update ?j ?timeout ?memory c =
     let module O = FrogMisc.Opt in
@@ -62,10 +62,10 @@ module Config = struct
       let j = C.get_int ~default:1 c "parallelism" in
       let timeout = C.get_int ~default:5 c "timeout" in
       let memory = C.get_int ~default:1000 c "memory" in
-      let prover = C.get_string c "prover" in
-      let prover = Prover.build_from_config c prover in
+      let provers = C.get_string_list c "provers" in
+      let provers = List.map (Prover.build_from_config c) provers in
       let problem_pat = C.get_string c "problems" in
-      E.return { j; timeout; memory; prover; problem_pat; }
+      E.return { j; timeout; memory; provers; problem_pat; }
     with
     | C.Error e -> E.fail e
     | Not_found -> E.fail ("invalid config file: " ^ file)
@@ -78,8 +78,11 @@ module Config = struct
     |> R.add_int "timeout" c.timeout
     |> R.add_int "memory" c.memory
     |> R.add_string "problems pattern" c.problem_pat
-    |> R.add "prover"
-      (H.a ~href:(uri_of_prover c.prover) (Prover.to_html_name c.prover))
+    |> R.add "provers"
+      (H.list @@ List.map (
+          fun x ->
+            H.p @@ (H.a ~href:(uri_of_prover x) (Prover.to_html_name x)))
+          c.provers)
     |> R.close
 
   let add_server s c =
@@ -111,8 +114,8 @@ module ResultsComparison = struct
       OLinq.join ~eq:Problem.same_name
         (fun r -> r.problem) (fun r -> r.problem) a b
         ~merge:(fun pb r1 r2 ->
-          assert (r1.problem.Problem.name = r2.problem.Problem.name);
-          Some (pb, r1.res, r2.res))
+            assert (r1.problem.Problem.name = r2.problem.Problem.name);
+            Some (pb, r1.res, r2.res))
       |> OLinq.group_by (fun (_,res1,res2) -> Res.compare res1 res2)
       |> OLinq.run_list
     in
@@ -139,13 +142,13 @@ module ResultsComparison = struct
     let module F = FrogMisc.Fmt in
     fpf out "@[<h>%s: %a@]" pb.Problem.name
       ((if bold then F.in_bold_color color else F.in_color color)
-        (fun out () -> fpf out "%a -> %a" Res.print res1 Res.print res2))
+         (fun out () -> fpf out "%a -> %a" Res.print res1 Res.print res2))
       ()
 
   let print out t =
     let module F = FrogMisc.Fmt in
     fpf out "@[<v2>comparison: {@,appeared: %a,@ disappeared: %a,@ same: %a \
-      ,@ mismatch: %a,@ improved: %a,@ regressed: %a@]@,}"
+             ,@ mismatch: %a,@ improved: %a,@ regressed: %a@]@,}"
       (pp_hvlist_ pp_pb_res) t.appeared
       (pp_hvlist_ pp_pb_res) t.disappeared
       (pp_hvlist_ pp_pb_res) t.same
@@ -166,27 +169,30 @@ let extract_res_ ~prover stdout errcode =
   else if find_opt_ prover.Prover.sat then Res.Sat
   else if find_opt_ prover.Prover.unsat then Res.Unsat
   else if (find_opt_ prover.Prover.timeout || find_opt_ prover.Prover.unknown)
-    then Res.Unknown
-    else Res.Error
+  then Res.Unknown
+  else Res.Error
 
 (* run one particular test *)
-let run_pb_ ~config pb =
-  Lwt_log.ign_debug_f "running %-30s..." pb.Problem.name;
+let run_pb_ ~config prover pb =
+  Lwt_log.ign_debug_f "running %-15s/%-30s..."
+    (Filename.basename prover.FrogProver.binary) pb.Problem.name;
   (* spawn process *)
   let%lwt result = FrogCmd.run_proc
-    ~timeout:config.Config.timeout
-    ~memory:config.Config.memory
-    ~prover:config.Config.prover
-    ~pb
-    ()
+      ~timeout:config.Config.timeout
+      ~memory:config.Config.memory
+      ~prover:prover
+      ~pb
+      ()
   in
-  Lwt_log.ign_debug_f "output for %s: `%s`, `%s`, errcode %d"
-    pb.Problem.name result.FrogMap.stdout result.FrogMap.stderr result.FrogMap.errcode;
+  Lwt_log.ign_debug_f "output for %s/%s: `%s`, `%s`, errcode %d"
+    prover.FrogProver.binary pb.Problem.name
+    result.FrogMap.stdout result.FrogMap.stderr
+    result.FrogMap.errcode;
   (* parse its output *)
-  let res = extract_res_ ~prover:config.Config.prover result.FrogMap.stdout result.FrogMap.errcode in
+  let res = extract_res_ ~prover result.FrogMap.stdout result.FrogMap.errcode in
   Lwt.return { result with FrogMap.res }
 
-let run_pb ?(caching=true) ?limit ~config pb =
+let run_pb ?(caching=true) ?limit ~config prover pb =
   let module V = Maki.Value in
   Maki.call_exn
     ?limit
@@ -195,7 +201,7 @@ let run_pb ?(caching=true) ?limit ~config pb =
     ~deps:[V.pack Config.maki config; V.pack Problem.maki pb]
     ~op:Results.maki_raw_res
     ~name:"frogtest.run_pb"
-    (fun () -> run_pb_ ~config pb)
+    (fun () -> run_pb_ ~config prover pb)
 
 let nop_ _ = Lwt.return_unit
 let nop2_ _ _ = Lwt.return_unit
@@ -207,26 +213,28 @@ let run ?(on_solve = nop2_) ?(on_done = nop_)
   let limit = Maki.Limit.create config.Config.j in
   FrogMisc.Opt.iter server
     ~f:(fun s ->
-      Prover.add_server s;
-      Problem.add_server s;
-      Results.add_server s;
-      Config.add_server s config;
-      W.Server.get s Prover.k_add config.Config.prover;
-    );
+        Prover.add_server s;
+        Problem.add_server s;
+        Results.add_server s;
+        Config.add_server s config;
+        List.iter (fun x -> W.Server.get s Prover.k_add x) config.Config.provers;
+      );
   let%lwt raw =
-    Lwt_list.map_p
-      (fun pb ->
-         let%lwt raw_res = run_pb ~caching ~limit ~config pb in
-         let%lwt () = on_solve pb raw_res.Results.res in
-         (* add result to server? *)
-         FrogMisc.Opt.iter server
-           ~f:(fun s ->
-             W.Server.get s Problem.k_add pb;
-             W.Server.get s Results.k_add raw_res);
-         Lwt.return raw_res)
-      set
+    Lwt_list.map_p (fun prover ->
+        Lwt_list.map_p
+          (fun pb ->
+             let%lwt raw_res = run_pb ~caching ~limit ~config prover pb in
+             let%lwt () = on_solve pb raw_res.Results.res in
+             (* add result to server? *)
+             FrogMisc.Opt.iter server
+               ~f:(fun s ->
+                   W.Server.get s Problem.k_add pb;
+                   W.Server.get s Results.k_add raw_res);
+             Lwt.return raw_res)
+          set)
+      config.Config.provers
   in
-  let res = Results.of_list raw in
-  let%lwt () = on_done res in
+  let res = List.map Results.of_list raw in
+  let%lwt () = Lwt_list.iter_p on_done res in
   Lwt.return res
 

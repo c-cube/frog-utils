@@ -1,11 +1,19 @@
 
 timeout=5
-prover = "some_prover"
+provers = [ "some_prover", "some_other_prover" ]
 problems = ".*.p"
 
 [some_prover]
 
 binary = "some_prover.exe"
+cmd = "$binary --timeout $timeout $file"
+unsat = "unsat"
+sat = "sat"
+unknown = "timeout"
+
+[some_other_prover]
+
+binary = "some_other_prover.exe"
 cmd = "$binary --timeout $timeout $file"
 unsat = "unsat"
 sat = "sat"

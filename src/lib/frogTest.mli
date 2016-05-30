@@ -23,12 +23,21 @@ module Config : sig
     timeout: int; (* timeout for each problem *)
     memory: int;
     problem_pat: string; (* regex for problems *)
-    prover: Prover.t;
+    provers: Prover.t list;
   } [@@deriving yojson]
 
-  val make: ?j:int -> ?timeout:int -> ?memory:int -> pat:string -> prover:Prover.t -> unit -> t
+  val make:
+    ?j:int ->
+    ?timeout:int ->
+    ?memory:int ->
+    pat:string ->
+    provers:Prover.t list ->
+    unit -> t
+
   val of_file : string -> t or_error
+
   val maki : t Maki.Value.ops
+
   val to_html : (Prover.t -> uri) -> t -> html
 
   val add_server : FrogWeb.Server.t -> t -> unit
@@ -64,7 +73,7 @@ val run :
   ?server:FrogWeb.Server.t ->
   config:Config.t ->
   ProblemSet.t ->
-  Results.t Lwt.t
+  Results.t list Lwt.t
 (** Run the given prover on the given problem set, obtaining results
     after all the problems have been dealt with.
     @param caching if true, use Maki for caching results (default true)

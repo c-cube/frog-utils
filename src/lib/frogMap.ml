@@ -314,7 +314,11 @@ let add_server s =
     let pb = param req "problem" in
     begin match find (W.Server.db s) prover pb with
       | Some res ->
-        W.Server.return_html (to_html_raw_result uri_of_prover uri_of_problem res)
+        W.Server.return_html
+          (W.Html.list [
+              W.Html.h2 (W.Html.string "Raw Result");
+              to_html_raw_result uri_of_prover uri_of_problem res;
+            ])
       | None ->
         let code = Cohttp.Code.status_of_code 404 in
         let h = H.string ("could not find result") in
@@ -326,7 +330,7 @@ let add_server s =
         ~path:(Printf.sprintf "/raw/%s/%s"
                  (FrogProver.hash r.prover) (FrogProblem.hash r.problem)) () in
     let h = to_html_db uri_of_prover uri_of_problem uri_of_raw_res (W.Server.db s) in
-    W.Server.return_html ~title:"results"
+    W.Server.return_html ~title:"Results"
       (W.Html.list [ W.Html.h2 (W.Html.string "Results"); h])
   and on_add r = db_add (W.Server.db s) r in
   W.Server.set s k_add on_add;
