@@ -8,8 +8,6 @@
 
 (** {2 Prover configurations} *)
 
-type html = FrogWeb.html
-
 module StrMap : module type of Map.Make(String)
 (** Maps indexed by strings. *)
 
@@ -45,8 +43,8 @@ val db_add : FrogDB.Sqlexpr.db -> t -> unit
 val find : FrogDB.Sqlexpr.db -> string -> t option
 val find_all : FrogDB.Sqlexpr.db -> t list
 
-val to_html_name : t -> html
-val to_html_full : t -> html
+val to_html_name : t -> FrogWeb.html
+val to_html_full : t -> FrogWeb.html
 
 val k_uri : (t -> Uri.t) FrogWeb.HMap.key
 val k_add : (t -> unit) FrogWeb.HMap.key

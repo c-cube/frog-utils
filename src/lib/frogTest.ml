@@ -6,12 +6,16 @@
 module Prover = FrogProver
 module E = FrogMisc.Err
 module W = FrogWeb
+module R = W.Record
+module H = W.Html
 
 module Res = FrogRes
 module Problem = FrogProblem
 module ProblemSet = FrogProblemSet
 
 module Results = FrogMap
+
+module MStr = Map.Make(String)
 
 type 'a or_error = 'a E.t
 type 'a printer = Format.formatter -> 'a -> unit
@@ -25,12 +29,201 @@ let assoc_or def x l =
   try List.assoc x l
   with Not_found -> def
 
+module Analyze = struct
+
+  type raw = Results.raw_result MStr.t
+
+  let raw_of_list l =
+    List.fold_left
+      (fun acc r -> MStr.add r.FrogMap.problem.Problem.name r acc)
+      MStr.empty l
+
+  let raw_to_yojson r : Yojson.Safe.json =
+    let l = MStr.fold
+        (fun _ r acc ->
+           let j = FrogMap.raw_result_to_yojson r in
+           j :: acc)
+        r []
+    in
+    `List l
+
+  let raw_of_yojson (j:Yojson.Safe.json) =
+    let open E in
+    let get_list_ = function
+      | `List l -> return l
+      | _ -> fail "expected list"
+    in
+    get_list_ j
+    >|= List.map FrogMap.raw_result_of_yojson
+    >|= List.map of_err
+    >>= seq_list
+    >|= raw_of_list
+    |> to_err
+
+  type stat = {
+    unsat: int;
+    sat: int;
+    errors: int;
+    unknown: int;
+  } [@@deriving yojson]
+
+  let stat_empty = {unsat=0; sat=0; errors=0; unknown=0; }
+
+  let add_sat_ s = {s with sat=s.sat+1}
+  let add_unsat_ s = {s with unsat=s.unsat+1}
+  let add_unknown_ s = {s with unknown=s.unknown+1}
+  let add_error_ s = {s with errors=s.errors+1}
+
+  let pp_stat out s =
+    fpf out "{@[<hv>unsat: %d,@ sat: %d,@ errors: %d,@ unknown: %d,@ total: %d@]}"
+      s.unsat s.sat s.errors s.unknown (s.unsat + s.sat + s.errors + s.unknown)
+
+  type t = {
+    raw: raw;
+    stat: stat;
+    improved: FrogMap.raw_result list;
+    ok: FrogMap.raw_result list;
+    disappoint: FrogMap.raw_result list;
+    bad: FrogMap.raw_result list;
+  } [@@deriving yojson]
+
+  let maki =
+    Maki_yojson.make_err "results"
+      ~to_yojson
+      ~of_yojson
+
+  let analyse_ raw =
+    let module M = OLinq.AdaptMap(MStr) in
+    let l =
+      M.of_map raw
+      |> OLinq.map snd
+      |> OLinq.group_by
+        (fun r -> Problem.compare_res r.FrogMap.problem r.FrogMap.res)
+      |> OLinq.run_list ?limit:None
+    in
+    let improved = assoc_or [] `Improvement l in
+    let ok = assoc_or [] `Same l in
+    let bad = assoc_or [] `Mismatch l in
+    let disappoint = assoc_or [] `Disappoint l in
+    (* stats *)
+    let stat = ref stat_empty in
+    let add_res res =
+      stat := (match res with
+          | Res.Unsat -> add_unsat_ | Res.Sat -> add_sat_
+          | Res.Unknown -> add_unknown_ | Res.Error -> add_error_
+        ) !stat
+    in
+    MStr.iter (fun _ r -> add_res r.FrogMap.res) raw;
+    improved, ok, bad, disappoint, !stat
+
+  let add_raw raw r =
+    MStr.add r.FrogMap.problem.Problem.name r raw
+
+  let make raw =
+    let improved, ok, bad, disappoint, stat = analyse_ raw in
+    { raw; stat; improved; ok; disappoint; bad; }
+
+  let of_yojson j = match raw_of_yojson j with
+    | `Ok x -> `Ok (make x)
+    | `Error s -> `Error s
+  let to_yojson t = raw_to_yojson t.raw
+
+  let of_list l =
+    let raw = raw_of_list l in
+    make raw
+
+  let of_file ~file =
+    try
+      let json = Yojson.Safe.from_file file in
+      of_yojson json |> E.of_err
+    with e -> E.fail (Printexc.to_string e)
+
+  let to_file t ~file = Yojson.Safe.to_file file (to_yojson t)
+
+  (* build statistics and list of mismatch from raw results *)
+
+  let is_ok r = r.bad = []
+  let num_failed r = List.length r.bad
+
+  let pp_list_ p = Format.pp_print_list p
+
+  let pp_raw_res_ out r =
+    fpf out "@[<h>problem %s (expected: %a, result: %a)@]"
+      r.FrogMap.problem.Problem.name
+      Res.print r.FrogMap.problem.Problem.expected
+      Res.print r.FrogMap.res
+
+  let print out r =
+    let pp_l out = fpf out "[@[<hv>%a@]]" (pp_list_ pp_raw_res_) in
+    fpf out
+      "@[<hv2>results: {@,stat:%a,@ %-15s: %a,@ %-15s: %a,@ %-15s: %a@]@,}"
+      pp_stat r.stat
+      "ok" pp_l r.ok
+      "disappoint" pp_l r.disappoint
+      "bad" pp_l r.bad
+
+  let to_html_stats s =
+    R.start
+    |> R.add_int "unsat" s.unsat
+    |> R.add_int "sat" s.sat
+    |> R.add_int "errors" s.errors
+    |> R.add_int "unknown" s.unknown
+    |> R.close
+
+  let to_html_raw_result_l uri_of_problem uri_of_raw_res r =
+    [ H.a
+        ~href:(uri_of_problem r.FrogMap.problem)
+        (Problem.to_html_name r.FrogMap.problem)
+    ; H.a ~href:(uri_of_raw_res r) (Res.to_html r.FrogMap.res)
+    ]
+
+  let to_html_summary t =
+    H.Create.table
+      ~flags:[H.Create.Tags.Headings_fst_col]
+      ~row:(fun (s, i) -> [H.string s; H.int i])
+      [
+        "ok", (List.length t.ok);
+        "improved", (List.length t.improved);
+        "disappoint", (List.length t.disappoint);
+        "bad", (List.length t.bad);
+        "total", (MStr.cardinal t.raw);
+      ]
+
+  let to_html_raw uri_of_problem uri_of_raw_res r =
+    let l = MStr.fold (fun _ r acc -> `Row r::acc) r [] in
+    if l = [] then H.string "ø"
+    else H.Create.table ~flags:[H.Create.Tags.Headings_fst_row]
+        ~row:(function
+            | `Head -> [H.string "problem"; H.string "result"]
+            | `Row r -> to_html_raw_result_l uri_of_problem uri_of_raw_res r)
+        (`Head :: l)
+
+  let to_html uri_of_problem uri_of_raw_res t =
+    let lst_raw_res ?cls l =
+      if l=[] then H.string "ø"
+      else H.Create.table l ~flags:[]
+          ~row:(to_html_raw_result_l uri_of_problem uri_of_raw_res)
+           |> H.div ?cls
+    in
+    R.start
+    |> R.add "summary" (to_html_summary t)
+    |> R.add "improved" (lst_raw_res t.improved)
+    |> R.add "ok" (lst_raw_res t.ok)
+    |> R.add "disappoint" (lst_raw_res t.disappoint)
+    |> R.add "bad" (lst_raw_res t.bad)
+    |> R.add "stats" (to_html_stats t.stat)
+    |> R.add "raw" (to_html_raw uri_of_problem uri_of_raw_res t.raw)
+    |> R.close
+
+end
+
 module Config = struct
   [@@@warning "-39"]
   type t = {
     j: int; (* number of concurrent processes *)
     timeout: int; (* timeout for each problem *)
     memory: int;
+    dir : string;
     problem_pat: string; (* regex for problems *)
     provers: Prover.t list;
   } [@@deriving yojson]
@@ -44,8 +237,8 @@ module Config = struct
       (fun (t,_) -> t)
       (V.pair json (V.set FrogProver.maki))
 
-  let make ?(j=1) ?(timeout=5) ?(memory=1000) ~pat ~provers () =
-    { j; timeout; memory; provers; problem_pat=pat; }
+  let make ?(j=1) ?(timeout=5) ?(memory=1000) ~dir ~pat ~provers () =
+    { j; timeout; memory; provers; dir; problem_pat=pat; }
 
   let update ?j ?timeout ?memory c =
     let module O = FrogMisc.Opt in
@@ -58,17 +251,21 @@ module Config = struct
     let module C = FrogConfig in
     Lwt_log.ign_debug_f "parse config file `%s`..." file;
     try
-      let c = C.parse_files [file] C.empty in
+      let main = C.parse_files [file] C.empty in
+      let c = C.get_table main "test" in
       let j = C.get_int ~default:1 c "parallelism" in
       let timeout = C.get_int ~default:5 c "timeout" in
       let memory = C.get_int ~default:1000 c "memory" in
-      let provers = C.get_string_list c "provers" in
-      let provers = List.map (Prover.build_from_config c) provers in
+      let dir = C.get_string c "dir" in
       let problem_pat = C.get_string c "problems" in
-      E.return { j; timeout; memory; provers; problem_pat; }
+      let provers = C.get_string_list c "provers" in
+      let provers = List.map (Prover.build_from_config main) provers in
+      E.return { j; timeout; memory; provers; dir; problem_pat; }
     with
-    | C.Error e -> E.fail e
-    | Not_found -> E.fail ("invalid config file: " ^ file)
+    | C.Error e ->
+      E.fail e
+    | C.Field_not_found field ->
+      E.fail ("could not find field: " ^ field)
 
   let to_html uri_of_prover c =
     let module H = W.Html in
@@ -77,7 +274,7 @@ module Config = struct
     |> R.add_int "j" c.j
     |> R.add_int "timeout" c.timeout
     |> R.add_int "memory" c.memory
-    |> R.add_string "problems pattern" c.problem_pat
+    |> R.add_string ~raw:true "problems pattern" c.problem_pat
     |> R.add "provers"
       (H.list @@ List.map (
           fun x ->
@@ -105,7 +302,7 @@ module ResultsComparison = struct
   }
 
   (* TODO: use outer_join? to also find the disappeared/appeared *)
-  let compare (a:Results.raw) b : t =
+  let compare (a: Analyze.raw) b : t =
     let open Results in
     let module M = OLinq.AdaptMap(MStr) in
     let a = M.of_map a |> OLinq.map snd in
@@ -164,7 +361,7 @@ let run_pb_ ~config prover pb =
   Lwt_log.ign_debug_f "running %-15s/%-30s..."
     (Filename.basename prover.FrogProver.binary) pb.Problem.name;
   (* spawn process *)
-  let%lwt result = FrogCmd.run_proc
+  let%lwt result = FrogMap.run_proc
       ~timeout:config.Config.timeout
       ~memory:config.Config.memory
       ~prover ~pb ()
@@ -185,7 +382,7 @@ let run_pb ?(caching=true) ?limit ~config prover pb =
            V.pack V.int config.Config.memory;
            V.pack Prover.maki prover;
            V.pack Problem.maki pb]
-    ~op:Results.maki_raw_res
+    ~op:FrogMap.maki_raw_res
     ~name:"frogtest.run_pb"
     (fun () -> run_pb_ ~config prover pb)
 
@@ -218,7 +415,7 @@ let run ?(on_solve = nop_) ?(on_done = nop_)
           set)
       config.Config.provers
   in
-  let res = List.map Results.of_list raw in
+  let res = List.map Analyze.of_list raw in
   let%lwt () = Lwt_list.iter_p on_done res in
   Lwt.return res
 

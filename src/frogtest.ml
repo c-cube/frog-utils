@@ -9,11 +9,6 @@ module Prover = FrogProver
 module E = FrogMisc.LwtErr
 module W = FrogWeb
 
-type save =
-  | SaveFile of string
-  | SaveCommit  (* save into a file named by the current git commit *)
-  | SaveNone  (* no save *)
-
 (** {2 Run} *)
 module Run = struct
   (* callback that prints a result *)
@@ -34,12 +29,6 @@ module Run = struct
       (res.FrogMap.problem.FrogProblem.name ^ " :") pp_res ();
     Lwt.return_unit
 
-  (* save result in given file *)
-  let save_ ~file res =
-    Lwt_log.ign_debug_f "save result in file `%s`" file;
-    T.Results.to_file ~file res;
-    Lwt.return_unit
-
   (* obtain the current commit name *)
   let get_commit_ () : string Lwt.t =
     let open Lwt.Infix in
@@ -48,16 +37,16 @@ module Run = struct
       (fun p -> FrogMisc.File.read_all p#stdout >|= String.trim)
 
   (* lwt main *)
-  let main ?j ?timeout ?memory ?caching ~web ~db ~save ~config ~dir () =
+  let main ?j ?timeout ?memory ?caching ~web ~db ~config () =
     let open E in
     (* parse config *)
-    Lwt.return (T.Config.of_file (Filename.concat dir config))
+    Lwt.return (T.Config.of_file config)
     >>= fun config ->
     (* build problem set (exclude config file!) *)
     let problem_pat = Re_posix.compile_pat config.T.Config.problem_pat in
-    T.ProblemSet.of_dir ~filter:(Re.execp problem_pat) dir
+    T.ProblemSet.of_dir ~filter:(Re.execp problem_pat) config.T.Config.dir
     >>= fun pbs ->
-    Format.printf "run %d tests in %s@." (T.ProblemSet.size pbs) dir;
+    Format.printf "run %d tests in %s@." (T.ProblemSet.size pbs) config.T.Config.dir;
     (* serve website *)
     let server =
       if web then
@@ -75,34 +64,22 @@ module Run = struct
     in
     let web = FrogMisc.Opt.((server >|= W.Server.run) |> get Lwt.return_unit) |> E.ok in
     main >>= fun results ->
-    List.iter (fun x -> Format.printf "%a@." T.Results.print x) results;
-    (*
-    let%lwt () = match save with
-      | SaveFile f -> save_ ~file:f results
-      | SaveCommit ->
-          let%lwt commit = get_commit_ () in
-          Lwt_log.ign_debug_f "commit name: %s" commit;
-          save_ ~file:(commit ^ ".json") results
-      | SaveNone ->
-          Lwt_log.ign_debug "do not save result";
-          Lwt.return_unit
-    in
-    *)
+    List.iter (fun x -> Format.printf "%a@." T.Analyze.print x) results;
     let%lwt _ = web in
-    if List.for_all T.Results.is_ok results
+    if List.for_all T.Analyze.is_ok results
     then E.return () (* wait for webserver to return *)
     else
       E.fail (Format.asprintf "%d failure(s)" (
           List.fold_left (+) 0 @@
-          List.map T.Results.num_failed results))
+          List.map T.Analyze.num_failed results))
 end
 
 (** {2 Display Results} *)
 module Display = struct
   let main ~file () =
     let open E in
-    E.lift (T.Results.of_file ~file) >>= fun res ->
-    Format.printf "%a@." T.Results.print res;
+    E.lift (T.Analyze.of_file ~file) >>= fun res ->
+    Format.printf "%a@." T.Analyze.print res;
     E.return ()
 end
 
@@ -110,9 +87,9 @@ end
 module Compare = struct
   let main ~file1 ~file2 () =
     let open E in
-    E.lift (T.Results.of_file ~file:file1) >>= fun res1 ->
-    E.lift (T.Results.of_file ~file:file2) >>= fun res2 ->
-    let cmp = T.ResultsComparison.compare res1.T.Results.raw res2.T.Results.raw in
+    E.lift (T.Analyze.of_file ~file:file1) >>= fun res1 ->
+    E.lift (T.Analyze.of_file ~file:file2) >>= fun res2 ->
+    let cmp = T.ResultsComparison.compare res1.T.Analyze.raw res2.T.Analyze.raw in
     Format.printf "%a@." T.ResultsComparison.print cmp;
     E.return ()
 end
@@ -122,35 +99,19 @@ end
 (* sub-command for running tests *)
 let term_run =
   let open Cmdliner in
-  let aux debug config save dir j timeout memory nocaching web db =
+  let aux debug config j timeout memory nocaching web db =
+    let config = FrogConfig.interpolate_home config in
     if debug then (
       Maki_log.set_level 5;
       Lwt_log.add_rule "*" Lwt_log.Debug;
     );
-    Lwt_main.run (Run.main ?j ?timeout ?memory ~caching:(not nocaching) ~web ~db ~save ~config ~dir ())
-  in
-  let save =
-    let parse_ = function
-      | "commit" -> `Ok SaveCommit
-      | "none" -> `Ok SaveNone
-      | s ->
-          try Scanf.sscanf s "file=%s" (fun f -> `Ok (SaveFile f))
-          with _ -> `Error "expected (commit|none|file=<filename>)"
-    and print_ out = function
-      | SaveCommit -> Format.fprintf out "commit"
-      | SaveNone -> Format.fprintf out "none"
-      | SaveFile f -> Format.fprintf out "file=%s" f
-    in Arg.(value & opt (parse_,print_) SaveNone &
-      info ["s"; "save"] ~doc:"indicate where to save results")
+    Lwt_main.run (Run.main ?j ?timeout ?memory ~caching:(not nocaching) ~web ~db ~config ())
   in
   let debug =
     Arg.(value & flag & info ["d"; "debug"] ~doc:"enable debug")
   and config =
-    Arg.(value & opt string "test.toml" &
+    Arg.(value & opt string "$home/.frogutils.conf" &
     info ["c"; "config"] ~doc:"configuration file (in target directory)")
-  and dir =
-    Arg.(value & pos 0 string "./" &
-    info [] ~docv:"DIR" ~doc:"target directory (containing tests)")
   and j =
     Arg.(value & opt (some int) None & info ["j"] ~doc:"parallelism level")
   and timeout =
@@ -166,7 +127,7 @@ let term_run =
   and doc =
     "test a program on every file in a directory"
   in
-  Term.(pure aux $ debug $ config $ save $ dir $ j $ timeout $ memory $ nocaching $ web $ db), Term.info ~doc "run"
+  Term.(pure aux $ debug $ config $ j $ timeout $ memory $ nocaching $ web $ db), Term.info ~doc "run"
 
 (* sub-command to display a file *)
 let term_display =

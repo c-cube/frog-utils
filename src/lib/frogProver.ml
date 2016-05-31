@@ -4,12 +4,7 @@
 (** {1 Run Prover} *)
 
 open FrogDB
-
-module Conf = FrogConfig
 module StrMap = Map.Make(String)
-module W = FrogWeb
-
-type html = FrogWeb.html
 
 [@@@warning "-39"]
 type t = {
@@ -47,20 +42,20 @@ let maki =
   )
 
 let get_str_ d x =
-  try Some (Conf.get_string d x)
-  with Not_found -> None
+  try Some (FrogConfig.get_string d x)
+  with FrogConfig.Field_not_found _ -> None
 
 (* recover description of prover from config file *)
 let build_from_config config name =
   let d =
-    try Conf.get_table config name
-    with Not_found ->
+    try FrogConfig.get_table config name
+    with FrogConfig.Field_not_found _ ->
       failwith ("could not find prover " ^ name ^ " in config")
   in
-  let cmd = Conf.get_string d "cmd" |> String.trim in
+  let cmd = FrogConfig.get_string d "cmd" |> String.trim in
   let binary =
-    try Conf.get_string d "binary"
-    with Not_found ->
+    try FrogConfig.get_string d "binary"
+    with FrogConfig.Field_not_found _ ->
       let b, _ = FrogMisc.Str.split ~by:' ' cmd in
       if b="$binary" then failwith "please provide a value for $binary";
       b
@@ -74,7 +69,7 @@ let build_from_config config name =
 
 let find_config config name =
   (* check that the prover is listed *)
-  let provers = Conf.get_string_list ~default:[] config "provers" in
+  let provers = FrogConfig.get_string_list ~default:[] config "provers" in
   if not (List.mem name provers)
     then failwith ("prover " ^ name ^ " not listed in config");
   build_from_config config name
@@ -82,7 +77,7 @@ let find_config config name =
 
 (* make a list of provers from the given config *)
 let of_config config =
-  let provers = Conf.get_string_list ~default:[] config "provers" in
+  let provers = FrogConfig.get_string_list ~default:[] config "provers" in
   List.fold_left
     (fun map p_name ->
       let prover = build_from_config config p_name in
@@ -120,10 +115,10 @@ let db_add db t =
 
 (* HTML server *)
 let to_html_name p =
-  W.Html.string (Filename.basename p.binary)
+  FrogWeb.Html.string (Filename.basename p.binary)
 
 let to_html_full p =
-  let module R = W.Record in
+  let module R = FrogWeb.Record in
   R.start
   |> R.add_string "binary" p.binary
   |> R.add_string ~raw:true "cmd" p.cmd
@@ -134,28 +129,28 @@ let to_html_full p =
   |> R.add_string_option ~raw:true "out of space" p.memory
   |> R.close
 
-let k_uri = W.HMap.Key.create ("uri_of_prover", fun _ -> Sexplib.Sexp.Atom "")
-let k_add = W.HMap.Key.create ("add_prover", fun _ -> Sexplib.Sexp.Atom "")
+let k_uri = FrogWeb.HMap.Key.create ("uri_of_prover", fun _ -> Sexplib.Sexp.Atom "")
+let k_add = FrogWeb.HMap.Key.create ("add_prover", fun _ -> Sexplib.Sexp.Atom "")
 
 let add_server s =
   let uri_of_prover p = Uri.make ~path:("/prover/" ^ hash p) () in
-  let add_prover p = db_add (W.Server.db s) p in
+  let add_prover p = db_add (FrogWeb.Server.db s) p in
   let handle req =
     let open Opium.Std in
     let h = param req "hash" in
-    match find (W.Server.db s) h with
+    match find (FrogWeb.Server.db s) h with
     | Some prover ->
-      W.Server.return_html ~title:prover.binary
-        (W.Html.list [
-            W.Html.h2 (to_html_name prover);
+      FrogWeb.Server.return_html ~title:prover.binary
+        (FrogWeb.Html.list [
+            FrogWeb.Html.h2 (to_html_name prover);
             to_html_full prover;
           ])
     | None ->
       let code = Cohttp.Code.status_of_code 404 in
-      W.Server.return_html ~code (W.Html.string "prover not found")
+      FrogWeb.Server.return_html ~code (FrogWeb.Html.string "prover not found")
   in
-  W.Server.set s k_add add_prover;
-  W.Server.set s k_uri uri_of_prover;
-  W.Server.add_route s "/prover/:hash" handle;
+  FrogWeb.Server.set s k_add add_prover;
+  FrogWeb.Server.set s k_uri uri_of_prover;
+  FrogWeb.Server.add_route s "/prover/:hash" handle;
   ()
 

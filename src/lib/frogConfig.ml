@@ -56,7 +56,7 @@ let interpolate_home s =
   Buffer.add_substitute buf
     (function
       | "HOME" | "home" -> Lazy.force h
-      | _ -> raise Not_found
+      | s -> failwith ("couldn't find variable: " ^ s)
     ) s;
   Buffer.contents buf
 
@@ -64,8 +64,7 @@ let interpolate_home s =
 let parse_or_empty file =
   match Toml.Parser.from_filename file with
   | `Error (msg, {Toml.Parser. source; line; column; _ }) ->
-      Printf.eprintf "error trying to read config: %s at %s, line %d, col %d\n"
-        msg source line column;
+      Format.eprintf "%s@." msg;
       empty
   | `Ok tbl -> Table {tbl; parent=Empty}
   | exception e ->
@@ -87,14 +86,18 @@ let parse_files l conf =
   | Empty -> conf'
   | Table {tbl; _} -> Table {tbl; parent=conf' }
 
+
+(* Exceptions for getters *)
+
 exception WrongType
+exception Field_not_found of string
 
 (* "generic" getter *)
 let rec get_or ?default getter conf name =
   match conf with
   | Empty ->
       begin match default with
-      | None -> raise Not_found
+      | None -> raise (Field_not_found name)
       | Some x -> x
       end
   | Table {tbl; parent} ->

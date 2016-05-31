@@ -27,6 +27,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 (** {1 Config File} *)
 
 exception Error of string
+exception Field_not_found of string
 
 type t
 
@@ -48,7 +49,7 @@ val parse_files : string list -> t -> t
 (** {2 Accessors}
 
 Accessors will raise Not_found if the value is unreachable AND
-not default is specified *)
+no default is specified *)
 
 type 'a getter = ?default:'a -> t -> string -> 'a
 

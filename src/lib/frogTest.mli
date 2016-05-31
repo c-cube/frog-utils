@@ -15,13 +15,46 @@ module Results = FrogMap
 module Problem = FrogProblem
 module ProblemSet = FrogProblemSet
 
+module MStr : Map.S with type key = String.t
+
 (** {2 Result on a single problem} *)
+
+module Analyze : sig
+
+  type raw = FrogMap.raw_result MStr.t
+
+  type stat = {
+    unsat: int;
+    sat: int;
+    errors: int;
+    unknown: int;
+  }
+
+  type t = {
+    raw: raw;
+    stat: stat;
+    improved  : FrogMap.raw_result list;
+    ok        : FrogMap.raw_result list;
+    disappoint: FrogMap.raw_result list;
+    bad       : FrogMap.raw_result list;
+  }
+
+  val is_ok : t -> bool
+
+  val num_failed : t -> int
+
+  val of_file : file:string -> t or_error
+
+  val print : Format.formatter -> t -> unit
+
+end
 
 module Config : sig
   type t = {
     j: int; (* number of concurrent processes *)
     timeout: int; (* timeout for each problem *)
     memory: int;
+    dir: string;
     problem_pat: string; (* regex for problems *)
     provers: Prover.t list;
   } [@@deriving yojson]
@@ -30,6 +63,7 @@ module Config : sig
     ?j:int ->
     ?timeout:int ->
     ?memory:int ->
+    dir:string ->
     pat:string ->
     provers:Prover.t list ->
     unit -> t
@@ -55,7 +89,7 @@ module ResultsComparison : sig
     same: (Problem.t * Res.t) list; (* same result *)
   }
 
-  val compare : Results.raw -> Results.raw -> t
+  val compare : Analyze.raw -> Analyze.raw -> t
 
   val print : t printer
   (** Display comparison in a readable way *)
@@ -65,7 +99,7 @@ end
 
 val run :
   ?on_solve:(FrogMap.raw_result -> unit Lwt.t) ->
-  ?on_done:(Results.t -> unit Lwt.t) ->
+  ?on_done:(Analyze.t -> unit Lwt.t) ->
   ?caching:bool ->
   ?j:int ->
   ?timeout:int ->
@@ -73,7 +107,7 @@ val run :
   ?server:FrogWeb.Server.t ->
   config:Config.t ->
   ProblemSet.t ->
-  Results.t list Lwt.t
+  Analyze.t list Lwt.t
 (** Run the given prover on the given problem set, obtaining results
     after all the problems have been dealt with.
     @param caching if true, use Maki for caching results (default true)

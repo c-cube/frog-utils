@@ -82,13 +82,7 @@ end = struct
   }
 
   let create ~db_path ?(db_init=[]) () =
-    let buf = Buffer.create 32 in
-    Buffer.add_substitute buf
-        (function
-          | "HOME" as s -> Sys.getenv s
-          | _ -> raise Not_found
-        ) db_path;
-    let db = FrogDB.Sqlexpr.open_db (Buffer.contents buf) in
+    let db = FrogDB.Sqlexpr.open_db (FrogConfig.interpolate_home db_path) in
     List.iter ((|>) db) db_init;
     { map=HMap.empty;
       db;

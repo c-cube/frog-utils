@@ -3,6 +3,7 @@
 
 (** {2 Prover commands} *)
 
+(*
 type env = (string * string) array
 (** Shell Environnments *)
 
@@ -39,17 +40,6 @@ val run_cmd :
 (** Same as {!run_exec}, but rather than executing the command, only
     returns a pair [(command, args)] that can be executed (starts with "sh") *)
 
-val run_proc :
-  ?env:env ->
-  timeout:int ->
-  memory:int ->
-  prover:FrogProver.t ->
-  pb:FrogProblem.t ->
-  unit ->
-  FrogMap.raw_result Lwt.t
-(** Runs the prover in a sub-process, and returns a tuple
-    [stdout, stderr, errcode] *)
-
 (** {2 TPTP Provers} *)
 
 module TPTP : sig
@@ -75,3 +65,4 @@ module TPTP : sig
     (** Version of {!run_cmd} that also looks into [config] for a
         key named "TPTP". *)
 end
+*)
