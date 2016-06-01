@@ -11,16 +11,27 @@
 module StrMap : module type of Map.Make(String)
 (** Maps indexed by strings. *)
 
+type version =
+  | Tag of string
+  | Git of string * string  (* branch & commit hash *)
+  [@@deriving yojson]
+
 type t = {
-  binary: string; (* name of the program itself *)
-  cmd: string;
-  (* the command line to run.
-     possibly contains $binary, $file, $memory and $timeout *)
-  unsat : string option;
-  sat : string option;
-  unknown : string option;
-  timeout : string option;
-  memory : string option;
+  (* Prover identification *)
+  name : string;
+  version : version;
+
+  (* Pover execution *)
+  binary: string;       (* name of the program itself *)
+  cmd: string;          (* the command line to run.
+                           possibly contains $binary, $file, $memory and $timeout *)
+
+  (* Result analysis *)
+  unsat   : string option;  (* regex for "unsat" *)
+  sat     : string option;  (* regex for "sat" *)
+  unknown : string option;  (* regex for "unknown" *)
+  timeout : string option;  (* regex for "timeout" *)
+  memory  : string option;  (* regex for "out of memory" *)
 } [@@deriving yojson]
 (** The type of provers configurations *)
 
@@ -37,6 +48,14 @@ val find_config : FrogConfig.t -> string -> t
 (** Parse prover description from config file, and check it is listed
     in the "provers" list *)
 
+val make_command :
+  ?env:(string * string) array ->
+  t ->
+  timeout:int ->
+  memory:int ->
+  file:string ->
+  string
+
 val hash : t -> string
 val db_init : FrogDB.Sqlexpr.db -> unit
 val db_add : FrogDB.Sqlexpr.db -> t -> unit
@@ -44,6 +63,7 @@ val find : FrogDB.Sqlexpr.db -> string -> t option
 val find_all : FrogDB.Sqlexpr.db -> t list
 
 val to_html_name : t -> FrogWeb.html
+val to_html_fullname : t -> FrogWeb.html
 val to_html_full : t -> FrogWeb.html
 
 val k_uri : (t -> Uri.t) FrogWeb.HMap.key

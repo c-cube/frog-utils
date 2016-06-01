@@ -29,13 +29,6 @@ module Run = struct
       (res.FrogMap.problem.FrogProblem.name ^ " :") pp_res ();
     Lwt.return_unit
 
-  (* obtain the current commit name *)
-  let get_commit_ () : string Lwt.t =
-    let open Lwt.Infix in
-    Lwt_process.with_process_in
-      (Lwt_process.shell "git rev-parse HEAD")
-      (fun p -> FrogMisc.File.read_all p#stdout >|= String.trim)
-
   (* lwt main *)
   let main ?j ?timeout ?memory ?caching ~web ~db ~config () =
     let open E in

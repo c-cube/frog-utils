@@ -6,17 +6,28 @@
 open FrogDB
 module StrMap = Map.Make(String)
 
+type version =
+  | Tag of string
+  | Git of string * string  (* branch & commit hash *)
+  [@@deriving yojson]
+
 [@@@warning "-39"]
 type t = {
-  binary: string; (* name of the program itself *)
-  cmd: string;
-  (* the command line to run.
-     possibly contains $binary, $file, $memory and $timeout *)
-  unsat :   string option;    (* regex for "unsat" *)
-  sat :     string option;      (* regex for "sat" *)
+  (* Prover identification *)
+  name : string;
+  version : version;
+
+  (* Pover execution *)
+  binary: string;       (* name of the program itself *)
+  cmd: string;          (* the command line to run.
+                           possibly contains $binary, $file, $memory and $timeout *)
+
+  (* Result analysis *)
+  unsat   : string option;  (* regex for "unsat" *)
+  sat     : string option;  (* regex for "sat" *)
   unknown : string option;  (* regex for "unknown" *)
-  timeout : string option;     (* regex for "timeout" *)
-  memory :  string option;      (* regex for "out of memory" *)
+  timeout : string option;  (* regex for "timeout" *)
+  memory  : string option;  (* regex for "out of memory" *)
 } [@@deriving yojson]
 [@@@warning "+39"]
 
@@ -28,22 +39,78 @@ let string_opt =
       string
   )
 
+let maki_version =
+  Maki.Value.marshal "frogprover.version"
+
 let maki =
   Maki.Value.(
     map
-      (fun t -> ((t.binary, t.cmd), (t.unsat, t.sat), (t.unknown, t.timeout, t.memory)))
-      (fun ((binary, cmd), (unsat, sat), (unknown, timeout, memory)) ->
-         { binary; cmd; unsat; sat; unknown; timeout; memory })
-      (triple
+      (fun t -> (
+           (t.name, t.version),
+           (t.binary, t.cmd),
+           (t.unsat, t.sat),
+           (t.unknown, t.timeout, t.memory)
+         ))
+      (fun ((name, version), (binary, cmd), (unsat, sat), (unknown, timeout, memory)) ->
+         { name; version; binary; cmd; unsat; sat; unknown; timeout; memory })
+      (quad
+         (pair string maki_version)
          (pair program string)
          (pair string_opt string_opt)
          (triple string_opt string_opt string_opt)
       )
   )
 
+let version_to_string = function
+  | Tag s -> s
+  | Git (b, c) -> Printf.sprintf "%s#%s" b c
+
 let get_str_ d x =
   try Some (FrogConfig.get_string d x)
   with FrogConfig.Field_not_found _ -> None
+
+(* Internal function, do NOT export ! *)
+let mk_cmd
+    ?(env=[||])
+    ?(binary="")
+    ?(timeout=0)
+    ?(memory=0)
+    ?(file="")
+    cmd =
+  let buf = Buffer.create 32 in
+  let add_str s =
+    Buffer.add_substitute buf
+      (function
+        | "memory" -> string_of_int memory
+        | "timeout" | "time" -> string_of_int timeout
+        | "file" -> file
+        | "binary" -> binary
+        | _ -> raise Not_found)
+      s
+  in
+  (* XXX: seems to make zombie processes?
+     add_str "ulimit -t \\$(( 1 + $time)) -v \\$(( 1000000 * $memory )); ";
+  *)
+  Array.iter
+    (fun (key,value) -> add_str (key ^ "=" ^ value ^ " "))
+    env;
+  add_str cmd;
+  Buffer.contents buf
+
+(* obtain the current commit name *)
+let get_cmd_out cmd =
+  let open Lwt.Infix in
+  Lwt_main.run @@
+  Lwt_process.with_process_in (Lwt_process.shell cmd)
+    (fun p -> FrogMisc.File.read_all p#stdout >|= String.trim)
+
+let get_commit dir : string =
+  get_cmd_out (
+    Printf.sprintf "git -C %s rev-parse HEAD" dir)
+
+let get_branch dir : string =
+  get_cmd_out (
+    Printf.sprintf "git -C %s branch | grep '*' | cut -d ' ' -f2" dir)
 
 (* recover description of prover from config file *)
 let build_from_config config name =
@@ -57,21 +124,38 @@ let build_from_config config name =
     try FrogConfig.get_string d "binary"
     with FrogConfig.Field_not_found _ ->
       let b, _ = FrogMisc.Str.split ~by:' ' cmd in
-      if b="$binary" then failwith "please provide a value for $binary";
-      b
+      if b = "$binary" then
+        failwith ("please provide $binary value for prover " ^ name)
+      else
+        b
+  in
+  let version =
+    match FrogConfig.get_string d "version" with
+    | exception FrogConfig.Field_not_found _ ->
+      failwith ("please provide a version for prover " ^ name)
+    | s ->
+      begin match FrogMisc.Str.split ~by:':' s with
+        | "git", dir ->
+          Git (get_branch dir, get_commit dir)
+        | "cmd", cmd ->
+          Tag (get_cmd_out @@ mk_cmd ~binary cmd)
+        | _ -> Tag s
+        | exception Not_found ->
+          Tag (get_cmd_out @@ mk_cmd ~binary "$binary --version")
+      end
   in
   let unsat = get_str_ d "unsat" in
   let sat = get_str_ d "sat" in
   let unknown = get_str_ d "unknown" in
   let timeout = get_str_ d "timeout" in
   let memory = get_str_ d "memory" in
-  { cmd; binary; unsat; sat; unknown; timeout; memory; }
+  { name; version; cmd; binary; unsat; sat; unknown; timeout; memory; }
 
 let find_config config name =
   (* check that the prover is listed *)
   let provers = FrogConfig.get_string_list ~default:[] config "provers" in
   if not (List.mem name provers)
-    then failwith ("prover " ^ name ^ " not listed in config");
+  then failwith ("prover " ^ name ^ " not listed in config");
   build_from_config config name
 
 
@@ -80,13 +164,18 @@ let of_config config =
   let provers = FrogConfig.get_string_list ~default:[] config "provers" in
   List.fold_left
     (fun map p_name ->
-      let prover = build_from_config config p_name in
-      StrMap.add p_name prover map
+       let prover = build_from_config config p_name in
+       StrMap.add p_name prover map
     ) StrMap.empty provers
+
+let make_command ?env prover ~timeout ~memory ~file =
+  let binary = prover.binary in
+  mk_cmd ?env ~binary ~timeout ~memory ~file prover.cmd
 
 (* DB interaction *)
 let hash t =
-  Sha1.string @@ Lwt_main.run (Maki.Value.to_string maki t)
+  Sha1.string @@
+  (Printf.sprintf "%s:%s" t.name (version_to_string t.version))
   |> Sha1.to_hex
 
 let db_init t =
@@ -115,11 +204,24 @@ let db_add db t =
 
 (* HTML server *)
 let to_html_name p =
-  FrogWeb.Html.string (Filename.basename p.binary)
+  FrogWeb.Html.string p.name
+
+let to_html_fullname p =
+  match p.version with
+  | Tag s ->
+    FrogWeb.Html.string (Format.sprintf "%s %s" p.name s)
+  | Git (branch, commit) ->
+    FrogWeb.Html.list [
+      FrogWeb.Html.string (
+        Format.sprintf "%s@@%s" p.name branch);
+      FrogWeb.Html.br @@ FrogWeb.Html.string (
+        Format.sprintf "%s.." (String.sub commit 0 15));
+    ]
 
 let to_html_full p =
   let module R = FrogWeb.Record in
   R.start
+  |> R.add_string "version" (version_to_string p.version)
   |> R.add_string "binary" p.binary
   |> R.add_string ~raw:true "cmd" p.cmd
   |> R.add_string_option ~raw:true "unsat" p.unsat
@@ -140,7 +242,7 @@ let add_server s =
     let h = param req "hash" in
     match find (FrogWeb.Server.db s) h with
     | Some prover ->
-      FrogWeb.Server.return_html ~title:prover.binary
+      FrogWeb.Server.return_html ~title:prover.name
         (FrogWeb.Html.list [
             FrogWeb.Html.h2 (to_html_name prover);
             to_html_full prover;

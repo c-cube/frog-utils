@@ -56,31 +56,9 @@ let extract_res_ ~prover stdout stderr errcode =
   then Res.Unknown
   else Res.Error
 
-(* command ready to run in a shell *)
-let make_command ?(env=[||]) p ~timeout ~memory ~file =
-  let buf = Buffer.create 32 in
-  let add_str s =
-    Buffer.add_substitute buf
-      (function
-        | "memory" -> string_of_int memory
-        | "timeout" | "time" -> string_of_int timeout
-        | "file" -> file
-        | "binary" -> p.Prover.binary
-        | _ -> raise Not_found)
-      s
-  in
-  (* XXX: seems to make zombie processes?
-     add_str "ulimit -t \\$(( 1 + $time)) -v \\$(( 1000000 * $memory )); ";
-  *)
-  Array.iter
-    (fun (key,value) -> add_str (key ^ "=" ^ value ^ " "))
-    env;
-  add_str p.Prover.cmd;
-  Buffer.contents buf
-
 let run_cmd ?env ~timeout ~memory ~prover ~file () =
   Lwt_log.ign_debug_f "timeout: %d, memory: %d" timeout memory;
-  let cmd = make_command ?env prover ~timeout ~memory ~file in
+  let cmd = FrogProver.make_command ?env prover ~timeout ~memory ~file in
   let cmd = ["/bin/sh"; "-c"; cmd] in
   "/bin/sh", Array.of_list cmd
 
@@ -220,7 +198,7 @@ let to_html_db uri_of_prover uri_of_pb uri_of_raw db =
           H.string "Problem" ::
           H.string "Expected" :: (
             List.map (fun x ->
-                H.a ~href:(uri_of_prover x) (FrogProver.to_html_name x)
+                H.a ~href:(uri_of_prover x) (FrogProver.to_html_fullname x)
               ) provers)
         | `Pb pb ->
           H.a ~href:(uri_of_pb pb) (FrogProblem.to_html_name pb) ::
