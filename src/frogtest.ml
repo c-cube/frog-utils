@@ -103,7 +103,7 @@ let term_run =
   let debug =
     Arg.(value & flag & info ["d"; "debug"] ~doc:"enable debug")
   and config =
-    Arg.(value & opt string "$home/.frogutils.conf" &
+    Arg.(value & opt string "$home/.frogutils.toml" &
     info ["c"; "config"] ~doc:"configuration file (in target directory)")
   and j =
     Arg.(value & opt (some int) None & info ["j"] ~doc:"parallelism level")

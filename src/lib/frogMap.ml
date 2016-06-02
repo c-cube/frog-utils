@@ -67,65 +67,67 @@ let run_proc ?env ~timeout ~memory ~prover ~pb () =
   let cmd = run_cmd ?env ~timeout ~memory ~prover ~file () in
   let start = Unix.gettimeofday () in
   (* slightly extended timeout *)
-  let res =
-    Lwt_process.with_process_full ~timeout:(float timeout +. 1.) cmd
-      (fun p ->
-         let res =
-           let res_errcode =
-             Lwt.map
-               (function
-                 | Unix.WEXITED e
-                 | Unix.WSIGNALED e
-                 | Unix.WSTOPPED e -> e)
-               p#status
-           in
-           try%lwt
-             let%lwt () = Lwt_io.close p#stdin in
-             let out = Lwt_io.read p#stdout in
-             let err = Lwt_io.read p#stderr in
-             let%lwt errcode = res_errcode in
-             Lwt_log.ign_debug_f "errcode: %d\n" errcode;
-             let rtime = Unix.gettimeofday () -. start in
-             (* now finish reading *)
-             Lwt_log.ign_debug_f "reading...\n";
-             let%lwt stdout = out in
-             let%lwt stderr = err in
-             Lwt_log.ign_debug_f "closing...\n";
-             let%lwt _ = p#close in
-             Lwt_log.ign_debug_f "done closing & reading, return\n";
-             let%lwt rusage = p#rusage in
-             let utime = rusage.Lwt_unix.ru_utime in
-             let stime = rusage.Lwt_unix.ru_stime in
-             let res = extract_res_ ~prover stdout stderr errcode in
-             Lwt.return {
-               problem = pb; prover; res;
-               stdout; stderr; errcode;
-               rtime; utime; stime; }
-           with e ->
-             let%lwt errcode = res_errcode in
-             let rtime = Unix.gettimeofday () -. start in
-             let stderr = Printexc.to_string e in
-             Lwt_log.ign_debug_f ~exn:e "error while running %s"
-               ([%show: (string * string array)] cmd);
-             Lwt.return {
-               problem = pb; prover;
-               res = FrogRes.Unknown;
-               stdout = ""; stderr; errcode;
-               rtime; utime = 0.; stime = 0.; }
+  Lwt_process.with_process_full cmd
+    (fun p ->
+       let killed = ref false in
+       (* Setup alarm to enforce timeout *)
+       let pid = p#pid in
+       let al = Lwt_timeout.create (timeout + 1)
+           (fun () -> killed := true; Unix.kill pid Sys.sigkill) in
+       Lwt_timeout.start al;
+       (* Convenience function to get error code *)
+       let res =
+         let res_errcode =
+           Lwt.map
+             (function
+               | Unix.WEXITED e
+               | Unix.WSIGNALED e
+               | Unix.WSTOPPED e -> e)
+             p#status
          in
-         res
-      )
-  in
-  let open Lwt.Infix in
-  (* pick the "timeout" message for this prover, if any *)
-  let str = FrogMisc.Opt.get "timeout" prover.Prover.timeout in
-  let timeout_fut = Lwt_unix.sleep (float timeout +. 3.) >|=
-    fun _ -> {
-      problem = pb; prover; res = FrogRes.Unknown;
-      stdout = str; stderr =  ""; errcode = 0;
-      rtime = float timeout +. 3.; stime = 0.; utime = 0.; }
-  in
-  Lwt.pick [res; timeout_fut]
+         (* Wait for the process to end, then get all output *)
+         try%lwt
+           let%lwt () = Lwt_io.close p#stdin in
+           let out = Lwt_io.read p#stdout in
+           let err = Lwt_io.read p#stderr in
+           let%lwt errcode = res_errcode in
+           Lwt_log.ign_debug_f "errcode: %d\n" errcode;
+           Lwt_timeout.stop al;
+           (* Compute time used by the prover *)
+           let rtime = Unix.gettimeofday () -. start in
+           let%lwt rusage = p#rusage in
+           let utime = rusage.Lwt_unix.ru_utime in
+           let stime = rusage.Lwt_unix.ru_stime in
+           (* now finish reading *)
+           Lwt_log.ign_debug_f "reading...\n";
+           let%lwt stdout = out in
+           let%lwt stderr = err in
+           Lwt_log.ign_debug_f "closing...\n";
+           let%lwt _ = p#close in
+           Lwt_log.ign_debug_f "done closing & reading, return\n";
+           let res =
+             if !killed then FrogRes.Unknown
+             else extract_res_ ~prover stdout stderr errcode
+           in
+           Lwt.return {
+             problem = pb; prover; res;
+             stdout; stderr; errcode;
+             rtime; utime; stime; }
+         with e ->
+           Lwt_timeout.stop al;
+           let%lwt errcode = res_errcode in
+           let rtime = Unix.gettimeofday () -. start in
+           let stderr = Printexc.to_string e in
+           Lwt_log.ign_debug_f ~exn:e "error while running %s"
+             ([%show: (string * string array)] cmd);
+           Lwt.return {
+             problem = pb; prover;
+             res = FrogRes.Error;
+             stdout = ""; stderr; errcode;
+             rtime; utime = 0.; stime = 0.; }
+       in
+       res
+    )
 
 
 (* DB management *)

@@ -132,7 +132,7 @@ let build_from_config config name =
   let version =
     match FrogConfig.get_string d "version" with
     | exception FrogConfig.Field_not_found _ ->
-      failwith ("please provide a version for prover " ^ name)
+      Tag "dev"
     | s ->
       begin match FrogMisc.Str.split ~by:':' s with
         | "git", dir ->
