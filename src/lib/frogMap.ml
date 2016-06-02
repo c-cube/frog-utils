@@ -103,13 +103,15 @@ let run_proc ?env ~timeout ~memory ~prover ~pb () =
                rtime; utime; stime; }
            with e ->
              let%lwt errcode = res_errcode in
+             let rtime = Unix.gettimeofday () -. start in
+             let stderr = Printexc.to_string e in
              Lwt_log.ign_debug_f ~exn:e "error while running %s"
                ([%show: (string * string array)] cmd);
              Lwt.return {
                problem = pb; prover;
                res = FrogRes.Unknown;
-               stdout = ""; stderr = ""; errcode;
-               rtime = 0.; utime = 0.; stime = 0.; }
+               stdout = ""; stderr; errcode;
+               rtime; utime = 0.; stime = 0.; }
          in
          res
       )
