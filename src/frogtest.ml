@@ -29,17 +29,12 @@ module Run = struct
       (res.FrogMap.problem.FrogProblem.name ^ " :") pp_res ();
     Lwt.return_unit
 
-  (* lwt main *)
-  let main ?j ?timeout ?memory ?caching ~web ~db ~config () =
+  let test_dir ?j ?timeout ?memory ?caching ~config ~problem_pat ~web ~db dir =
     let open E in
-    (* parse config *)
-    Lwt.return (T.Config.of_file config)
-    >>= fun config ->
-    (* build problem set (exclude config file!) *)
-    let problem_pat = Re_posix.compile_pat config.T.Config.problem_pat in
-    T.ProblemSet.of_dir ~filter:(Re.execp problem_pat) config.T.Config.dir
+    Format.printf "testing dir `%s`...@." dir;
+    T.ProblemSet.of_dir ~filter:(Re.execp problem_pat) dir
     >>= fun pbs ->
-    Format.printf "run %d tests in %s@." (T.ProblemSet.size pbs) config.T.Config.dir;
+    Format.printf "run %d tests in %s@." (T.ProblemSet.size pbs) dir;
     (* serve website *)
     let server =
       if web then
@@ -65,6 +60,23 @@ module Run = struct
       E.fail (Format.asprintf "%d failure(s)" (
           List.fold_left (+) 0 @@
           List.map T.Analyze.num_failed results))
+
+  (* lwt main *)
+  let main ?j ?timeout ?memory ?caching ~web ~db ~config dirs () =
+    let open E in
+    (* parse config *)
+    Lwt.return (T.Config.of_file config)
+    >>= fun config ->
+    (* pick default directory if needed *)
+    let dirs = match dirs with
+      | _::_ -> dirs
+      | [] -> config.T.Config.default_dirs
+    in
+    (* build problem set (exclude config file!) *)
+    let problem_pat = Re_posix.compile_pat config.T.Config.problem_pat in
+    E.iter_s
+      (test_dir ?j ?timeout ?memory ?caching ~config ~problem_pat ~web ~db)
+      dirs
 end
 
 (** {2 Display Results} *)
@@ -92,13 +104,15 @@ end
 (* sub-command for running tests *)
 let term_run =
   let open Cmdliner in
-  let aux debug config j timeout memory nocaching web db =
+  let aux dirs debug config j timeout memory nocaching web db =
     let config = FrogConfig.interpolate_home config in
     if debug then (
       Maki_log.set_level 5;
       Lwt_log.add_rule "*" Lwt_log.Debug;
     );
-    Lwt_main.run (Run.main ?j ?timeout ?memory ~caching:(not nocaching) ~web ~db ~config ())
+    let caching = not nocaching in
+    Lwt_main.run
+      (Run.main ?j ?timeout ?memory ~caching ~web ~db ~config dirs ())
   in
   let debug =
     Arg.(value & flag & info ["d"; "debug"] ~doc:"enable debug")
@@ -119,8 +133,11 @@ let term_run =
     Arg.(value & flag & info ["no-caching"] ~doc:"toggle caching")
   and doc =
     "test a program on every file in a directory"
+  and dir =
+    Arg.(value & pos_all string [] &
+         info [] ~docv:"DIR" ~doc:"target directories (containing tests)")
   in
-  Term.(pure aux $ debug $ config $ j $ timeout $ memory $ nocaching $ web $ db), Term.info ~doc "run"
+  Term.(pure aux $ dir $ debug $ config $ j $ timeout $ memory $ nocaching $ web $ db), Term.info ~doc "run"
 
 (* sub-command to display a file *)
 let term_display =

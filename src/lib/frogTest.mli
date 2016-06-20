@@ -54,7 +54,7 @@ module Config : sig
     j: int; (* number of concurrent processes *)
     timeout: int; (* timeout for each problem *)
     memory: int;
-    dir: string;
+    default_dirs: string list;
     problem_pat: string; (* regex for problems *)
     provers: Prover.t list;
   } [@@deriving yojson]
@@ -63,7 +63,7 @@ module Config : sig
     ?j:int ->
     ?timeout:int ->
     ?memory:int ->
-    dir:string ->
+    ?dir:string list ->
     pat:string ->
     provers:Prover.t list ->
     unit -> t
