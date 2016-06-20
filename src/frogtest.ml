@@ -53,9 +53,14 @@ module Run = struct
     let web = FrogMisc.Opt.((server >|= W.Server.run) |> get Lwt.return_unit) |> E.ok in
     main >>= fun results ->
     List.iter (fun x -> Format.printf "%a@." T.Analyze.print x) results;
+    (* wait for webserver to return *)
     let%lwt _ = web in
+    E.return results
+
+  let check_res results : unit E.t =
+    let results = List.flatten results in
     if List.for_all T.Analyze.is_ok results
-    then E.return results (* wait for webserver to return *)
+    then E.return ()
     else
       E.fail (Format.asprintf "%d failure(s)" (
           List.fold_left (+) 0 @@
@@ -77,7 +82,7 @@ module Run = struct
     E.map_s
       (test_dir ?j ?timeout ?memory ?caching ~config ~problem_pat ~web ~db)
       dirs
-    >|= fun results ->
+    >>= fun results ->
     begin match junit with
       | None -> ()
       | Some file ->
@@ -85,7 +90,8 @@ module Run = struct
         let suites = List.flatten results |> List.map T.Analyze.to_junit in
         T.Analyze.junit_to_file suites file;
     end;
-    ()
+    (* now fail if results were bad *)
+    check_res results
 end
 
 (** {2 Display FrogRun} *)
