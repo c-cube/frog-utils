@@ -179,28 +179,40 @@ let hash t =
   |> Sha1.to_hex
 
 let db_init t =
-  Sqlexpr.execute t [%sql
+  FrogDB.exec t
     "CREATE TABLE IF NOT EXISTS provers (
         hash STRING PRIMARY KEY,
-        contents STRING)"]
+        contents STRING)"
+    (fun _ -> ())
 
-let find_aux s =
-  match of_yojson (Yojson.Safe.from_string s) with
-  | `Ok t -> t
-  | `Error _ -> assert false
+let find_aux (r:FrogDB.row) = match r with
+  | [| FrogDB.D.BLOB s |] ->
+    begin match of_yojson (Yojson.Safe.from_string s) with
+      | `Ok t -> t
+      | `Error _ -> assert false
+    end
+  | _ -> assert false
 
 let find db hash =
-  match Sqlexpr.select_one_maybe db [%sqlc
-          "SELECT @s{contents} FROM provers WHERE hash=%s"] hash with
-  | Some s -> Some (find_aux s)
-  | None -> None
+  FrogDB.exec_a db "SELECT contents FROM provers WHERE hash=?"
+    [| FrogDB.D.string hash |]
+    (fun c -> match FrogDB.Cursor.head c with
+       | Some r -> Some (find_aux r)
+       | None -> None)
 
 let find_all db =
-  Sqlexpr.select_f db find_aux [%sqlc "SELECT @s{contents} FROM provers"]
+  FrogDB.exec db "SELECT contents FROM provers"
+    (fun c ->
+       Cursor.to_list_rev c
+       |> List.map find_aux)
 
 let db_add db t =
-  Sqlexpr.execute db [%sqlc "INSERT OR IGNORE INTO provers(hash,contents) VALUES (%s,%s)"]
-    (hash t) (Yojson.Safe.to_string (to_yojson t))
+  FrogDB.exec_a db
+    "INSERT OR IGNORE INTO provers(hash,contents) VALUES (%s,%s)"
+    [| FrogDB.D.string (hash t)
+       ; FrogDB.D.string (Yojson.Safe.to_string (to_yojson t))
+    |]
+    (fun _ -> ())
 
 (* HTML server *)
 let to_html_name p =

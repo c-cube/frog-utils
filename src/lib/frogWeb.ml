@@ -59,12 +59,12 @@ end
     regressions between results, etc. *)
 module Server : sig
   type t
-  val create: db_path:string -> ?db_init:(FrogDB.Sqlexpr.db -> unit) list -> unit -> t
+  val create: db_path:string -> ?db_init:(FrogDB.t -> unit) list -> unit -> t
   val update : t -> (HMap.t -> HMap.t) -> unit
   val map : t -> HMap.t
   val get : t -> 'a HMap.key -> 'a
   val set : t -> 'a HMap.key -> 'a -> unit
-  val db : t -> FrogDB.Sqlexpr.db
+  val db : t -> FrogDB.t
   val add_route : t -> ?descr:string -> string -> Opium.Rock.Handler.t -> unit
   val return_html : ?title:string -> ?code:Cohttp.Code.status_code -> html -> Opium.Response.t Lwt.t
   val set_port : t -> int -> unit
@@ -74,7 +74,7 @@ end = struct
   open Opium.Std
 
   type t = {
-    db: FrogDB.Sqlexpr.db;
+    db: FrogDB.t;
     mutable map : HMap.t;
     mutable toplevel : (string * string) list; (* toplevel URLs *)
     mutable port: int;
@@ -82,7 +82,7 @@ end = struct
   }
 
   let create ~db_path ?(db_init=[]) () =
-    let db = FrogDB.Sqlexpr.open_db (FrogConfig.interpolate_home db_path) in
+    let db = FrogDB.open_ (FrogConfig.interpolate_home db_path) in
     List.iter ((|>) db) db_init;
     { map=HMap.empty;
       db;

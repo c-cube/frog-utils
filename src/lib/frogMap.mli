@@ -34,7 +34,7 @@ val run_proc :
 
 val maki_raw_res : raw_result Maki.Value.ops
 
-val db_init : FrogDB.Sqlexpr.db -> unit
+val db_init : FrogDB.t -> unit
 
 val k_add : (raw_result -> unit) FrogWeb.HMap.key
 

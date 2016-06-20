@@ -25,9 +25,7 @@ PKG olinq
 PKG result
 PKG opium.unix
 PKG cow
-PKG dbm
 PKG uri
-PKG sqlexpr
-PKG sqlexpr.ppx
+PKG sqlite3
 
 #FLG -w +a-4-44-29-48

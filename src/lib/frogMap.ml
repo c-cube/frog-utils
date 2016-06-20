@@ -132,43 +132,71 @@ let run_proc ?env ~timeout ~memory ~prover ~pb () =
 
 (* DB management *)
 let db_init t =
-  Sqlexpr.execute t [%sql
+  FrogDB.exec t
     "CREATE TABLE IF NOT EXISTS results (
       prover STRING, problem STRING, res STRING,
       stdout STRING, stderr STRING, errcode INTEGER,
-      rtime REAL, utime REAL, stime REAL)"]
+      rtime REAL, utime REAL, stime REAL)"
+    (fun _ -> ())
 
-let import db (prover_hash, problem_hash, res_s,
-               stdout, stderr, errcode, rtime, utime, stime) =
-  match FrogProver.find db prover_hash with
-  | Some prover ->
-    begin match FrogProblem.find db problem_hash with
-      | Some problem ->
-        let res = FrogRes.of_string res_s in
-        Some { prover; problem; res; stdout; stderr;
-               errcode; rtime; utime; stime; }
-      | None -> None
-    end
-  | None -> None
+let import db (r:FrogDB.row) =
+  let module D = FrogDB.D in
+  match r with
+    | [| D.BLOB prover_hash
+       ; D.BLOB problem_hash
+       ; D.BLOB res_s
+       ; D.BLOB stdout
+       ; D.BLOB stderr
+       ; D.INT errcode
+       ; D.FLOAT rtime
+       ; D.FLOAT utime
+       ; D.FLOAT stime
+      |] ->
+      begin match FrogProver.find db prover_hash with
+        | Some prover ->
+          begin match FrogProblem.find db problem_hash with
+            | Some problem ->
+              let res = FrogRes.of_string res_s in
+              let errcode = Int64.to_int errcode in
+              Some { prover; problem; res; stdout; stderr;
+                     errcode; rtime; utime; stime; }
+            | None -> None
+          end
+        | None -> None
+      end
+    | _ -> assert false
 
 let find db prover problem =
-  match Sqlexpr.select_one_maybe db [%sqlc
-          "SELECT @s{prover}, @s{problem}, @s{res},
-                  @s{stdout}, @s{stderr}, @d{errcode},
-                  @f{rtime}, @f{utime}, @f{stime}
-            FROM results
-            WHERE prover=%s AND problem=%s"] prover problem with
-  | Some x -> import db x
-  | None -> None
+  FrogDB.exec_a db
+    "SELECT prover, problem, res,
+            stdout, stderr, errcode,
+            rtime, utime, stime
+      FROM results
+      WHERE prover=? AND problem=?"
+    [| FrogDB.D.string prover; FrogDB.D.string problem |]
+    (fun c -> match FrogDB.Cursor.head c with
+       | Some r -> import db r
+       | None -> None)
 
 let db_add db t =
+  let module D = FrogDB.D in
   let () = FrogProver.db_add db t.prover in
   let () = FrogProblem.db_add db t.problem in
   let prover_hash = FrogProver.hash t.prover in
   let problem_hash = FrogProblem.hash t.problem in
-  Sqlexpr.execute db [%sql "INSERT INTO results VALUES (%s,%s,%s,%s,%s,%d,%f,%f,%f)"]
-    prover_hash problem_hash (FrogRes.to_string t.res)
-    t.stdout t.stderr t.errcode t.rtime t.utime t.stime
+  FrogDB.exec_a db
+    "INSERT INTO results VALUES (?,?,?,?,?,?,?,?,?)"
+    [| D.BLOB prover_hash
+     ; D.BLOB problem_hash
+     ; D.BLOB (FrogRes.to_string t.res)
+     ; D.BLOB t.stdout
+     ; D.BLOB t.stderr
+     ; D.int t.errcode
+     ; D.FLOAT t.rtime
+     ; D.FLOAT t.utime
+     ; D.FLOAT t.stime
+    |]
+    (fun _ -> ())
 
 (* display the raw result *)
 let to_html_raw_result_name uri_of_raw r =

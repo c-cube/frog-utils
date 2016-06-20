@@ -88,31 +88,42 @@ let hash p : string =
 
 (* DB management *)
 let db_init t =
-  Sqlexpr.execute t [%sql
+  FrogDB.exec t
     "CREATE TABLE IF NOT EXISTS problems (
       hash STRING PRIMARY KEY,
       name STRING,
-      expected STRING)"]
+      expected STRING)"
+    (fun _ -> ())
 
-let find_aux (name, s) =
-  let expected = FrogRes.of_string s in
-  { name; expected; }
+let find_aux row = match row with
+  | [| FrogDB.D.BLOB name; FrogDB.D.BLOB s |] ->
+    let expected = FrogRes.of_string s in
+    { name; expected; }
+  | _ -> assert false
 
 let find db h =
-  match Sqlexpr.select_one_maybe db [%sqlc
-          "SELECT @s{name},@s{expected} FROM problems WHERE hash=%s"] h with
-  | Some x -> Some (find_aux x)
-  | None -> None
+  FrogDB.exec1 db
+    "SELECT name, expected FROM problems WHERE hash=?"
+    (FrogDB.D.string h)
+    (fun c -> match FrogDB.Cursor.head c with
+       | Some row -> Some (find_aux row)
+       | None -> None)
 
 let find_all db =
-  Sqlexpr.select_f db find_aux [%sqlc
-      "SELECT @s{name},@s{expected} FROM problems"]
+  FrogDB.exec db
+    "SELECT name, expected FROM problems"
+    (fun c ->
+       FrogDB.Cursor.to_list_rev c
+       |> List.map find_aux)
 
 let db_add db t =
-  Sqlexpr.execute db [%sqlc
-    "INSERT OR IGNORE INTO problems(hash,name,expected) VALUES (%s,%s,%s)"]
-    (hash t) t.name (FrogRes.to_string t.expected)
-
+  FrogDB.exec_a db
+    "INSERT OR IGNORE INTO problems(hash,name,expected) VALUES (?,?,?)"
+    [| FrogDB.D.string (hash t)
+     ; FrogDB.D.string t.name
+     ; FrogDB.D.string (FrogRes.to_string t.expected)
+    |]
+    (fun _ -> ())
 
 (* HTML server *)
 let to_html_name p = W.Html.string (Filename.basename p.name)

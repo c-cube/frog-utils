@@ -9,8 +9,7 @@ true: warn(+a-4-44-29-48)
             package(result), package(re.posix), \
             package(maki), package(maki.yojson), package(olinq), \
             package(cmdliner), package(archimedes.cairo), \
-            package(opium.unix), package(cow), package(dbm), \
-            package(sqlexpr), package(sqlexpr.ppx), thread
+            package(opium.unix), package(cow), package(sqlite3), thread
 <**/**/*>: annot, bin_annot
 
 <test>: include

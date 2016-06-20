@@ -29,7 +29,7 @@ depends: [
     "olinq"
     "opium" { >= "0.15" }
     "cow"
-    "dbm"
+    "sqlite3"
     "maki"
 ]
 available: [ "ocaml-version" >= "4.02.1" ]
