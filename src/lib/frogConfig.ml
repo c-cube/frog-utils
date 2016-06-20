@@ -89,8 +89,14 @@ let parse_files l conf =
 
 (* Exceptions for getters *)
 
-exception WrongType
+exception WrongType of string
 exception Field_not_found of string
+
+let () = Printexc.register_printer
+    (function
+      | WrongType n -> Some (Printf.sprintf "field `%s` has the wrong type" n)
+      | Field_not_found n -> Some (Printf.sprintf "could not find field `%s`" n)
+      | _ -> None)
 
 (* "generic" getter *)
 let rec get_or ?default getter conf name =
@@ -103,7 +109,7 @@ let rec get_or ?default getter conf name =
   | Table {tbl; parent} ->
       try
         getter (TomlTypes.Table.find (Toml.key name) tbl)
-      with Not_found | WrongType ->
+      with Not_found ->
         get_or ?default getter parent name
 
 type 'a getter = ?default:'a -> t -> string -> 'a
@@ -111,35 +117,35 @@ type 'a getter = ?default:'a -> t -> string -> 'a
 let get_table ?default conf name =
   let getter x = match x with
     | TomlTypes.TTable tbl -> Table {tbl; parent=Empty;}
-    | _ -> raise WrongType
+    | _ -> raise (WrongType name)
   in
   get_or ?default getter conf name
 
 let get_bool ?default conf name =
   let f = function
     | TomlTypes.TBool b -> b
-    | _ -> raise WrongType
+    | _ -> raise (WrongType name)
   in
   get_or ?default f conf name
 
 let get_int ?default conf name =
   let f = function
     | TomlTypes.TInt x -> x
-    | _ -> raise WrongType
+    | _ -> raise (WrongType name)
   in
   get_or ?default f conf name
 
 let get_string ?default conf name =
   let get_string_exn = function
     | TomlTypes.TString x -> x
-    | _ -> raise WrongType
+    | _ -> raise (WrongType name)
   in
   get_or ?default get_string_exn conf name
 
 let get_float ?default conf name =
   let f = function
     | TomlTypes.TFloat x -> x
-    | _ -> raise WrongType
+    | _ -> raise (WrongType name)
   in
   get_or ?default f conf name
 
@@ -147,6 +153,6 @@ let get_string_list ?default conf name =
   get_or ?default
     (fun s -> match s with
       | TomlTypes.TArray (TomlTypes.NodeString l) -> l
-      | _ -> raise WrongType)
+      | _ -> raise (WrongType name))
     conf name
 
