@@ -51,6 +51,7 @@ module Cursor = struct
   type t = {
     stmt: Sqlite3.stmt;
     mutable cur: D.t array option;
+    mutable closed: bool;
   }
 
   let next_ stmt = match Sqlite3.step stmt with
@@ -63,9 +64,14 @@ module Cursor = struct
   let make stmt =
     { stmt;
       cur = next_ stmt;
+      closed = false;
     }
 
-  let close c = check_ret (Sqlite3.finalize c.stmt)
+  let close c =
+    if not c.closed then (
+      c.closed <- true;
+      check_ret (Sqlite3.finalize c.stmt)
+    )
 
   (* next value in the cursor *)
   let next c = match c.cur with
@@ -74,7 +80,7 @@ module Cursor = struct
         let res = c.cur in
         let next = next_ c.stmt in
         c.cur <- next;
-        if next = None then check_ret (Sqlite3.finalize c.stmt);
+        if next = None then close c;
         res
 
   let junk c = ignore (next c)
@@ -102,7 +108,14 @@ module Cursor = struct
   let to_list c = List.rev (to_list_rev c)
 end
 
-let open_ str = Sqlite3.db_open str
+(* on "busy", wait 300ms before failing *)
+let setup_timeout db =
+  Sqlite3.busy_timeout db 300
+
+let open_ str =
+  let db = Sqlite3.db_open str in
+  setup_timeout db;
+  db
 
 let finally_ h f x =
   try
