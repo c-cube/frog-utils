@@ -29,6 +29,7 @@ depends: [
     "olinq"
     "opium" { >= "0.15" }
     "cow"
+    "junit"
     "sqlite3"
     "maki"
 ]

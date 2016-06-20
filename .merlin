@@ -27,5 +27,6 @@ PKG opium.unix
 PKG cow
 PKG uri
 PKG sqlite3
+PKG junit
 
 #FLG -w +a-4-44-29-48

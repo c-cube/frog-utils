@@ -47,6 +47,11 @@ module Analyze : sig
 
   val print : Format.formatter -> t -> unit
 
+  val to_junit : t -> Junit.Testsuite.t
+  (** Converts the results into a junit testsuite *)
+
+  val junit_to_file : Junit.Testsuite.t list -> string -> unit
+  (** [to_junit_file j file] writes the testsuite [j] into given file *)
 end
 
 module Config : sig

@@ -29,7 +29,7 @@ module Run = struct
       (res.FrogRun.problem.FrogProblem.name ^ " :") pp_res ();
     Lwt.return_unit
 
-  let test_dir ?j ?timeout ?memory ?caching ~config ~problem_pat ~web ~db dir =
+  let test_dir ?j ?timeout ?memory ?caching ~config ~problem_pat ~web ~db dir : T.Analyze.t list E.t =
     let open E in
     Format.printf "testing dir `%s`...@." dir;
     T.ProblemSet.of_dir ~filter:(Re.execp problem_pat) dir
@@ -55,14 +55,14 @@ module Run = struct
     List.iter (fun x -> Format.printf "%a@." T.Analyze.print x) results;
     let%lwt _ = web in
     if List.for_all T.Analyze.is_ok results
-    then E.return () (* wait for webserver to return *)
+    then E.return results (* wait for webserver to return *)
     else
       E.fail (Format.asprintf "%d failure(s)" (
           List.fold_left (+) 0 @@
           List.map T.Analyze.num_failed results))
 
   (* lwt main *)
-  let main ?j ?timeout ?memory ?caching ~web ~db ~config dirs () =
+  let main ?j ?timeout ?memory ?caching ?junit ~web ~db ~config dirs () =
     let open E in
     (* parse config *)
     Lwt.return (T.Config.of_file config)
@@ -74,9 +74,18 @@ module Run = struct
     in
     (* build problem set (exclude config file!) *)
     let problem_pat = Re_posix.compile_pat config.T.Config.problem_pat in
-    E.iter_s
+    E.map_s
       (test_dir ?j ?timeout ?memory ?caching ~config ~problem_pat ~web ~db)
       dirs
+    >|= fun results ->
+    begin match junit with
+      | None -> ()
+      | Some file ->
+        Lwt_log.ign_info_f "write results in Junit to file `%s`" file;
+        let suites = List.flatten results |> List.map T.Analyze.to_junit in
+        T.Analyze.junit_to_file suites file;
+    end;
+    ()
 end
 
 (** {2 Display FrogRun} *)
@@ -104,7 +113,7 @@ end
 (* sub-command for running tests *)
 let term_run =
   let open Cmdliner in
-  let aux dirs debug config j timeout memory nocaching web db =
+  let aux dirs debug config j timeout memory nocaching web db junit =
     let config = FrogConfig.interpolate_home config in
     if debug then (
       Maki_log.set_level 5;
@@ -112,7 +121,7 @@ let term_run =
     );
     let caching = not nocaching in
     Lwt_main.run
-      (Run.main ?j ?timeout ?memory ~caching ~web ~db ~config dirs ())
+      (Run.main ?j ?timeout ?memory ?junit ~caching ~web ~db ~config dirs ())
   in
   let debug =
     Arg.(value & flag & info ["d"; "debug"] ~doc:"enable debug")
@@ -133,11 +142,15 @@ let term_run =
     Arg.(value & flag & info ["no-caching"] ~doc:"toggle caching")
   and doc =
     "test a program on every file in a directory"
+  and junit =
+    Arg.(value & opt (some string) None & info ["junit"] ~doc:"junit output file")
   and dir =
     Arg.(value & pos_all string [] &
          info [] ~docv:"DIR" ~doc:"target directories (containing tests)")
   in
-  Term.(pure aux $ dir $ debug $ config $ j $ timeout $ memory $ nocaching $ web $ db), Term.info ~doc "run"
+  Term.(pure aux $ dir $ debug $ config $ j $ timeout $ memory
+    $ nocaching $ web $ db $ junit),
+  Term.info ~doc "run"
 
 (* sub-command to display a file *)
 let term_display =

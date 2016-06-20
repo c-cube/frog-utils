@@ -95,11 +95,11 @@ module LwtErr = struct
       | Ok x -> Ok (f x)
     ) e
 
-  let rec iter_s : ('a -> unit t) -> 'a list -> unit t
+  let rec map_s : ('a -> 'b t) -> 'a list -> 'b list t
     = fun f l -> match l with
-    | [] -> return ()
+    | [] -> return []
     | x :: tail ->
-      f x >>= fun _ -> iter_s f tail
+      f x >>= fun x' -> map_s f tail >|= fun tail' -> x' :: tail'
 end
 
 module List = struct

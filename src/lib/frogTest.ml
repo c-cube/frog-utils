@@ -215,6 +215,61 @@ module Analyze = struct
     |> R.add "raw" (to_html_raw uri_of_problem uri_of_raw_res t.raw)
     |> R.close
 
+  let to_junit t : Junit.Testsuite.t =
+    let module J = Junit in
+    let l =
+      MStr.fold
+        (fun _ r acc ->
+           let name =
+             Printf.sprintf "prover `%s` on problem `%s`"
+               r.FrogRun.prover.Prover.name
+               r.FrogRun.problem.Problem.name
+           and message =
+             Printf.sprintf "result: `%s`, expected: `%s`"
+               (FrogRes.to_string r.FrogRun.res)
+               (FrogRes.to_string r.FrogRun.problem.Problem.expected)
+           and classname = ""
+           and typ = ""
+           and time = r.FrogRun.rtime
+           in
+           let case =
+             match Problem.compare_res r.FrogRun.problem r.FrogRun.res with
+               | `Mismatch ->
+                 J.Testcase.error
+                   ~typ ~classname ~time
+                   ~name
+                   ~message:""
+                   message
+               | `Disappoint
+               | `Same
+               | `Improvement ->
+                 J.Testcase.pass
+                   ~classname ~time
+                   ~name
+           in
+           case :: acc)
+        t.raw
+        []
+    in
+    let suite =
+      J.Testsuite.make
+        ?package:None
+        ?timestamp:None
+        ?hostname:None
+        ?system_out:None
+        ?system_err:None
+        ~name:"frogtest"
+    in
+    J.Testsuite.add_testcases l suite
+
+  let junit_to_file suites file =
+    let report = Junit.make suites in
+    let xml_report = Junit.to_xml report in
+    let oc = open_out file in
+    let fmt = Format.formatter_of_out_channel oc in
+    Format.fprintf fmt "@[%a@]@." (Tyxml.Xml.pp ()) xml_report;
+    close_out oc;
+    ()
 end
 
 module Config = struct
