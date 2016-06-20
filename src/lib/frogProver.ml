@@ -208,7 +208,7 @@ let find_all db =
 
 let db_add db t =
   FrogDB.exec_a db
-    "INSERT OR IGNORE INTO provers(hash,contents) VALUES (%s,%s)"
+    "INSERT OR IGNORE INTO provers(hash,contents) VALUES (?,?)"
     [| FrogDB.D.string (hash t)
        ; FrogDB.D.string (Yojson.Safe.to_string (to_yojson t))
     |]
