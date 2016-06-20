@@ -8,6 +8,7 @@ module T = FrogTest
 module Prover = FrogProver
 module E = FrogMisc.LwtErr
 module W = FrogWeb
+module Results = FrogResultMap
 
 (** {2 Run} *)
 module Run = struct
@@ -16,7 +17,7 @@ module Run = struct
     let module F = FrogMisc.Fmt in
     let pp_res out () =
       let str, c =
-        match T.Problem.compare_res res.FrogMap.problem res.FrogMap.res with
+        match T.Problem.compare_res res.Results.problem res.Results.res with
         | `Same -> "ok", `Green
         | `Improvement -> "ok (improved)", `Blue
         | `Disappoint -> "disappoint", `Yellow
@@ -25,8 +26,8 @@ module Run = struct
       Format.fprintf out "%a" (F.in_bold_color c Format.pp_print_string) str
     in
     Format.printf "%-20s%-50s %a@."
-      (Filename.basename res.FrogMap.prover.FrogProver.binary)
-      (res.FrogMap.problem.FrogProblem.name ^ " :") pp_res ();
+      (Filename.basename res.Results.prover.FrogProver.binary)
+      (res.Results.problem.FrogProblem.name ^ " :") pp_res ();
     Lwt.return_unit
 
   let test_dir ?j ?timeout ?memory ?caching ~config ~problem_pat ~web ~db dir =
@@ -43,7 +44,7 @@ module Run = struct
                 ~db_init:[
                   FrogProver.db_init;
                   FrogProblem.db_init;
-                  FrogMap.db_init;
+                  Results.db_init;
                 ]())
       else None in
     (* solve *)
