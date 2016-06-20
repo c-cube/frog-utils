@@ -11,17 +11,17 @@ type uri = FrogWeb.uri
 module Prover = FrogProver
 
 module Res = FrogRes
-module Results = FrogResultMap
 module Problem = FrogProblem
 module ProblemSet = FrogProblemSet
 
 module MStr : Map.S with type key = String.t
 
+type raw_result = FrogRun.raw_result
+
 (** {2 Result on a single problem} *)
 
 module Analyze : sig
-
-  type raw = Results.raw_result MStr.t
+  type raw = raw_result MStr.t
 
   type stat = {
     unsat: int;
@@ -33,10 +33,10 @@ module Analyze : sig
   type t = {
     raw: raw;
     stat: stat;
-    improved  : Results.raw_result list;
-    ok        : Results.raw_result list;
-    disappoint: Results.raw_result list;
-    bad       : Results.raw_result list;
+    improved  : raw_result list;
+    ok        : raw_result list;
+    disappoint: raw_result list;
+    bad       : raw_result list;
   }
 
   val is_ok : t -> bool
@@ -98,7 +98,7 @@ module ResultsComparison : sig
 end
 
 val run :
-  ?on_solve:(Results.raw_result -> unit Lwt.t) ->
+  ?on_solve:(raw_result -> unit Lwt.t) ->
   ?on_done:(Analyze.t -> unit Lwt.t) ->
   ?caching:bool ->
   ?j:int ->

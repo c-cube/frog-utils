@@ -13,9 +13,9 @@ module Res = FrogRes
 module Problem = FrogProblem
 module ProblemSet = FrogProblemSet
 
-module Results = FrogResultMap
-
 module MStr = Map.Make(String)
+
+type raw_result = FrogRun.raw_result [@@deriving yojson]
 
 type 'a or_error = 'a E.t
 type 'a printer = Format.formatter -> 'a -> unit
@@ -31,17 +31,17 @@ let assoc_or def x l =
 
 module Analyze = struct
 
-  type raw = Results.raw_result MStr.t
+  type raw = raw_result MStr.t
 
   let raw_of_list l =
     List.fold_left
-      (fun acc r -> MStr.add r.Results.problem.Problem.name r acc)
+      (fun acc r -> MStr.add r.FrogRun.problem.Problem.name r acc)
       MStr.empty l
 
   let raw_to_yojson r : Yojson.Safe.json =
     let l = MStr.fold
         (fun _ r acc ->
-           let j = Results.raw_result_to_yojson r in
+           let j = FrogRun.raw_result_to_yojson r in
            j :: acc)
         r []
     in
@@ -54,7 +54,7 @@ module Analyze = struct
       | _ -> fail "expected list"
     in
     get_list_ j
-    >|= List.map Results.raw_result_of_yojson
+    >|= List.map FrogRun.raw_result_of_yojson
     >|= List.map of_err
     >>= seq_list
     >|= raw_of_list
@@ -81,10 +81,10 @@ module Analyze = struct
   type t = {
     raw: raw;
     stat: stat;
-    improved: Results.raw_result list;
-    ok: Results.raw_result list;
-    disappoint: Results.raw_result list;
-    bad: Results.raw_result list;
+    improved: raw_result list;
+    ok: raw_result list;
+    disappoint: raw_result list;
+    bad: raw_result list;
   } [@@deriving yojson]
 
   let maki =
@@ -98,7 +98,7 @@ module Analyze = struct
       M.of_map raw
       |> OLinq.map snd
       |> OLinq.group_by
-        (fun r -> Problem.compare_res r.Results.problem r.Results.res)
+        (fun r -> Problem.compare_res r.FrogRun.problem r.FrogRun.res)
       |> OLinq.run_list ?limit:None
     in
     let improved = assoc_or [] `Improvement l in
@@ -113,11 +113,11 @@ module Analyze = struct
           | Res.Unknown -> add_unknown_ | Res.Error -> add_error_
         ) !stat
     in
-    MStr.iter (fun _ r -> add_res r.Results.res) raw;
+    MStr.iter (fun _ r -> add_res r.FrogRun.res) raw;
     improved, ok, bad, disappoint, !stat
 
   let add_raw raw r =
-    MStr.add r.Results.problem.Problem.name r raw
+    MStr.add r.FrogRun.problem.Problem.name r raw
 
   let make raw =
     let improved, ok, bad, disappoint, stat = analyse_ raw in
@@ -149,9 +149,9 @@ module Analyze = struct
 
   let pp_raw_res_ out r =
     fpf out "@[<h>problem %s (expected: %a, result: %a)@]"
-      r.Results.problem.Problem.name
-      Res.print r.Results.problem.Problem.expected
-      Res.print r.Results.res
+      r.FrogRun.problem.Problem.name
+      Res.print r.FrogRun.problem.Problem.expected
+      Res.print r.FrogRun.res
 
   let print out r =
     let pp_l out = fpf out "[@[<hv>%a@]]" (pp_list_ pp_raw_res_) in
@@ -172,9 +172,9 @@ module Analyze = struct
 
   let to_html_raw_result_l uri_of_problem uri_of_raw_res r =
     [ H.a
-        ~href:(uri_of_problem r.Results.problem)
-        (Problem.to_html_name r.Results.problem)
-    ; H.a ~href:(uri_of_raw_res r) (Res.to_html r.Results.res)
+        ~href:(uri_of_problem r.FrogRun.problem)
+        (Problem.to_html_name r.FrogRun.problem)
+    ; H.a ~href:(uri_of_raw_res r) (Res.to_html r.FrogRun.res)
     ]
 
   let to_html_summary t =
@@ -304,7 +304,7 @@ module ResultsComparison = struct
 
   (* TODO: use outer_join? to also find the disappeared/appeared *)
   let compare (a: Analyze.raw) b : t =
-    let open Results in
+    let open FrogRun in
     let module M = OLinq.AdaptMap(MStr) in
     let a = M.of_map a |> OLinq.map snd in
     let b = M.of_map b |> OLinq.map snd in
@@ -362,15 +362,15 @@ let run_pb_ ~config prover pb =
   Lwt_log.ign_debug_f "running %-15s/%-30s..."
     (Filename.basename prover.FrogProver.binary) pb.Problem.name;
   (* spawn process *)
-  let%lwt result = Results.run_proc
+  let%lwt result = FrogRun.run_proc
       ~timeout:config.Config.timeout
       ~memory:config.Config.memory
       ~prover ~pb ()
   in
   Lwt_log.ign_debug_f "output for %s/%s: `%s`, `%s`, errcode %d"
     prover.FrogProver.binary pb.Problem.name
-    result.Results.stdout result.Results.stderr
-    result.Results.errcode;
+    result.FrogRun.stdout result.FrogRun.stderr
+    result.FrogRun.errcode;
   Lwt.return result
 
 let run_pb ?(caching=true) ?limit ~config prover pb =
@@ -383,7 +383,7 @@ let run_pb ?(caching=true) ?limit ~config prover pb =
            V.pack V.int config.Config.memory;
            V.pack Prover.maki prover;
            V.pack Problem.maki pb]
-    ~op:Results.maki_raw_res
+    ~op:FrogRun.maki_raw_res
     ~name:"frogtest.run_pb"
     (fun () -> run_pb_ ~config prover pb)
 
@@ -398,7 +398,7 @@ let run ?(on_solve = nop_) ?(on_done = nop_)
     ~f:(fun s ->
         Prover.add_server s;
         Problem.add_server s;
-        Results.add_server s;
+        FrogRun.add_server s;
         Config.add_server s config;
         List.iter (fun x -> W.Server.get s Prover.k_add x) config.Config.provers;
       );
@@ -411,7 +411,7 @@ let run ?(on_solve = nop_) ?(on_done = nop_)
             FrogMisc.Opt.iter server
               ~f:(fun s ->
                   W.Server.get s Problem.k_add pb;
-                  W.Server.get s Results.k_add raw_res);
+                  W.Server.get s FrogRun.k_add raw_res);
             Lwt.return raw_res)
           set)
       config.Config.provers
