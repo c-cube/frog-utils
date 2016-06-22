@@ -108,9 +108,9 @@ module Cursor = struct
   let to_list c = List.rev (to_list_rev c)
 end
 
-(* on "busy", wait 300ms before failing *)
+(* on "busy", wait this amound of milliseconds before failing *)
 let setup_timeout db =
-  Sqlite3.busy_timeout db 300
+  Sqlite3.busy_timeout db 20
 
 let open_ str =
   let db = Sqlite3.db_open str in

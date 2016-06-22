@@ -52,7 +52,7 @@ module Run = struct
     in
     let web = FrogMisc.Opt.((server >|= W.Server.run) |> get Lwt.return_unit) |> E.ok in
     main >>= fun results ->
-    List.iter (fun x -> Format.printf "%a@." T.Analyze.print x) results;
+    List.iter (fun x -> Format.printf "@[%a@]@." T.Analyze.print x) results;
     (* wait for webserver to return *)
     let%lwt _ = web in
     E.return results

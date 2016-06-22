@@ -113,7 +113,7 @@ val run :
   config:Config.t ->
   ProblemSet.t ->
   Analyze.t list Lwt.t
-(** Run the given prover on the given problem set, obtaining results
+(** Run the given prover(s) on the given problem set, obtaining results
     after all the problems have been dealt with.
     @param caching if true, use Maki for caching results (default true)
     @param server if provided, register some paths to the server
