@@ -16,13 +16,6 @@ module Problem = FrogProblem
 let fpf = Format.fprintf
 
 type raw_result = {
-  (* Prover and problem *)
-  prover : Prover.t;
-  problem: Problem.t;
-
-  (* High-level result *)
-  res: Res.t;
-
   (* Raw output *)
   errcode: int;
   stdout: string;
@@ -34,37 +27,57 @@ type raw_result = {
   stime : float;
 } [@@deriving yojson]
 
+type prover  = [ `Prover of Prover.t ]  [@@deriving yojson]
+type checker = [ `Checker of unit ]     [@@deriving yojson]
+type program = [ prover | checker ]     [@@deriving yojson]
+
+type +'a result = {
+  program : 'a;
+  problem : Problem.t;
+  raw : raw_result;
+} constraint 'a = [< program ]
+    [@@deriving yojson]
+
+let hash_prog t =
+  match t.program with
+  | `Prover prover -> FrogProver.hash prover
+  | `Checker checker -> "TODO"
+
 let maki_raw_res =
   Maki_yojson.make_err "raw_res"
     ~to_yojson:raw_result_to_yojson
     ~of_yojson:raw_result_of_yojson
 
+let (maki_result : _ result Maki.Value.ops) =
+  Maki_yojson.make_err "result"
+    ~to_yojson:(result_to_yojson program_to_yojson)
+    ~of_yojson:(result_of_yojson program_of_yojson)
+
 (* Start processes *)
 type env = (string * string) array
 
-let extract_res_ ~prover stdout stderr errcode =
+let analyze_p t =
+  let `Prover prover = t.program in
   (* find if [re: re option] is present in [stdout] *)
   let find_opt_ re = match re with
     | None -> false
     | Some re ->
-      Re.execp (Re_posix.compile_pat re) stdout ||
-      Re.execp (Re_posix.compile_pat re) stderr
+      Re.execp (Re_posix.compile_pat re) t.raw.stdout ||
+      Re.execp (Re_posix.compile_pat re) t.raw.stderr
   in
-  if errcode = 0 && find_opt_ prover.Prover.sat then Res.Sat
-  else if errcode = 0 && find_opt_ prover.Prover.unsat then Res.Unsat
+  if t.raw.errcode = 0 && find_opt_ prover.Prover.sat then Res.Sat
+  else if t.raw.errcode = 0 && find_opt_ prover.Prover.unsat then Res.Unsat
   else if (find_opt_ prover.Prover.timeout || find_opt_ prover.Prover.unknown)
   then Res.Unknown
   else Res.Error
 
-let run_cmd ?env ~timeout ~memory ~prover ~file () =
+let mk_cmd ?env ~timeout ~memory ~prover ~file () =
   Lwt_log.ign_debug_f "timeout: %d, memory: %d" timeout memory;
   let cmd = FrogProver.make_command ?env prover ~timeout ~memory ~file in
   let cmd = ["/bin/sh"; "-c"; cmd] in
   "/bin/sh", Array.of_list cmd
 
-let run_proc ?env ~timeout ~memory ~prover ~pb () =
-  let file = pb.FrogProblem.name in
-  let cmd = run_cmd ?env ~timeout ~memory ~prover ~file () in
+let run_proc ~timeout cmd =
   let start = Unix.gettimeofday () in
   (* slightly extended timeout *)
   Lwt_process.with_process_full cmd
@@ -105,12 +118,7 @@ let run_proc ?env ~timeout ~memory ~prover ~pb () =
            Lwt_log.ign_debug_f "closing...\n";
            let%lwt _ = p#close in
            Lwt_log.ign_debug_f "done closing & reading, return\n";
-           let res =
-             if !killed then FrogRes.Unknown
-             else extract_res_ ~prover stdout stderr errcode
-           in
            Lwt.return {
-             problem = pb; prover; res;
              stdout; stderr; errcode;
              rtime; utime; stime; }
          with e ->
@@ -121,30 +129,36 @@ let run_proc ?env ~timeout ~memory ~prover ~pb () =
            Lwt_log.ign_debug_f ~exn:e "error while running %s"
              ([%show: (string * string array)] cmd);
            Lwt.return {
-             problem = pb; prover;
-             res = FrogRes.Error;
              stdout = ""; stderr; errcode;
              rtime; utime = 0.; stime = 0.; }
        in
        res
     )
 
+let run_prover ?env ~timeout ~memory ~prover ~pb () =
+  let file = pb.FrogProblem.name in
+  let cmd = mk_cmd ?env ~timeout ~memory ~prover ~file () in
+  let%lwt raw = run_proc ~timeout cmd in
+  Lwt.return {
+    program = `Prover prover;
+    problem = pb; raw; }
+
 
 (* DB management *)
 let db_init t =
   FrogDB.exec t
     "CREATE TABLE IF NOT EXISTS results (
-      prover STRING, problem STRING, res STRING,
+      program STRING, problem STRING,
       stdout STRING, stderr STRING, errcode INTEGER,
-      rtime REAL, utime REAL, stime REAL)"
+      rtime REAL, utime REAL, stime REAL,
+      PRIMARY KEY (program, problem) ON CONFLICT IGNORE)"
     (fun _ -> ())
 
 let import db (r:FrogDB.row) =
   let module D = FrogDB.D in
   match r with
-    | [| D.BLOB prover_hash
+    | [| D.BLOB program_hash
        ; D.BLOB problem_hash
-       ; D.BLOB res_s
        ; D.BLOB stdout
        ; D.BLOB stderr
        ; D.INT errcode
@@ -152,69 +166,86 @@ let import db (r:FrogDB.row) =
        ; D.FLOAT utime
        ; D.FLOAT stime
       |] ->
-      begin match FrogProver.find db prover_hash with
-        | Some prover ->
-          begin match FrogProblem.find db problem_hash with
-            | Some problem ->
-              let res = FrogRes.of_string res_s in
-              let errcode = Int64.to_int errcode in
-              Some { prover; problem; res; stdout; stderr;
-                     errcode; rtime; utime; stime; }
+      let errcode = Int64.to_int errcode in
+      let raw = { stdout; stderr; errcode; rtime; utime; stime; } in
+      begin match FrogProblem.find db problem_hash with
+        | Some problem ->
+          begin match FrogProver.find db program_hash with
+            | Some prover ->
+              Some { program = `Prover prover; problem; raw; }
             | None -> None
           end
         | None -> None
+          (* Check the checker... *)
       end
     | _ -> assert false
 
-let find db prover problem =
+let find db program problem =
   FrogDB.exec_a db
-    "SELECT prover, problem, res,
+    "SELECT program, problem,
             stdout, stderr, errcode,
             rtime, utime, stime
       FROM results
-      WHERE prover=? AND problem=?"
-    [| FrogDB.D.string prover; FrogDB.D.string problem |]
+      WHERE program=? AND problem=?"
+    [| FrogDB.D.string program; FrogDB.D.string problem |]
     (fun c -> match FrogDB.Cursor.head c with
        | Some r -> import db r
        | None -> None)
 
 let db_add db t =
   let module D = FrogDB.D in
-  let () = FrogProver.db_add db t.prover in
+  let program_hash = match t.program with
+    | `Prover prover ->
+      FrogProver.db_add db prover;
+      FrogProver.hash prover
+    | `Checker () ->
+      ""
+  in
   let () = FrogProblem.db_add db t.problem in
-  let prover_hash = FrogProver.hash t.prover in
   let problem_hash = FrogProblem.hash t.problem in
   FrogDB.exec_a db
-    "INSERT INTO results VALUES (?,?,?,?,?,?,?,?,?)"
-    [| D.BLOB prover_hash
+    "INSERT INTO results VALUES (?,?,?,?,?,?,?,?)"
+    [| D.BLOB program_hash
      ; D.BLOB problem_hash
-     ; D.BLOB (FrogRes.to_string t.res)
-     ; D.BLOB t.stdout
-     ; D.BLOB t.stderr
-     ; D.int t.errcode
-     ; D.FLOAT t.rtime
-     ; D.FLOAT t.utime
-     ; D.FLOAT t.stime
+     ; D.BLOB t.raw.stdout
+     ; D.BLOB t.raw.stderr
+     ; D.int t.raw.errcode
+     ; D.FLOAT t.raw.rtime
+     ; D.FLOAT t.raw.utime
+     ; D.FLOAT t.raw.stime
     |]
     (fun _ -> ())
 
+(* Display a result's analyzed result *)
+let to_html_analyzed = function
+  | { program = `Prover prover; _ } as t ->
+    let res = analyze_p t in
+    FrogRes.to_html res
+  | { program = `Checker checker; _ } -> H.string "TODO"
+
 (* display the raw result *)
-let to_html_raw_result_name uri_of_raw r =
-  H.a ~href:(uri_of_raw r) (FrogRes.to_html r.res)
+let to_html_raw_result_name uri_of_raw (r: program result) =
+  let content = to_html_analyzed r in
+  H.a ~href:(uri_of_raw r) content
 
 let to_html_raw_result uri_of_prover uri_of_problem r =
   R.start
-  |> R.add "prover"
-    (H.a ~href:(uri_of_prover r.prover) (FrogProver.to_html_name r.prover))
+  |> R.add "program" (
+    match r with
+    | { program = `Prover prover; _ } ->
+      (H.a ~href:(uri_of_prover prover) (FrogProver.to_html_name prover))
+    | { program = `Checker checker; _ } ->
+      H.string "TODO"
+  )
   |> R.add "problem"
     (H.a ~href:(uri_of_problem r.problem) (Problem.to_html_name r.problem))
-  |> R.add "result" (Res.to_html r.res)
-  |> R.add_int "errcode" r.errcode
-  |> R.add_string "real time" (Printf.sprintf "%.3f" r.rtime)
-  |> R.add_string "user time" (Printf.sprintf "%.3f" r.utime)
-  |> R.add_string "system time" (Printf.sprintf "%.3f" r.stime)
-  |> R.add "stdout" (W.pre (H.string r.stdout))
-  |> R.add "stderr" (W.pre (H.string r.stderr))
+  |> R.add "result" (to_html_analyzed r)
+  |> R.add_int "errcode" r.raw.errcode
+  |> R.add_string "real time" (Printf.sprintf "%.3f" r.raw.rtime)
+  |> R.add_string "user time" (Printf.sprintf "%.3f" r.raw.utime)
+  |> R.add_string "system time" (Printf.sprintf "%.3f" r.raw.stime)
+  |> R.add "stdout" (W.pre (H.string r.raw.stdout))
+  |> R.add "stderr" (W.pre (H.string r.raw.stderr))
   |> R.close
 
 let to_html_db uri_of_prover uri_of_pb uri_of_raw db =
@@ -267,9 +298,12 @@ let add_server s =
     end
   (* display all the results *)
   and handle_main _ =
-    let uri_of_raw_res r = Uri.make
-        ~path:(Printf.sprintf "/raw/%s/%s"
-                 (FrogProver.hash r.prover) (FrogProblem.hash r.problem)) () in
+    let uri_of_raw_res r =
+      Uri.make ~path:(
+        Printf.sprintf "/raw/%s/%s"
+          (hash_prog r)
+          (FrogProblem.hash r.problem)
+      ) () in
     let h = to_html_db uri_of_prover uri_of_problem uri_of_raw_res (W.Server.db s) in
     W.Server.return_html ~title:"Results"
       (W.Html.list [ W.Html.h2 (W.Html.string "Results"); h])

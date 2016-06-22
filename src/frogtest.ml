@@ -16,7 +16,7 @@ module Run = struct
     let module F = FrogMisc.Fmt in
     let pp_res out () =
       let str, c =
-        match T.Problem.compare_res res.FrogRun.problem res.FrogRun.res with
+        match T.Problem.compare_res res.FrogRun.problem (FrogRun.analyze_p res) with
         | `Same -> "ok", `Green
         | `Improvement -> "ok (improved)", `Blue
         | `Disappoint -> "disappoint", `Yellow
@@ -24,6 +24,7 @@ module Run = struct
       in
       Format.fprintf out "%a" (F.in_bold_color c Format.pp_print_string) str
     in
+    let `Prover prover = res.FrogRun.program in
     Format.printf "%-20s%-50s %a@."
       (Filename.basename res.FrogRun.prover.FrogProver.name)
       (res.FrogRun.problem.FrogProblem.name ^ " :") pp_res ();

@@ -140,8 +140,7 @@ let build_from_config config name =
         | "cmd", cmd ->
           Tag (get_cmd_out @@ mk_cmd ~binary cmd)
         | _ -> Tag s
-        | exception Not_found ->
-          Tag (get_cmd_out @@ mk_cmd ~binary "$binary --version")
+        | exception Not_found -> Tag s
       end
   in
   let unsat = get_str_ d "unsat" in

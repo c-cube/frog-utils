@@ -6,8 +6,8 @@
 exception RcError of Sqlite3.Rc.t
 
 let () = Printexc.register_printer
-  (function RcError rc -> Some ("sqlite error: " ^ Sqlite3.Rc.to_string rc)
-  | _ -> None)
+    (function RcError rc -> Some ("sqlite error: " ^ Sqlite3.Rc.to_string rc)
+            | _ -> None)
 
 let check_ret = function
   | Sqlite3.Rc.DONE
@@ -77,11 +77,11 @@ module Cursor = struct
   let next c = match c.cur with
     | None -> None
     | Some _ ->
-        let res = c.cur in
-        let next = next_ c.stmt in
-        c.cur <- next;
-        if next = None then close c;
-        res
+      let res = c.cur in
+      let next = next_ c.stmt in
+      c.cur <- next;
+      if next = None then close c;
+      res
 
   let junk c = ignore (next c)
 
@@ -148,7 +148,7 @@ let exec_a db stmt a f =
       (Format.sprintf "exec_a: wrong number of arguments, expected %d, got %d"
          (Sqlite3.bind_parameter_count stmt) (Array.length a));
   Array.iteri (fun i x -> ignore (Sqlite3.bind stmt (i+1) x)) a;
-    let c = Cursor.make stmt in
+  let c = Cursor.make stmt in
   finally_close_ f c
 
 (* execute statement with 1 param, return rows *)
