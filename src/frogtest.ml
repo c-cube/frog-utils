@@ -25,7 +25,7 @@ module Run = struct
       Format.fprintf out "%a" (F.in_bold_color c Format.pp_print_string) str
     in
     Format.printf "%-20s%-50s %a@."
-      (Filename.basename res.FrogRun.prover.FrogProver.binary)
+      (Filename.basename res.FrogRun.prover.FrogProver.name)
       (res.FrogRun.problem.FrogProblem.name ^ " :") pp_res ();
     Lwt.return_unit
 
