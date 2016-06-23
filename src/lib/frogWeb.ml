@@ -59,7 +59,11 @@ end
     regressions between results, etc. *)
 module Server : sig
   type t
-  val create: db_path:string -> ?db_init:(FrogDB.t -> unit) list -> unit -> t
+  val create:
+    db_path:string ->
+    ?db_init:(FrogDB.t -> unit) list ->
+    ?port:int ->
+    unit -> t
   val update : t -> (HMap.t -> HMap.t) -> unit
   val map : t -> HMap.t
   val get : t -> 'a HMap.key -> 'a
@@ -81,13 +85,13 @@ end = struct
     mutable app : App.t;
   }
 
-  let create ~db_path ?(db_init=[]) () =
+  let create ~db_path ?(db_init=[]) ?(port=8000) () =
     let db = FrogDB.open_ (FrogConfig.interpolate_home db_path) in
     List.iter ((|>) db) db_init;
     { map=HMap.empty;
       db;
       toplevel=[];
-      port=8000;
+      port;
       app=App.empty;
     }
 

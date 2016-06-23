@@ -65,8 +65,10 @@ let analyze_p t =
       Re.execp (Re_posix.compile_pat re) t.raw.stdout ||
       Re.execp (Re_posix.compile_pat re) t.raw.stderr
   in
-  if t.raw.errcode = 0 && find_opt_ prover.Prover.sat then Res.Sat
-  else if t.raw.errcode = 0 && find_opt_ prover.Prover.unsat then Res.Unsat
+  if t.raw.errcode = 0 then
+    if find_opt_ prover.Prover.sat then Res.Sat
+    else if find_opt_ prover.Prover.unsat then Res.Unsat
+    else Res.Unknown
   else if (find_opt_ prover.Prover.timeout || find_opt_ prover.Prover.unknown)
   then Res.Unknown
   else Res.Error
@@ -123,7 +125,8 @@ let run_proc ~timeout cmd =
              rtime; utime; stime; }
          with e ->
            Lwt_timeout.stop al;
-           let%lwt errcode = res_errcode in
+           let%lwt code = res_errcode in
+           let errcode = if !killed then 0 else code in
            let rtime = Unix.gettimeofday () -. start in
            let stderr = Printexc.to_string e in
            Lwt_log.ign_debug_f ~exn:e "error while running %s"
@@ -157,28 +160,28 @@ let db_init t =
 let import db (r:FrogDB.row) =
   let module D = FrogDB.D in
   match r with
-    | [| D.BLOB program_hash
-       ; D.BLOB problem_hash
-       ; D.BLOB stdout
-       ; D.BLOB stderr
-       ; D.INT errcode
-       ; D.FLOAT rtime
-       ; D.FLOAT utime
-       ; D.FLOAT stime
-      |] ->
-      let errcode = Int64.to_int errcode in
-      let raw = { stdout; stderr; errcode; rtime; utime; stime; } in
-      begin match FrogProblem.find db problem_hash with
-        | Some problem ->
-          begin match FrogProver.find db program_hash with
-            | Some prover ->
-              Some { program = `Prover prover; problem; raw; }
-            | None -> None
-          end
-        | None -> None
-          (* Check the checker... *)
-      end
-    | _ -> assert false
+  | [| D.BLOB program_hash
+     ; D.BLOB problem_hash
+     ; D.BLOB stdout
+     ; D.BLOB stderr
+     ; D.INT errcode
+     ; D.FLOAT rtime
+     ; D.FLOAT utime
+     ; D.FLOAT stime
+    |] ->
+    let errcode = Int64.to_int errcode in
+    let raw = { stdout; stderr; errcode; rtime; utime; stime; } in
+    begin match FrogProblem.find db problem_hash with
+      | Some problem ->
+        begin match FrogProver.find db program_hash with
+          | Some prover ->
+            Some { program = `Prover prover; problem; raw; }
+          | None -> None
+        end
+      | None -> None
+      (* Check the checker... *)
+    end
+  | _ -> assert false
 
 let find db program problem =
   FrogDB.exec_a db
