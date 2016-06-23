@@ -27,7 +27,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 (** {1 Config File} *)
 
 exception Error of string
-exception Field_not_found of string
+exception FieldNotFound of string * string
 
 type t
 

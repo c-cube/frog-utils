@@ -151,7 +151,7 @@ let db_init t =
       program STRING, problem STRING,
       stdout STRING, stderr STRING, errcode INTEGER,
       rtime REAL, utime REAL, stime REAL,
-      PRIMARY KEY (program, problem) ON CONFLICT IGNORE)"
+      PRIMARY KEY (program, problem) ON CONFLICT REPLACE)"
     (fun _ -> ())
 
 let import db (r:FrogDB.row) =

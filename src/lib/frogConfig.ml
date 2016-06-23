@@ -29,19 +29,28 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 exception Error of string
 
 type table = {
-  mutable tbl : TomlTypes.table;
-  parent : t;
+  file : string;
+  tbl  : TomlTypes.table;
+  parent : node;
 }
-and t =
+and node =
   | Empty
   | Table of table
 
-let empty = Empty
-
-let create () = Table {
-  tbl=TomlTypes.Table.empty;
-  parent=Empty;
+type t = {
+  path : string;
+  node : node;
 }
+
+let mk ?(path="") node = { path; node; }
+
+let empty = mk Empty
+
+let create () = mk @@ Table {
+    file = "";
+    tbl = TomlTypes.Table.empty;
+    parent= Empty;
+  }
 
 (* obtain $HOME *)
 let get_home () =
@@ -61,98 +70,135 @@ let interpolate_home s =
   Buffer.contents buf
 
 (* try to parse a config file *)
-let parse_or_empty file =
+let parse_node file =
   match Toml.Parser.from_filename file with
+  | `Ok tbl ->
+    Table {file; tbl; parent = Empty; }
   | `Error (msg, {Toml.Parser. source; line; column; _ }) ->
-      Format.eprintf "%s@." msg;
-      empty
-  | `Ok tbl -> Table {tbl; parent=Empty}
+    Format.eprintf "%s@." msg;
+    Empty
   | exception e ->
     Printf.eprintf "error trying to read config: %s" (Printexc.to_string e);
-    empty
+    Empty
+
+let parse_or_empty file = mk (parse_node file)
 
 let parse_files l conf =
   let module P = Toml.Parser in
   let conf' =  List.fold_left
-    (fun parent file ->
-      try
-        match parse_or_empty file with
-        | Empty -> parent
-        | Table {tbl; _} -> Table {tbl; parent; }
-      with P.Error (msg, _) -> raise (Error msg)
-    ) Empty l
+      (fun parent file ->
+         try
+           match parse_node file with
+           | Empty ->
+             parent
+           | Table { file; tbl; parent = Empty } ->
+             Table { file; tbl; parent; }
+           | _ -> assert false
+         with P.Error (msg, _) -> raise (Error msg)
+      ) Empty l
   in
-  match conf with
-  | Empty -> conf'
-  | Table {tbl; _} -> Table {tbl; parent=conf' }
+  if conf.path <> "" then
+    failwith "FrogConfig.parse_files: start config should have an empty path";
+  let node = match conf.node with
+    | Empty -> conf'
+    | Table { file; tbl; parent = Empty } ->
+      Table { file; tbl; parent = conf' }
+    | _ -> failwith "FrogConfig.parse_files: start config should have an empty parent"
+  in
+  mk node
 
 
 (* Exceptions for getters *)
 
-exception WrongType of string
-exception Field_not_found of string
+exception WrongType of string * string * string (** file, path, field name *)
+exception FieldNotFound of string * string    (** path and field name *)
 
 let () = Printexc.register_printer
     (function
-      | WrongType n -> Some (Printf.sprintf "field `%s` has the wrong type" n)
-      | Field_not_found n -> Some (Printf.sprintf "could not find field `%s`" n)
+      | WrongType (file, path, n) ->
+        Some (Printf.sprintf
+                "In file '%s', section '%s':\nfield `%s` has the wrong type"
+                file path n)
+      | FieldNotFound (path, n) ->
+        Some (Printf.sprintf
+                "In section `%s`, could not find field `%s`" path n)
       | _ -> None)
+
 
 (* "generic" getter *)
 let rec get_or ?default getter conf name =
-  match conf with
-  | Empty ->
+  let rec aux = function
+    | Empty ->
       begin match default with
-      | None -> raise (Field_not_found name)
-      | Some x -> x
+        | None -> raise (FieldNotFound (conf.path, name))
+        | Some x -> x
       end
-  | Table {tbl; parent} ->
-      try
-        getter (TomlTypes.Table.find (Toml.key name) tbl)
-      with Not_found ->
-        get_or ?default getter parent name
+    | Table {file; tbl; parent} ->
+      match getter (TomlTypes.Table.find (Toml.key name) tbl) with
+      | None -> raise (WrongType (file, conf.path, name))
+      | Some res -> res
+      | exception Not_found ->
+        aux parent
+  in
+  aux conf.node
 
 type 'a getter = ?default:'a -> t -> string -> 'a
 
-let get_table ?default conf name =
-  let getter x = match x with
-    | TomlTypes.TTable tbl -> Table {tbl; parent=Empty;}
-    | _ -> raise (WrongType name)
-  in
-  get_or ?default getter conf name
-
 let get_bool ?default conf name =
   let f = function
-    | TomlTypes.TBool b -> b
-    | _ -> raise (WrongType name)
+    | TomlTypes.TBool b -> Some b
+    | _ -> None
   in
   get_or ?default f conf name
 
 let get_int ?default conf name =
   let f = function
-    | TomlTypes.TInt x -> x
-    | _ -> raise (WrongType name)
+    | TomlTypes.TInt x -> Some x
+    | _ -> None
   in
   get_or ?default f conf name
 
 let get_string ?default conf name =
   let get_string_exn = function
-    | TomlTypes.TString x -> x
-    | _ -> raise (WrongType name)
+    | TomlTypes.TString x -> Some x
+    | _ -> None
   in
   get_or ?default get_string_exn conf name
 
 let get_float ?default conf name =
   let f = function
-    | TomlTypes.TFloat x -> x
-    | _ -> raise (WrongType name)
+    | TomlTypes.TFloat x -> Some x
+    | _ -> None
   in
   get_or ?default f conf name
 
 let get_string_list ?default conf name =
-  get_or ?default
-    (fun s -> match s with
-      | TomlTypes.TArray (TomlTypes.NodeString l) -> l
-      | _ -> raise (WrongType name))
-    conf name
+  let f = function
+    | TomlTypes.TArray (TomlTypes.NodeString l) -> Some l
+    | _ -> None
+  in
+  get_or ?default f conf name
 
+let get_table ?default conf name =
+  let rec aux = function
+  | Empty -> Empty
+  | Table {file; tbl; parent} ->
+    match TomlTypes.Table.find (Toml.key name) tbl with
+    | TomlTypes.TTable tbl ->
+      Table {file; tbl; parent = aux parent; }
+    | _ ->
+      raise (WrongType (file, conf.path, name))
+    | exception Not_found ->
+      aux parent
+  in
+  let path =
+    if conf.path = "" then name
+    else Format.sprintf "%s.%s" conf.path name
+  in
+  match aux conf.node with
+  | Empty ->
+    begin match default with
+      | None -> raise (FieldNotFound (conf.path, name))
+      | Some res -> res
+    end
+  | node -> mk ~path node

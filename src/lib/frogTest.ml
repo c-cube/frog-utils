@@ -323,8 +323,6 @@ module Config = struct
     with
     | C.Error e ->
       E.fail e
-    | C.Field_not_found field ->
-      E.fail ("could not find field: " ^ field)
 
   let to_html uri_of_prover c =
     let module H = W.Html in

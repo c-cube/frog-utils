@@ -67,7 +67,7 @@ let version_to_string = function
 
 let get_str_ d x =
   try Some (FrogConfig.get_string d x)
-  with FrogConfig.Field_not_found _ -> None
+  with FrogConfig.FieldNotFound _ -> None
 
 (* Internal function, do NOT export ! *)
 let mk_cmd
@@ -116,13 +116,13 @@ let get_branch dir : string =
 let build_from_config config name =
   let d =
     try FrogConfig.get_table config name
-    with FrogConfig.Field_not_found _ ->
+    with FrogConfig.FieldNotFound _ ->
       failwith ("could not find prover " ^ name ^ " in config")
   in
   let cmd = FrogConfig.get_string d "cmd" |> String.trim in
   let binary =
     try FrogConfig.get_string d "binary"
-    with FrogConfig.Field_not_found _ ->
+    with FrogConfig.FieldNotFound _ ->
       let b, _ = FrogMisc.Str.split ~by:' ' cmd in
       if b = "$binary" then
         failwith ("please provide $binary value for prover " ^ name)
@@ -131,7 +131,7 @@ let build_from_config config name =
   in
   let version =
     match FrogConfig.get_string d "version" with
-    | exception FrogConfig.Field_not_found _ ->
+    | exception FrogConfig.FieldNotFound _ ->
       Tag "dev"
     | s ->
       begin match FrogMisc.Str.split ~by:':' s with
