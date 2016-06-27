@@ -107,7 +107,8 @@ let run_proc ~timeout cmd =
            let%lwt () = Lwt_io.close p#stdin in
            let out = Lwt_io.read p#stdout in
            let err = Lwt_io.read p#stderr in
-           let%lwt errcode = res_errcode in
+           let%lwt code = res_errcode in
+           let errcode = if !killed then 0 else code in
            Lwt_log.ign_debug_f "errcode: %d\n" errcode;
            Lwt_timeout.stop al;
            (* Compute time used by the prover *)
