@@ -44,14 +44,16 @@ let hash_prog t =
   | `Checker checker -> "TODO"
 
 let maki_raw_res =
-  Maki_yojson.make_err "raw_res"
+  let of_yojson x = E.to_exn (raw_result_of_yojson x) in
+  Maki_yojson.make "raw_res"
     ~to_yojson:raw_result_to_yojson
-    ~of_yojson:raw_result_of_yojson
+    ~of_yojson
 
 let (maki_result : _ result Maki.Value.ops) =
-  Maki_yojson.make_err "result"
+  let of_yojson x = E.to_exn (result_of_yojson program_of_yojson x) in
+  Maki_yojson.make "result"
     ~to_yojson:(result_to_yojson program_to_yojson)
-    ~of_yojson:(result_of_yojson program_of_yojson)
+    ~of_yojson
 
 (* Start processes *)
 type env = (string * string) array

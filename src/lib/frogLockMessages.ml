@@ -95,9 +95,9 @@ let expect ic p =
   let%lwt s = Lwt_io.read_line ic in
   let%lwt res = Lwt.wrap (fun () -> Yojson.Safe.from_string s) in
   match of_yojson res with
-  | `Ok m when p m -> Lwt.return m
-  | `Ok _ -> Lwt.fail (InvalidMessage ("unexpected " ^ s))
-  | `Error msg -> Lwt.fail (InvalidMessage (msg ^ ": " ^ s))
+  | Result.Ok m when p m -> Lwt.return m
+  | Result.Ok _ -> Lwt.fail (InvalidMessage ("unexpected " ^ s))
+  | Result.Error msg -> Lwt.fail (InvalidMessage (msg ^ ": " ^ s))
 
 let parse ic = expect ic (fun _ -> true)
 

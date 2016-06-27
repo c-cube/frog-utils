@@ -56,10 +56,8 @@ module Analyze = struct
     in
     get_list_ j
     >|= List.map result_of_yojson
-    >|= List.map of_err
     >>= seq_list
     >|= raw_of_list
-    |> to_err
 
   type stat = {
     unsat: int;
@@ -89,7 +87,8 @@ module Analyze = struct
   } [@@deriving yojson]
 
   let maki =
-    Maki_yojson.make_err "results"
+    let of_yojson x = E.to_exn (of_yojson x) in
+    Maki_yojson.make "results"
       ~to_yojson
       ~of_yojson
 
@@ -126,8 +125,8 @@ module Analyze = struct
     { raw; stat; improved; ok; disappoint; bad; }
 
   let of_yojson j = match raw_of_yojson j with
-    | `Ok x -> `Ok (make x)
-    | `Error s -> `Error s
+    | Result.Ok x -> Result.Ok (make x)
+    | Result.Error s -> Result.Error s
   let to_yojson t = raw_to_yojson t.raw
 
   let of_list l =
@@ -137,7 +136,7 @@ module Analyze = struct
   let of_file ~file =
     try
       let json = Yojson.Safe.from_file file in
-      of_yojson json |> E.of_err
+      of_yojson json
     with e -> E.fail (Printexc.to_string e)
 
   let to_file t ~file = Yojson.Safe.to_file file (to_yojson t)
@@ -290,7 +289,8 @@ module Config = struct
 
   let maki : t Maki.Value.ops =
     let module V = Maki.Value in
-    let json =  Maki_yojson.make_err ~of_yojson ~to_yojson "config_json" in
+    let of_yojson x = E.to_exn (of_yojson x) in
+    let json =  Maki_yojson.make ~of_yojson ~to_yojson "config_json" in
     V.map ~descr:"config"
       (fun t -> t, t.provers)
       (fun (t,_) -> t)

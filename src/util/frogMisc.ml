@@ -33,18 +33,6 @@ module Err = struct
   let return x = Ok x
   let fail e = Error e
 
-  let of_err
-    : [`Ok of 'a | `Error of string] -> 'a t
-    = function
-    | `Ok x -> Ok x
-    | `Error s -> Error s
-
-  let to_err
-    : 'a t -> [`Ok of 'a | `Error of string]
-    = function
-    | Ok x -> `Ok x
-    | Error s -> `Error s
-
   let (>>=) e f = match e with
     | Error e -> Error e
     | Ok x -> f x
@@ -52,6 +40,14 @@ module Err = struct
   let (>|=) e f = match e with
     | Error e -> Error e
     | Ok x -> Ok (f x)
+
+  let of_exn (x:(_,exn) result) : _ t = match x with
+    | Ok x -> Ok x
+    | Error e -> Error (Printexc.to_string e)
+
+  let to_exn (x:_ t) : (_,exn) result = match x with
+    | Ok x -> Ok x
+    | Error e -> Error (Failure e)
 
   let (<*>) f x = match f, x with
     | Ok f, Ok x -> Ok (f x)
@@ -76,10 +72,6 @@ module LwtErr = struct
 
   let lift : 'a Err.t -> 'a t = Lwt.return
   let ok : 'a Lwt.t -> 'a t = fun x -> Lwt.map (fun y -> Ok y) x
-
-  let of_err
-    : [`Ok of 'a | `Error of string] Lwt.t -> 'a t
-    = fun e -> Lwt.map Err.of_err e
 
   let (>>=) : 'a t -> ('a -> 'b t) -> 'b t
   = fun e f ->

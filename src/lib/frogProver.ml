@@ -187,8 +187,8 @@ let db_init t =
 let find_aux (r:FrogDB.row) = match r with
   | [| FrogDB.D.BLOB s |] ->
     begin match of_yojson (Yojson.Safe.from_string s) with
-      | `Ok t -> t
-      | `Error _ -> assert false
+      | Result.Ok t -> t
+      | Result.Error _ -> assert false
     end
   | _ -> assert false
 

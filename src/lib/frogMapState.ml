@@ -96,14 +96,14 @@ let fold_state_s f init filename =
     (* parse job header *)
     let%lwt res = Lwt_stream.next stream in
     match job_of_yojson res with
-    | `Error e -> Lwt.fail (Failure e)
-    | `Ok job ->
+    | Result.Error e -> Lwt.fail (Failure e)
+    | Result.Ok job ->
         let%lwt acc = init job in
         Lwt_stream.fold_s
           (fun json acc ->
             match result_of_yojson json with
-            | `Error e -> Lwt.fail (Failure e)
-            | `Ok res -> f acc res
+            | Result.Error e -> Lwt.fail (Failure e)
+            | Result.Ok res -> f acc res
           ) stream acc
   with
     | Failure _ as e -> Lwt.fail e

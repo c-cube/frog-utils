@@ -37,7 +37,9 @@ let compare a b = match a, b with
   | (Sat | Unknown | Unsat), Error ->
     `Mismatch
 
-let maki : t Maki.Value.ops = Maki_yojson.make_err ~to_yojson ~of_yojson "result"
+let maki : t Maki.Value.ops =
+  let of_yojson x = FrogMisc.Err.to_exn (of_yojson x) in
+  Maki_yojson.make ~to_yojson ~of_yojson "result"
 
 let to_html s =
   let module H = FrogWeb.Html in
