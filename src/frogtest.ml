@@ -26,7 +26,7 @@ module Run = struct
     in
     let `Prover prover = res.FrogRun.program in
     Format.printf "%-20s%-50s %a@."
-      (Filename.basename res.FrogRun.prover.FrogProver.name)
+      (Filename.basename prover.FrogProver.name)
       (res.FrogRun.problem.FrogProblem.name ^ " :") pp_res ();
     Lwt.return_unit
 
