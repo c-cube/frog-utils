@@ -37,19 +37,23 @@ module Run = struct
     >>= fun pbs ->
     Format.printf "run %d tests in %s@." (T.ProblemSet.size pbs) dir;
     (* serve website *)
+    let db =
+      FrogDB.create
+        ~db_path:db
+        ~db_init:[
+          FrogProver.db_init;
+          FrogProblem.db_init;
+          FrogRun.db_init;
+        ] ()
+    in
     let server =
-      if web then
-        Some (W.Server.create
-                ~db_path:db
-                ~db_init:[
-                  FrogProver.db_init;
-                  FrogProblem.db_init;
-                  FrogRun.db_init;
-                ]())
-      else None in
+      if web
+      then Some (W.Server.create ~db ())
+      else None
+    in
     (* solve *)
     let main =
-      E.ok (T.run ?j ?timeout ?memory ?caching ~on_solve ?server ~config pbs)
+      E.ok (T.run ?j ?timeout ?memory ?caching ~on_solve ?server ~db ~config pbs)
     in
     let web = FrogMisc.Opt.((server >|= W.Server.run) |> get Lwt.return_unit) |> E.ok in
     main >>= fun results ->

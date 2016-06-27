@@ -210,7 +210,7 @@ let db_add db t =
   let () = FrogProblem.db_add db t.problem in
   let problem_hash = FrogProblem.hash t.problem in
   FrogDB.exec_a db
-    "INSERT INTO results VALUES (?,?,?,?,?,?,?,?)"
+    "INSERT INTO results VALUES (?,?,?,?,?,?,?,?);"
     [| D.BLOB program_hash
      ; D.BLOB problem_hash
      ; D.BLOB t.raw.stdout

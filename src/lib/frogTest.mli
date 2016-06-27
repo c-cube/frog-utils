@@ -109,6 +109,7 @@ val run :
   ?j:int ->
   ?timeout:int ->
   ?memory:int ->
+  ?db:FrogDB.t ->
   ?server:FrogWeb.Server.t ->
   config:Config.t ->
   ProblemSet.t ->
@@ -116,6 +117,7 @@ val run :
 (** Run the given prover(s) on the given problem set, obtaining results
     after all the problems have been dealt with.
     @param caching if true, use Maki for caching results (default true)
+    @param db if provided, register results in DB
     @param server if provided, register some paths to the server
     @param on_solve called whenever a single problem is solved *)
 

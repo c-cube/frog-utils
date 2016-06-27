@@ -4,14 +4,14 @@
 open Cmdliner
 
 let main db_path port =
-  let s = FrogWeb.Server.create
-      ~db_init:[
+  let db =
+    FrogDB.create ~db_init:[
         FrogProver.db_init;
         FrogProblem.db_init;
         FrogRun.db_init;
-      ] ~db_path ~port
-      ()
+    ] ~db_path ()
   in
+  let s = FrogWeb.Server.create ~port ~db () in
   FrogProver.add_server s;
   FrogProblem.add_server s;
   FrogRun.add_server s;

@@ -448,7 +448,7 @@ let run_pb ?(caching=true) ?limit ~config prover pb =
 let nop_ _ = Lwt.return_unit
 
 let run ?(on_solve = nop_) ?(on_done = nop_)
-    ?(caching=true) ?j ?timeout ?memory ?server ~config set
+    ?(caching=true) ?j ?timeout ?memory ?db ?server ~config set
   =
   let config = Config.update ?j ?timeout ?memory config in
   let limit = Maki.Limit.create config.Config.j in
@@ -467,9 +467,9 @@ let run ?(on_solve = nop_) ?(on_done = nop_)
             begin match result with
               | { FrogRun.program = `Prover _; _ } as t ->
                 let%lwt () = on_solve t in
-                (* add result to server? *)
-                FrogMisc.Opt.iter server
-                  ~f:(fun s -> W.Server.get s FrogRun.k_add t);
+                (* add result to db? *)
+                FrogMisc.Opt.iter db
+                  ~f:(fun db -> FrogRun.db_add db t);
                 Lwt.return t
               | _  -> assert false
               (* If this happens, it means there is a hash collision

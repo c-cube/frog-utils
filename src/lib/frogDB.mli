@@ -62,6 +62,13 @@ val open_ : string -> t
 
 val with_open : string -> (t -> 'a) -> 'a
 
+(** higher-level creation *)
+val create :
+  ?db_init:(t -> unit) list ->
+  db_path:string ->
+  unit ->
+  t
+
 val exec : t -> stmt -> (Cursor.t -> 'a) -> 'a
 (** Execute the query and return a cursor of results *)
 

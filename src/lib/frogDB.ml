@@ -110,11 +110,14 @@ end
 
 (* on "busy", wait this amound of milliseconds before failing *)
 let setup_timeout db =
-  Sqlite3.busy_timeout db 20
+  Sqlite3.busy_timeout db 300
+
+let close_ db = ignore (Sqlite3.db_close db)
 
 let open_ str =
   let db = Sqlite3.db_open str in
   setup_timeout db;
+  Gc.finalise close_ db;
   db
 
 let finally_ h f x =
@@ -130,6 +133,11 @@ let with_open str f =
   let db = open_ str in
   let close_ x = ignore (Sqlite3.db_close x) in
   finally_ close_ f db
+
+let create ?(db_init=[]) ~db_path () =
+  let db = open_ (FrogConfig.interpolate_home db_path) in
+  List.iter ((|>) db) db_init;
+  db
 
 let finally_close_ f c = finally_ Cursor.close f c
 
