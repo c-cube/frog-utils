@@ -30,14 +30,14 @@ unknown = "(\\\\* NO-PROOF \\\\*)"
 [zip]
 
 binary = "zipperposition"
-cmd = "zipperposition $file -timeout $timeout -debug 0 -mem-limit $memory"
+cmd = "zipperposition $file --timeout $timeout --debug 0 --mem-limit $memory"
 unsat = "SZS Status (Theorem|Unsatisfiable)"
 sat = "SZS Status (CounterSatisfiable|Satisfiable)"
 
 [zip-arith]
 
 binary = "zipperposition"
-cmd = "zipperposition $file -timeout $timeout -arith -debug 0 -mem-limit $memory"
+cmd = "zipperposition $file --timeout $timeout --arith --debug 0 --mem-limit $memory"
 unsat = "SZS Status (Theorem|Unsatisfiable)"
 sat = "SZS Status (CounterSatisfiable|Satisfiable)"
 

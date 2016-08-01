@@ -1,4 +1,6 @@
 
+[test]
+
 timeout=5
 provers = [ "some_prover", "some_other_prover" ]
 problems = ".*.p"
