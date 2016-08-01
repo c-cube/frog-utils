@@ -145,7 +145,7 @@ module Analyze = struct
   let is_ok r = r.bad = []
   let num_failed r = List.length r.bad
 
-  let pp_list_ p = Format.pp_print_list p
+  let pp_list_ p = FrogMisc.Fmt.pp_list p
 
   let pp_raw_res_ out r =
     fpf out "@[<h>problem %s (expected: %a, result: %a)@]"
@@ -389,7 +389,7 @@ module ResultsComparison = struct
     { appeared; disappeared; mismatch; same; regressed; improved; }
 
   let fpf = Format.fprintf
-  let pp_list_ p = Format.pp_print_list p
+  let pp_list_ p = FrogMisc.Fmt.pp_list p
   let pp_hvlist_ p out = fpf out "[@[<hv>%a@]]" (pp_list_ p)
   let pp_pb_res out (pb,res) = fpf out "@[<h>%s: %a@]" pb.Problem.name Res.print res
   let pp_pb_res2 ~bold ~color out (pb,res1,res2) =

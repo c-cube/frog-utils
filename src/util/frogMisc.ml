@@ -145,6 +145,20 @@ module Fmt = struct
     | `Yellow -> 3
     | `Blue -> 4
 
+  let pp_list ?(start="[") ?(stop="]") ?(sep="; ") pp fmt l =
+    let rec pp_list l = match l with
+      | x::((_::_) as l) ->
+        pp fmt x;
+        Format.pp_print_string fmt sep;
+        Format.pp_print_cut fmt ();
+        pp_list l
+      | x::[] -> pp fmt x
+      | [] -> ()
+    in
+    Format.pp_print_string fmt start;
+    pp_list l;
+    Format.pp_print_string fmt stop
+
   (* same as [pp], but in color [c] *)
   let in_color c pp out x =
     let n = int_of_color_ c in
