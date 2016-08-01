@@ -28,7 +28,7 @@ module Analyze : sig
     sat: int;
     errors: int;
     unknown: int;
-  }
+  } [@@deriving yojson]
 
   type t = {
     raw: raw;
@@ -37,7 +37,7 @@ module Analyze : sig
     ok        : result list;
     disappoint: result list;
     bad       : result list;
-  }
+  } [@@deriving yojson]
 
   val is_ok : t -> bool
 
@@ -48,8 +48,6 @@ module Analyze : sig
   val to_file : file:string -> t -> unit
 
   val print : Format.formatter -> t -> unit
-
-  val to_yojson : t -> Yojson.Safe.json
 
   val to_junit : t -> Junit.Testsuite.t
   (** Converts the results into a junit testsuite *)

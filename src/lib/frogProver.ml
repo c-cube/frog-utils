@@ -31,6 +31,8 @@ type t = {
 } [@@deriving yojson]
 [@@@warning "+39"]
 
+let equal p1 p2 = p1.name = p2.name
+
 let string_opt =
   Maki.Value.(
     map

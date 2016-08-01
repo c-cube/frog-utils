@@ -35,6 +35,9 @@ type t = {
 } [@@deriving yojson]
 (** The type of provers configurations *)
 
+val equal : t -> t -> bool
+(** Equality (by name) *)
+
 val maki : t Maki.Value.ops
 (** Maki values for provers. *)
 
