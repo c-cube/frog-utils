@@ -62,6 +62,8 @@ val db_add : FrogDB.t -> t -> unit
 val find : FrogDB.t -> string -> t option
 val find_all : FrogDB.t -> t list
 
+val name : t -> string
+
 val to_html_name : t -> FrogWeb.html
 val to_html_fullname : t -> FrogWeb.html
 val to_html_full : t -> FrogWeb.html

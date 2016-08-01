@@ -45,7 +45,11 @@ module Analyze : sig
 
   val of_file : file:string -> t or_error
 
+  val to_file : file:string -> t -> unit
+
   val print : Format.formatter -> t -> unit
+
+  val to_yojson : t -> Yojson.Safe.json
 
   val to_junit : t -> Junit.Testsuite.t
   (** Converts the results into a junit testsuite *)
@@ -113,7 +117,7 @@ val run :
   ?server:FrogWeb.Server.t ->
   config:Config.t ->
   ProblemSet.t ->
-  Analyze.t list Lwt.t
+  (Prover.t * Analyze.t) list Lwt.t
 (** Run the given prover(s) on the given problem set, obtaining results
     after all the problems have been dealt with.
     @param caching if true, use Maki for caching results (default true)

@@ -31,7 +31,6 @@ let assoc_or def x l =
   with Not_found -> def
 
 module Analyze = struct
-
   type raw = result MStr.t
 
   let raw_of_list l =
@@ -139,7 +138,7 @@ module Analyze = struct
       of_yojson json
     with e -> E.fail (Printexc.to_string e)
 
-  let to_file t ~file = Yojson.Safe.to_file file (to_yojson t)
+  let to_file ~file t = Yojson.Safe.to_file file (to_yojson t)
 
   (* build statistics and list of mismatch from raw results *)
 
@@ -460,25 +459,28 @@ let run ?(on_solve = nop_) ?(on_done = nop_)
         Config.add_server s config;
         List.iter (fun x -> W.Server.get s Prover.k_add x) config.Config.provers;
       );
-  let%lwt raw =
-    Lwt_list.map_p (fun prover ->
-        Lwt_list.map_p (fun pb ->
-            let%lwt result = run_pb ~caching ~limit ~config prover pb in
-            begin match result with
-              | { FrogRun.program = `Prover _; _ } as t ->
-                let%lwt () = on_solve t in
-                (* add result to db? *)
-                FrogMisc.Opt.iter db
-                  ~f:(fun db -> FrogRun.db_add db t);
-                Lwt.return t
-              | _  -> assert false
-              (* If this happens, it means there is a hash collision
-                 somewhere... *)
-            end)
-          set)
+  let%lwt res =
+    Lwt_list.map_p
+      (fun prover ->
+         let%lwt l =
+           Lwt_list.map_p (fun pb ->
+             let%lwt result = run_pb ~caching ~limit ~config prover pb in
+             begin match result with
+               | { FrogRun.program = `Prover _; _ } as t ->
+                 let%lwt () = on_solve t in
+                 (* add result to db? *)
+                 FrogMisc.Opt.iter db
+                   ~f:(fun db -> FrogRun.db_add db t);
+                 Lwt.return t
+               | _  -> assert false
+               (* If this happens, it means there is a hash collision
+                  somewhere... *)
+             end)
+             set
+         in
+         Lwt.return (prover, Analyze.of_list l))
       config.Config.provers
   in
-  let res = List.map Analyze.of_list raw in
-  let%lwt () = Lwt_list.iter_p on_done res in
+  let%lwt () = Lwt_list.iter_p (fun (_,r) -> on_done r) res in
   Lwt.return res
 

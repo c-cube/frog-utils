@@ -30,7 +30,8 @@ module Run = struct
       (res.FrogRun.problem.FrogProblem.name ^ " :") pp_res ();
     Lwt.return_unit
 
-  let test_dir ?j ?timeout ?memory ?caching ~config ~problem_pat ~web ~db dir : T.Analyze.t list E.t =
+  let test_dir ?j ?timeout ?memory ?caching ~config ~problem_pat ~web ~db dir
+    : (Prover.t * T.Analyze.t) list E.t =
     let open E in
     Format.printf "testing dir `%s`...@." dir;
     T.ProblemSet.of_dir ~filter:(Re.execp problem_pat) dir
@@ -57,22 +58,24 @@ module Run = struct
     in
     let web = FrogMisc.Opt.((server >|= W.Server.run) |> get Lwt.return_unit) |> E.ok in
     main >>= fun results ->
-    List.iter (fun x -> Format.printf "@[%a@]@." T.Analyze.print x) results;
+    List.iter
+      (fun (p,r) -> Format.printf "@[<2>%s:@ @[<hv>%a@]@]@." (Prover.name p) T.Analyze.print r)
+      results;
     (* wait for webserver to return *)
     let%lwt _ = web in
     E.return results
 
   let check_res results : unit E.t =
-    let results = List.flatten results in
-    if List.for_all T.Analyze.is_ok results
+    if List.for_all (fun (_,r) -> T.Analyze.is_ok r) results
     then E.return ()
     else
       E.fail (Format.asprintf "%d failure(s)" (
-          List.fold_left (+) 0 @@
-          List.map T.Analyze.num_failed results))
+          List.fold_left
+            (fun n (_,r) -> n+T.Analyze.num_failed r)
+            0 results))
 
   (* lwt main *)
-  let main ?j ?timeout ?memory ?caching ?junit ~web ~db ~config dirs () =
+  let main ?j ?timeout ?memory ?caching ?junit ~web ~save ~db ~config dirs () =
     let open E in
     (* parse config *)
     Lwt.return (T.Config.of_file config)
@@ -87,12 +90,25 @@ module Run = struct
     E.map_s
       (test_dir ?j ?timeout ?memory ?caching ~config ~problem_pat ~web ~db)
       dirs
+    >|= List.flatten
     >>= fun results ->
+    begin match save with
+      | None -> ()
+      | Some file ->
+        let json =
+          `List
+            (List.map
+               (fun (p,r) ->
+                `List [Prover.to_yojson p; T.Analyze.to_yojson r])
+               results)
+        in
+        Yojson.Safe.to_file file json
+    end;
     begin match junit with
       | None -> ()
       | Some file ->
         Lwt_log.ign_info_f "write results in Junit to file `%s`" file;
-        let suites = List.flatten results |> List.map T.Analyze.to_junit in
+        let suites = results |> List.map (fun (_,r) -> T.Analyze.to_junit r) in
         T.Analyze.junit_to_file suites file;
     end;
     (* now fail if results were bad *)
@@ -124,7 +140,7 @@ end
 (* sub-command for running tests *)
 let term_run =
   let open Cmdliner in
-  let aux dirs debug config j timeout memory nocaching web db junit =
+  let aux dirs debug config j timeout memory nocaching web save db junit =
     let config = FrogConfig.interpolate_home config in
     if debug then (
       Maki_log.set_level 5;
@@ -132,7 +148,7 @@ let term_run =
     );
     let caching = not nocaching in
     Lwt_main.run
-      (Run.main ?j ?timeout ?memory ?junit ~caching ~web ~db ~config dirs ())
+      (Run.main ?j ?timeout ?memory ?junit ~caching ~web ~save ~db ~config dirs ())
   in
   let debug =
     Arg.(value & flag & info ["d"; "debug"] ~doc:"enable debug")
@@ -155,12 +171,14 @@ let term_run =
     "test a program on every file in a directory"
   and junit =
     Arg.(value & opt (some string) None & info ["junit"] ~doc:"junit output file")
+  and save =
+    Arg.(value & opt (some string) None & info ["save"] ~doc:"JSON file to save results in")
   and dir =
     Arg.(value & pos_all string [] &
          info [] ~docv:"DIR" ~doc:"target directories (containing tests)")
   in
   Term.(pure aux $ dir $ debug $ config $ j $ timeout $ memory
-    $ nocaching $ web $ db $ junit),
+    $ nocaching $ web $ save $ db $ junit),
   Term.info ~doc "run"
 
 (* sub-command to display a file *)

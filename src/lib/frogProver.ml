@@ -69,6 +69,8 @@ let get_str_ d x =
   try Some (FrogConfig.get_string d x)
   with FrogConfig.FieldNotFound _ -> None
 
+let name p = p.name
+
 (* Internal function, do NOT export ! *)
 let mk_cmd
     ?(env=[||])
