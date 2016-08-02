@@ -113,6 +113,7 @@ val run :
   ?memory:int ->
   ?db:FrogDB.t ->
   ?server:FrogWeb.Server.t ->
+  ?provers:string list ->
   config:Config.t ->
   ProblemSet.t ->
   (Prover.t * Analyze.t) list Lwt.t

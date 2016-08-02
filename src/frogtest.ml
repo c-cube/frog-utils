@@ -126,7 +126,7 @@ module Run = struct
     Lwt.return_unit
 
   (* run provers on the given dir, return a list [prover, dir, results] *)
-  let test_dir ?j ?timeout ?memory ?caching ~config ~problem_pat ~web ~db dir
+  let test_dir ?j ?timeout ?memory ?caching ?provers ~config ~problem_pat ~web ~db dir
     : (Prover.t * string * T.Analyze.t) list E.t =
     let open E in
     Format.printf "testing dir `%s`...@." dir;
@@ -150,7 +150,7 @@ module Run = struct
     in
     (* solve *)
     let main =
-      E.ok (T.run ?j ?timeout ?memory ?caching ~on_solve ?server ~db ~config pbs)
+      E.ok (T.run ?j ?timeout ?memory ?caching ?provers ~on_solve ?server ~db ~config pbs)
     in
     let web = FrogMisc.Opt.((server >|= W.Server.run) |> get Lwt.return_unit) |> E.ok in
     main
@@ -175,7 +175,7 @@ module Run = struct
             0 results))
 
   (* lwt main *)
-  let main ?j ?timeout ?memory ?caching ?junit ~web ~save ~db ~config dirs () =
+  let main ?j ?timeout ?memory ?caching ?junit ?provers ~web ~save ~db ~config dirs () =
     let open E in
     (* parse config *)
     Lwt.return (T.Config.of_file config)
@@ -188,7 +188,7 @@ module Run = struct
     (* build problem set (exclude config file!) *)
     let problem_pat = Re_posix.compile_pat config.T.Config.problem_pat in
     E.map_s
-      (test_dir ?j ?timeout ?memory ?caching ~config ~problem_pat ~web ~db)
+      (test_dir ?j ?timeout ?memory ?caching ?provers ~config ~problem_pat ~web ~db)
       dirs
     >|= List.flatten
     >>= fun (results:Global_res.t) ->
@@ -233,7 +233,7 @@ end
 (* sub-command for running tests *)
 let term_run =
   let open Cmdliner in
-  let aux dirs debug config j timeout memory nocaching web save db junit =
+  let aux dirs debug config j timeout memory nocaching web save db provers junit =
     let config = FrogConfig.interpolate_home config in
     if debug then (
       Maki_log.set_level 5;
@@ -241,7 +241,7 @@ let term_run =
     );
     let caching = not nocaching in
     Lwt_main.run
-      (Run.main ?j ?timeout ?memory ?junit ~caching ~web ~save ~db ~config dirs ())
+      (Run.main ?j ?timeout ?memory ?junit ?provers ~caching ~web ~save ~db ~config dirs ())
   in
   let debug =
     Arg.(value & flag & info ["d"; "debug"] ~doc:"enable debug")
@@ -269,9 +269,11 @@ let term_run =
   and dir =
     Arg.(value & pos_all string [] &
          info [] ~docv:"DIR" ~doc:"target directories (containing tests)")
+  and provers =
+    Arg.(value & opt (some (list string)) None & info ["p"; "provers"] ~doc:"select provers")
   in
   Term.(pure aux $ dir $ debug $ config $ j $ timeout $ memory
-    $ nocaching $ web $ save $ db $ junit),
+    $ nocaching $ web $ save $ db $ provers $ junit),
   Term.info ~doc "run"
 
 (* sub-command to display a file *)

@@ -447,7 +447,7 @@ let run_pb ?(caching=true) ?limit ~config prover pb =
 let nop_ _ = Lwt.return_unit
 
 let run ?(on_solve = nop_) ?(on_done = nop_)
-    ?(caching=true) ?j ?timeout ?memory ?db ?server ~config set
+    ?(caching=true) ?j ?timeout ?memory ?db ?server ?provers ~config set
   =
   let config = Config.update ?j ?timeout ?memory config in
   let limit = Maki.Limit.create config.Config.j in
@@ -459,6 +459,13 @@ let run ?(on_solve = nop_) ?(on_done = nop_)
         Config.add_server s config;
         List.iter (fun x -> W.Server.get s Prover.k_add x) config.Config.provers;
       );
+  let provers = match provers with
+    | None -> config.Config.provers
+    | Some l ->
+      List.filter
+        (fun p -> List.mem (Prover.name p) l)
+        config.Config.provers
+  in
   let%lwt res =
     Lwt_list.map_p
       (fun prover ->
@@ -479,7 +486,7 @@ let run ?(on_solve = nop_) ?(on_done = nop_)
              set
          in
          Lwt.return (prover, Analyze.of_list l))
-      config.Config.provers
+      provers
   in
   let%lwt () = Lwt_list.iter_p (fun (_,r) -> on_done r) res in
   Lwt.return res
