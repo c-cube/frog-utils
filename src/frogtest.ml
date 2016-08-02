@@ -13,7 +13,7 @@ module W = FrogWeb
 module Global_res = struct
   type t = (Prover.t * string * T.Analyze.t) list
 
-  let to_file ~file t = 
+  let to_file ~file t =
     let json =
       `List
         (List.map
