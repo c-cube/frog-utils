@@ -6,9 +6,10 @@ type t = {
   expected: FrogRes.t; (* result expected *)
 } [@@deriving yojson]
 
-val make: file:string -> t FrogMisc.Err.t Lwt.t
-(** [make ~file] tries to find the expected result of [file], and
-    makes a problem if it finds the result *)
+val make: default_expect:FrogRes.t option -> file:string -> unit -> t FrogMisc.Err.t Lwt.t
+(** [make ~file ()] tries to find the expected result of [file], and
+    makes a problem if it finds the result
+    @param default_expect if the "expect" field is not found, use this result *)
 
 val same_name : t -> t -> bool
 val compare_name : t -> t -> int

@@ -130,7 +130,10 @@ module Run = struct
     : (Prover.t * string * T.Analyze.t) list E.t =
     let open E in
     Format.printf "testing dir `%s`...@." dir;
-    T.ProblemSet.of_dir ~filter:(Re.execp problem_pat) dir
+    T.ProblemSet.of_dir
+      ~default_expect:config.T.Config.default_expect
+      ~filter:(Re.execp problem_pat)
+      dir
     >>= fun pbs ->
     Format.printf "run %d tests in %s@." (T.ProblemSet.size pbs) dir;
     (* serve website *)

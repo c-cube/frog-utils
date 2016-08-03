@@ -5,13 +5,13 @@ module Problem = FrogProblem
 
 type t = Problem.t list
 
-let make l =
+let make ~default_expect l =
   let pool = Lwt_pool.create 30 (fun () -> Lwt.return_unit) in
   let%lwt l =
     Lwt_list.map_p
       (fun file ->
          Lwt_pool.use pool
-           (fun () -> Problem.make ~file))
+           (fun () -> Problem.make ~default_expect ~file ()))
       l
   in
   let l = FrogMisc.Err.seq_list l in
@@ -21,7 +21,7 @@ let make l =
 
 let size = List.length
 
-let of_dir ?filter:(p=fun _ -> true) d =
+let of_dir ~default_expect ?filter:(p=fun _ -> true) d =
   let l = FrogMisc.File.walk d in
   let l = FrogMisc.List.filter_map
       (fun (kind,f) -> match kind with
@@ -29,7 +29,7 @@ let of_dir ?filter:(p=fun _ -> true) d =
          | _ -> None
       ) l
   in
-  make l
+  make ~default_expect l
 
 let print out set =
   Format.fprintf out "@[<hv>%a@]" (Format.pp_print_list Problem.print) set

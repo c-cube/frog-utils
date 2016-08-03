@@ -62,6 +62,7 @@ module Config : sig
     timeout: int; (* timeout for each problem *)
     memory: int;
     default_dirs: string list;
+    default_expect: Res.t option; (* default status for problems *)
     problem_pat: string; (* regex for problems *)
     provers: Prover.t list;
   } [@@deriving yojson]
@@ -71,6 +72,7 @@ module Config : sig
     ?timeout:int ->
     ?memory:int ->
     ?dir:string list ->
+    ?default_expect:Res.t ->
     pat:string ->
     provers:Prover.t list ->
     unit -> t

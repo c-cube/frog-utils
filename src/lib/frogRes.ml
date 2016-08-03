@@ -20,7 +20,8 @@ let of_string = function
   | "sat" -> Sat
   | "unsat" -> Unsat
   | "error" -> Error
-  | "unknown" | _ -> Unknown
+  | "unknown" -> Unknown
+  | s -> failwith ("unknown result: " ^ s)
 
 let print out s = Format.pp_print_string out (to_string s)
 

@@ -280,7 +280,8 @@ module Config = struct
     j: int; (* number of concurrent processes *)
     timeout: int; (* timeout for each problem *)
     memory: int;
-    default_dirs : string list;
+    default_dirs : (string list [@default []]);
+    default_expect: (Res.t option [@default None]); (* default status for problems *)
     problem_pat: string; (* regex for problems *)
     provers: Prover.t list;
   } [@@deriving yojson]
@@ -295,8 +296,8 @@ module Config = struct
       (fun (t,_) -> t)
       (V.pair json (V.set FrogProver.maki))
 
-  let make ?(j=1) ?(timeout=5) ?(memory=1000) ?(dir=[]) ~pat ~provers () =
-    { j; timeout; memory; provers; default_dirs=dir; problem_pat=pat; }
+  let make ?(j=1) ?(timeout=5) ?(memory=1000) ?(dir=[]) ?default_expect ~pat ~provers () =
+    { j; timeout; memory; provers; default_dirs=dir; default_expect; problem_pat=pat; }
 
   let update ?j ?timeout ?memory c =
     let module O = FrogMisc.Opt in
@@ -315,10 +316,19 @@ module Config = struct
       let timeout = C.get_int ~default:5 c "timeout" in
       let memory = C.get_int ~default:1000 c "memory" in
       let default_dirs = C.get_string_list ~default:[] c "dir" in
+      let default_expect =
+        let s = C.get_string ~default:"" c "default_expect" in
+        if s="" then None
+        else (
+          let r = Res.of_string s in
+          Lwt_log.ign_debug_f "default_expect=%s" (Res.to_string r);
+          Some r
+        )
+      in
       let problem_pat = C.get_string c "problems" in
       let provers = C.get_string_list c "provers" in
       let provers = List.map (Prover.build_from_config main) provers in
-      E.return { j; timeout; memory; provers; default_dirs; problem_pat; }
+      E.return { j; timeout; memory; provers; default_expect; default_dirs; problem_pat; }
     with
     | C.Error e ->
       E.fail e

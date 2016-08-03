@@ -32,19 +32,24 @@ let re_expect_ =
      )
 
 (* what is expected? *)
-let find_expected_ ~file =
+let find_expected_ ~default_expect ~file () =
   let%lwt content = FrogMisc.File.with_in ~file FrogMisc.File.read_all in
-  let g = Re.exec re_expect_ content in
-  if Re.marked g m_unsat_ then Lwt.return Res.Unsat
-  else if Re.marked g m_sat_ then Lwt.return Res.Sat
-  else if Re.marked g m_unknown_ then Lwt.return Res.Unknown
-  else if Re.marked g m_error_ then Lwt.return Res.Error
-  else Lwt.fail Not_found
+  try%lwt
+    let g = Re.exec re_expect_ content in
+    if Re.marked g m_unsat_ then Lwt.return Res.Unsat
+    else if Re.marked g m_sat_ then Lwt.return Res.Sat
+    else if Re.marked g m_unknown_ then Lwt.return Res.Unknown
+    else if Re.marked g m_error_ then Lwt.return Res.Error
+    else Lwt.fail (Failure "could not parse the content of the `expect:` field")
+  with Not_found ->
+    match default_expect with
+      | Some r -> Lwt.return r
+      | None -> Lwt.fail (Failure "could not find the `expect:` field")
 
-let make ~file =
+let make ~default_expect ~file () =
   try%lwt
     Lwt_log.ign_debug_f "convert `%s` into problem..." file;
-    let%lwt res = find_expected_ ~file in
+    let%lwt res = find_expected_ ~default_expect ~file () in
     let pb = {
       name=file;
       expected=res;

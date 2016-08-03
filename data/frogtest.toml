@@ -5,6 +5,9 @@ timeout=5
 provers = [ "some_prover", "some_other_prover" ]
 problems = ".*.p"
 
+# optional
+default_expect = "unsat"
+
 [some_prover]
 
 binary = "some_prover.exe"
