@@ -70,6 +70,7 @@ let analyze_p t =
   if t.raw.errcode = 0 then
     if find_opt_ prover.Prover.sat then Res.Sat
     else if find_opt_ prover.Prover.unsat then Res.Unsat
+    else if find_opt_ prover.Prover.timeout then Res.Timeout
     else Res.Unknown
   else if find_opt_ prover.Prover.timeout then Res.Timeout
   else if find_opt_ prover.Prover.unknown then Res.Unknown
