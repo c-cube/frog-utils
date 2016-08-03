@@ -109,9 +109,9 @@ module Run = struct
   (* callback that prints a result *)
   let on_solve res =
     let module F = FrogMisc.Fmt in
+    let p_res = FrogRun.analyze_p res in
     let pp_res out () =
-      let str, c =
-        match T.Problem.compare_res res.FrogRun.problem (FrogRun.analyze_p res) with
+      let str, c = match T.Problem.compare_res res.FrogRun.problem p_res with
         | `Same -> "ok", `Green
         | `Improvement -> "ok (improved)", `Blue
         | `Disappoint -> "disappoint", `Yellow
@@ -120,9 +120,11 @@ module Run = struct
       Format.fprintf out "%a" (F.in_bold_color c Format.pp_print_string) str
     in
     let `Prover prover = res.FrogRun.program in
-    Format.printf "%-20s%-50s %a@."
-      (Filename.basename prover.FrogProver.name)
-      (res.FrogRun.problem.FrogProblem.name ^ " :") pp_res ();
+    let prover_name = Filename.basename prover.FrogProver.name in
+    let pb_name = res.FrogRun.problem.FrogProblem.name in
+    Lwt_log.ign_debug_f "result for `%s` with %s: %s"
+       prover_name pb_name (FrogRes.to_string p_res);
+    Format.printf "%-20s%-50s %a@." prover_name (pb_name ^ " :") pp_res ();
     Lwt.return_unit
 
   (* run provers on the given dir, return a list [prover, dir, results] *)
