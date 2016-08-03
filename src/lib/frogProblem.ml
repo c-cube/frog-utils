@@ -21,6 +21,7 @@ let compare_name t1 t2 = Pervasives.compare t1.name t2.name
 let m_unsat_, unsat_ = Re.(str "unsat" |> no_case |> mark)
 let m_sat_, sat_ = Re.(str "sat" |> no_case |> mark)
 let m_unknown_, unknown_ = Re.(str "unknown" |> no_case |> mark)
+let m_timeout_, timeout__ = Re.(str "timeout" |> no_case |> mark)
 let m_error_, error_ = Re.(alt [str "error"; str "fail"] |> no_case |> mark)
 
 (* "^ #expect: (unsat|sat|unknown|error)", basically *)
@@ -39,6 +40,7 @@ let find_expected_ ~default_expect ~file () =
     if Re.marked g m_unsat_ then Lwt.return Res.Unsat
     else if Re.marked g m_sat_ then Lwt.return Res.Sat
     else if Re.marked g m_unknown_ then Lwt.return Res.Unknown
+    else if Re.marked g m_timeout_ then Lwt.return Res.Timeout
     else if Re.marked g m_error_ then Lwt.return Res.Error
     else Lwt.fail (Failure "could not parse the content of the `expect:` field")
   with Not_found ->
@@ -65,14 +67,17 @@ let compare_res pb res =
   match pb.expected, res with
   | Res.Unsat, Res.Unsat
   | Res.Sat, Res.Sat
+  | Res.Timeout, Res.Timeout
   | Res.Unknown, Res.Unknown
   | Res.Error, Res.Error -> `Same
-  | (Res.Sat | Res.Unsat | Res.Error), Res.Unknown -> `Disappoint
+  | (Res.Sat | Res.Unsat | Res.Error), (Res.Unknown | Res.Timeout) -> `Disappoint
+  | Res.Timeout, Res.Unknown
+  | Res.Unknown, Res.Timeout
   | (Res.Unsat | Res.Error), Res.Sat
   | (Res.Sat | Res.Error), Res.Unsat
-  | (Res.Sat | Res.Unknown | Res.Unsat), Res.Error ->
+  | (Res.Sat | Res.Unknown | Res.Timeout | Res.Unsat), Res.Error ->
     `Mismatch
-  | Res.Unknown, (Res.Sat | Res.Unsat) ->
+  | (Res.Unknown | Res.Timeout), (Res.Sat | Res.Unsat) ->
     `Improvement
 
 let print out p =

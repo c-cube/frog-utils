@@ -71,8 +71,8 @@ let analyze_p t =
     if find_opt_ prover.Prover.sat then Res.Sat
     else if find_opt_ prover.Prover.unsat then Res.Unsat
     else Res.Unknown
-  else if (find_opt_ prover.Prover.timeout || find_opt_ prover.Prover.unknown)
-  then Res.Unknown
+  else if find_opt_ prover.Prover.timeout then Res.Timeout
+  else if find_opt_ prover.Prover.unknown then Res.Unknown
   else Res.Error
 
 let mk_cmd ?env ~timeout ~memory ~prover ~file () =

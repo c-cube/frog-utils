@@ -63,14 +63,16 @@ module Analyze = struct
     sat: int;
     errors: int;
     unknown: int;
+    timeout: (int [@default 0]);
   } [@@deriving yojson]
 
-  let stat_empty = {unsat=0; sat=0; errors=0; unknown=0; }
+  let stat_empty = {unsat=0; sat=0; errors=0; unknown=0; timeout=0; }
 
   let add_sat_ s = {s with sat=s.sat+1}
   let add_unsat_ s = {s with unsat=s.unsat+1}
   let add_unknown_ s = {s with unknown=s.unknown+1}
   let add_error_ s = {s with errors=s.errors+1}
+  let add_timeout_ s = {s with timeout=s.timeout+1}
 
   let pp_stat out s =
     fpf out "{@[<hv>unsat: %d,@ sat: %d,@ errors: %d,@ unknown: %d,@ total: %d@]}"
@@ -111,6 +113,7 @@ module Analyze = struct
       stat := (match res with
           | Res.Unsat -> add_unsat_ | Res.Sat -> add_sat_
           | Res.Unknown -> add_unknown_ | Res.Error -> add_error_
+          | Res.Timeout -> add_timeout_
         ) !stat
     in
     MStr.iter (fun _ r -> add_res (FrogRun.analyze_p r)) raw;

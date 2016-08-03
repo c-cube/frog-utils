@@ -5,6 +5,7 @@ type t =
   | Sat
   | Unsat
   | Unknown
+  | Timeout
   | Error
   [@@deriving yojson]
 

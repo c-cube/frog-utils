@@ -6,6 +6,7 @@ type t =
   | Sat
   | Unsat
   | Unknown
+  | Timeout
   | Error
   [@@deriving yojson]
 [@@@warning "+39"]
@@ -14,12 +15,14 @@ let to_string = function
   | Sat -> "sat"
   | Unsat -> "unsat"
   | Unknown -> "unknown"
+  | Timeout -> "timeout"
   | Error -> "error"
 
 let of_string = function
   | "sat" -> Sat
   | "unsat" -> Unsat
   | "error" -> Error
+  | "timeout" -> Timeout
   | "unknown" -> Unknown
   | s -> failwith ("unknown result: " ^ s)
 
@@ -29,13 +32,16 @@ let compare a b = match a, b with
   | Unsat, Unsat
   | Sat, Sat
   | Unknown, Unknown
+  | Timeout, Timeout
   | Error, Error -> `Same
-  | Unknown, (Sat | Unsat) -> `RightBetter
-  | (Sat | Unsat), Unknown -> `LeftBetter
+  | Unknown, Timeout -> `LeftBetter
+  | Timeout, Unknown -> `RightBetter
+  | (Unknown | Timeout), (Sat | Unsat) -> `RightBetter
+  | (Sat | Unsat), (Unknown | Timeout) -> `LeftBetter
   | (Unsat | Error), Sat
   | (Sat | Error), Unsat
-  | Error, Unknown
-  | (Sat | Unknown | Unsat), Error ->
+  | Error, (Unknown | Timeout)
+  | (Sat | Unknown | Timeout | Unsat), Error ->
     `Mismatch
 
 let maki : t Maki.Value.ops =
@@ -46,6 +52,7 @@ let to_html s =
   let module H = FrogWeb.Html in
   let color = match s with
     | Unsat | Sat -> "darkgreen"
+    | Timeout
     | Unknown -> "orange"
     | Error -> "red"
   in

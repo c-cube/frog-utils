@@ -28,6 +28,7 @@ module Analyze : sig
     sat: int;
     errors: int;
     unknown: int;
+    timeout: int;
   } [@@deriving yojson]
 
   type t = {
