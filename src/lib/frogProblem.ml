@@ -70,9 +70,9 @@ let compare_res pb res =
   | Res.Timeout, Res.Timeout
   | Res.Unknown, Res.Unknown
   | Res.Error, Res.Error -> `Same
-  | (Res.Sat | Res.Unsat | Res.Error), (Res.Unknown | Res.Timeout) -> `Disappoint
   | Res.Timeout, Res.Unknown
   | Res.Unknown, Res.Timeout
+  | (Res.Sat | Res.Unsat | Res.Error), (Res.Unknown | Res.Timeout) -> `Disappoint
   | (Res.Unsat | Res.Error), Res.Sat
   | (Res.Sat | Res.Error), Res.Unsat
   | (Res.Sat | Res.Unknown | Res.Timeout | Res.Unsat), Res.Error ->
