@@ -75,8 +75,10 @@ module Analyze = struct
   let add_timeout_ s = {s with timeout=s.timeout+1}
 
   let pp_stat out s =
-    fpf out "{@[<hv>unsat: %d,@ sat: %d,@ errors: %d,@ unknown: %d,@ total: %d@]}"
-      s.unsat s.sat s.errors s.unknown (s.unsat + s.sat + s.errors + s.unknown)
+    fpf out
+      "{@[<hv>unsat: %d,@ sat: %d,@ errors: %d,@ unknown: %d,@ timeout: %d,@ total: %d@]}"
+      s.unsat s.sat s.errors s.unknown s.timeout
+      (s.unsat + s.sat + s.errors + s.unknown + s.timeout)
 
   type t = {
     raw: raw;
