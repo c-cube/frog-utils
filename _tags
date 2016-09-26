@@ -12,6 +12,7 @@ true: warn(+a-4-44-29-48@8)
             package(opium.unix), package(cow), package(sqlite3), \
             package(junit), thread
 <**/**/*>: annot, bin_annot
+<src/lib/**/*.cm*>: for-pack(frog)
 
 <test>: include
 <test/*>: package(oUnit)

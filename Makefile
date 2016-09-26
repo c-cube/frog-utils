@@ -4,7 +4,7 @@ OPTIONS=-use-ocamlfind
 LIB_NAMES=frogutils
 LIBS=$(addprefix $(LIB_NAMES), .cma .cmxa .cmxs)
 BINARIES=froglock.native froghop.native frogtest.native frogweb.native
-TARGETS=$(LIBS) $(BINARIES)
+TARGETS=$(addprefix src/,$(LIBS)) $(BINARIES)
 TEST=foo.native
 
 BINDIR=/usr/local/bin/
