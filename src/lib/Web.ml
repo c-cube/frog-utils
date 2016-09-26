@@ -5,10 +5,10 @@
 
 open Result
 
-module E = FrogMisc.Err
+module E = Misc.Err
 module Html = Cow.Html
 
-type 'a or_error = 'a FrogMisc.Err.t
+type 'a or_error = 'a Misc.Err.t
 
 type html = Html.t
 
@@ -59,12 +59,12 @@ end
     regressions between results, etc. *)
 module Server : sig
   type t
-  val create: ?port:int -> db:FrogDB.t -> unit -> t
+  val create: ?port:int -> db:DB.t -> unit -> t
   val update : t -> (HMap.t -> HMap.t) -> unit
   val map : t -> HMap.t
   val get : t -> 'a HMap.key -> 'a
   val set : t -> 'a HMap.key -> 'a -> unit
-  val db : t -> FrogDB.t
+  val db : t -> DB.t
   val add_route : t -> ?descr:string -> string -> Opium.Rock.Handler.t -> unit
   val return_html : ?title:string -> ?code:Cohttp.Code.status_code -> html -> Opium.Response.t Lwt.t
   val set_port : t -> int -> unit
@@ -74,7 +74,7 @@ end = struct
   open Opium.Std
 
   type t = {
-    db: FrogDB.t;
+    db: DB.t;
     mutable map : HMap.t;
     mutable toplevel : (string * string) list; (* toplevel URLs *)
     mutable port: int;

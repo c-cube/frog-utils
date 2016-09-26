@@ -41,13 +41,13 @@ val equal : t -> t -> bool
 val maki : t Maki.Value.ops
 (** Maki values for provers. *)
 
-val of_config : FrogConfig.t -> t StrMap.t
+val of_config : Config.t -> t StrMap.t
 (** Get a list of supported provers from a config file. *)
 
-val build_from_config : FrogConfig.t -> string -> t
+val build_from_config : Config.t -> string -> t
 (** Parse the description of a prover from a config file *)
 
-val find_config : FrogConfig.t -> string -> t
+val find_config : Config.t -> string -> t
 (** Parse prover description from config file, and check it is listed
     in the "provers" list *)
 
@@ -60,18 +60,18 @@ val make_command :
   string
 
 val hash : t -> string
-val db_init : FrogDB.t -> unit
-val db_add : FrogDB.t -> t -> unit
-val find : FrogDB.t -> string -> t option
-val find_all : FrogDB.t -> t list
+val db_init : DB.t -> unit
+val db_add : DB.t -> t -> unit
+val find : DB.t -> string -> t option
+val find_all : DB.t -> t list
 
 val name : t -> string
 
-val to_html_name : t -> FrogWeb.html
-val to_html_fullname : t -> FrogWeb.html
-val to_html_full : t -> FrogWeb.html
+val to_html_name : t -> Web.html
+val to_html_fullname : t -> Web.html
+val to_html_full : t -> Web.html
 
-val k_uri : (t -> Uri.t) FrogWeb.HMap.key
-val k_add : (t -> unit) FrogWeb.HMap.key
-val add_server : FrogWeb.Server.t -> unit
+val k_uri : (t -> Uri.t) Web.HMap.key
+val k_add : (t -> unit) Web.HMap.key
+val add_server : Web.Server.t -> unit
 

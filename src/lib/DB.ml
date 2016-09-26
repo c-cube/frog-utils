@@ -135,7 +135,7 @@ let with_open str f =
   finally_ close_ f db
 
 let create ?(db_init=[]) ~db_path () =
-  let db = open_ (FrogConfig.interpolate_home db_path) in
+  let db = open_ (Config.interpolate_home db_path) in
   List.iter ((|>) db) db_init;
   db
 

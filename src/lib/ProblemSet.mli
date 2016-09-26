@@ -1,18 +1,18 @@
 
 (* This file is free software, part of frog-utils. See file "license" for more details. *)
 
-type t = FrogProblem.t list
+type t = Problem.t list
 
-val make: default_expect:FrogRes.t option -> string list -> t FrogMisc.Err.t Lwt.t
+val make: default_expect:Res.t option -> string list -> t Misc.Err.t Lwt.t
 (** Build a set of problems out of file names *)
 
 val size : t -> int
 
 val of_dir :
-  default_expect:FrogRes.t option ->
+  default_expect:Res.t option ->
   ?filter:(string -> bool) ->
   string ->
-  t FrogMisc.Err.t Lwt.t
+  t Misc.Err.t Lwt.t
 (** Traverse the directory and makes a problem set out of every
     file it contains.
     @param filter if present, only files that satisfy the predicate are
@@ -20,4 +20,4 @@ val of_dir :
 
 val print: Format.formatter -> t -> unit
 val maki : t Maki.Value.ops
-val to_html : (FrogProblem.t -> FrogWeb.uri) -> t -> FrogWeb.html
+val to_html : (Problem.t -> Web.uri) -> t -> Web.html

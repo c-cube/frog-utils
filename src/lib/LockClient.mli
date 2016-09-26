@@ -47,7 +47,7 @@ val connect_or_spawn : ?retry:float -> int -> (remote_daemon -> 'a Lwt.t) -> 'a 
 (** Similar to {!connect}, but if it couldn't connect it launches the daemon
     and waits {!retry} seconds before retrying. *)
 
-val get_status : int -> FrogLockMessages.status_answer option Lwt.t
+val get_status : int -> LockMessages.status_answer option Lwt.t
 (** [get_status port] connects to the daemon on the given port (if any)
     and returns its status. It returns [None] if the daemon
     couldn't be contacted *)

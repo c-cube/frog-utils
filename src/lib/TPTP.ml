@@ -4,11 +4,10 @@
 (** {1 Manage TPTP provers} *)
 
 module StrMap = Map.Make(String)
-module St = FrogMapState
-module Prover = FrogProver
-module Conf = FrogConfig
-module PB = FrogPrintBox
-module Opt = FrogMisc.Opt
+module St = MapState
+module Conf = Config
+module PB = PrintBox
+module Opt = Misc.Opt
 
 (** {2 Type Definitions} *)
 

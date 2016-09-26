@@ -1,9 +1,7 @@
 
 (* This file is free software, part of frog-utils. See file "license" for more details. *)
 
-module Res = FrogRes
-module Conf = FrogConfig
-module Prover = FrogProver
+module Conf = Config
 
 (*
 module TPTP = struct

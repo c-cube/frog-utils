@@ -3,20 +3,20 @@
 
 (** {1 Tools to test a prover} *)
 
-type 'a or_error = 'a FrogMisc.Err.t
+type 'a or_error = 'a Misc.Err.t
 type 'a printer = Format.formatter -> 'a -> unit
-type html = FrogWeb.html
-type uri = FrogWeb.uri
+type html = Web.html
+type uri = Web.uri
 
-module Prover = FrogProver
+module Prover = Prover
 
-module Res = FrogRes
-module Problem = FrogProblem
-module ProblemSet = FrogProblemSet
+module Res = Res
+module Problem = Problem
+module ProblemSet = ProblemSet
 
 module MStr : Map.S with type key = String.t
 
-type result = FrogRun.prover FrogRun.result
+type result = Run.prover Run.result
 
 (** {2 Result on a single problem} *)
 
@@ -84,7 +84,7 @@ module Config : sig
 
   val to_html : (Prover.t -> uri) -> t -> html
 
-  val add_server : FrogWeb.Server.t -> t -> unit
+  val add_server : Web.Server.t -> t -> unit
 end
 
 (* TODO: serialize, then make regression tests *)
@@ -114,8 +114,8 @@ val run :
   ?j:int ->
   ?timeout:int ->
   ?memory:int ->
-  ?db:FrogDB.t ->
-  ?server:FrogWeb.Server.t ->
+  ?db:DB.t ->
+  ?server:Web.Server.t ->
   ?provers:string list ->
   config:Config.t ->
   ProblemSet.t ->

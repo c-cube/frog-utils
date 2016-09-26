@@ -3,8 +3,8 @@
 
 
 module A = Archimedes
-module St = FrogMapState
-module Conf = FrogConfig
+module St = MapState
+module Conf = Config
 
 (* Colors *)
 exception Unknown_color

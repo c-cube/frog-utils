@@ -2,16 +2,12 @@
 (* This file is free software, part of frog-utils. See file "license" for more details. *)
 
 open Result
-open FrogDB
+open DB
 
-module W = FrogWeb
+module W = Web
 module H = W.Html
 module R = W.Record
-module E = FrogMisc.Err
-
-module Res = FrogRes
-module Prover = FrogProver
-module Problem = FrogProblem
+module E = Misc.Err
 
 let fpf = Format.fprintf
 
@@ -40,7 +36,7 @@ type +'a result = {
 
 let hash_prog t =
   match t.program with
-  | `Prover prover -> FrogProver.hash prover
+  | `Prover prover -> Prover.hash prover
   | `Checker checker -> "TODO"
 
 let maki_raw_res =
@@ -78,7 +74,7 @@ let analyze_p t =
 
 let mk_cmd ?env ~timeout ~memory ~prover ~file () =
   Lwt_log.ign_debug_f "timeout: %d, memory: %d" timeout memory;
-  let cmd = FrogProver.make_command ?env prover ~timeout ~memory ~file in
+  let cmd = Prover.make_command ?env prover ~timeout ~memory ~file in
   let cmd = ["/bin/sh"; "-c"; cmd] in
   "/bin/sh", Array.of_list cmd
 
@@ -143,7 +139,7 @@ let run_proc ~timeout cmd =
     )
 
 let run_prover ?env ~timeout ~memory ~prover ~pb () =
-  let file = pb.FrogProblem.name in
+  let file = pb.Problem.name in
   let cmd = mk_cmd ?env ~timeout ~memory ~prover ~file () in
   let%lwt raw = run_proc ~timeout cmd in
   Lwt.return {
@@ -153,7 +149,7 @@ let run_prover ?env ~timeout ~memory ~prover ~pb () =
 
 (* DB management *)
 let db_init t =
-  FrogDB.exec t
+  DB.exec t
     "CREATE TABLE IF NOT EXISTS results (
       program STRING, problem STRING,
       stdout STRING, stderr STRING, errcode INTEGER,
@@ -161,8 +157,8 @@ let db_init t =
       PRIMARY KEY (program, problem) ON CONFLICT REPLACE)"
     (fun _ -> ())
 
-let import db (r:FrogDB.row) =
-  let module D = FrogDB.D in
+let import db (r:DB.row) =
+  let module D = DB.D in
   match r with
   | [| D.BLOB program_hash
      ; D.BLOB problem_hash
@@ -175,9 +171,9 @@ let import db (r:FrogDB.row) =
     |] ->
     let errcode = Int64.to_int errcode in
     let raw = { stdout; stderr; errcode; rtime; utime; stime; } in
-    begin match FrogProblem.find db problem_hash with
+    begin match Problem.find db problem_hash with
       | Some problem ->
-        begin match FrogProver.find db program_hash with
+        begin match Prover.find db program_hash with
           | Some prover ->
             Some { program = `Prover prover; problem; raw; }
           | None -> None
@@ -188,29 +184,29 @@ let import db (r:FrogDB.row) =
   | _ -> assert false
 
 let find db program problem =
-  FrogDB.exec_a db
+  DB.exec_a db
     "SELECT program, problem,
             stdout, stderr, errcode,
             rtime, utime, stime
       FROM results
       WHERE program=? AND problem=?"
-    [| FrogDB.D.string program; FrogDB.D.string problem |]
-    (fun c -> match FrogDB.Cursor.head c with
+    [| DB.D.string program; DB.D.string problem |]
+    (fun c -> match DB.Cursor.head c with
        | Some r -> import db r
        | None -> None)
 
 let db_add db t =
-  let module D = FrogDB.D in
+  let module D = DB.D in
   let program_hash = match t.program with
     | `Prover prover ->
-      FrogProver.db_add db prover;
-      FrogProver.hash prover
+      Prover.db_add db prover;
+      Prover.hash prover
     | `Checker () ->
       ""
   in
-  let () = FrogProblem.db_add db t.problem in
-  let problem_hash = FrogProblem.hash t.problem in
-  FrogDB.exec_a db
+  let () = Problem.db_add db t.problem in
+  let problem_hash = Problem.hash t.problem in
+  DB.exec_a db
     "INSERT INTO results VALUES (?,?,?,?,?,?,?,?);"
     [| D.BLOB program_hash
      ; D.BLOB problem_hash
@@ -227,7 +223,7 @@ let db_add db t =
 let to_html_analyzed = function
   | { program = `Prover prover; _ } as t ->
     let res = analyze_p t in
-    FrogRes.to_html res
+    Res.to_html res
   | { program = `Checker checker; _ } -> H.string "TODO"
 
 (* display the raw result *)
@@ -240,7 +236,7 @@ let to_html_raw_result uri_of_prover uri_of_problem r =
   |> R.add "program" (
     match r with
     | { program = `Prover prover; _ } ->
-      (H.a ~href:(uri_of_prover prover) (FrogProver.to_html_name prover))
+      (H.a ~href:(uri_of_prover prover) (Prover.to_html_name prover))
     | { program = `Checker checker; _ } ->
       H.string "TODO"
   )
@@ -257,25 +253,25 @@ let to_html_raw_result uri_of_prover uri_of_problem r =
 
 let to_html_db uri_of_prover uri_of_pb uri_of_raw db =
   let pbs = List.map (fun x -> `Pb x) @@ List.sort
-      (fun p p' -> compare p.FrogProblem.name p'.FrogProblem.name)
-      (FrogProblem.find_all db) in
+      (fun p p' -> compare p.Problem.name p'.Problem.name)
+      (Problem.find_all db) in
   let provers = List.sort
-      (fun p p' -> compare p.FrogProver.binary p'.FrogProver.binary)
-      (FrogProver.find_all db) in
+      (fun p p' -> compare p.Prover.binary p'.Prover.binary)
+      (Prover.find_all db) in
   H.Create.table (`Head :: pbs) ~flags:[H.Create.Tags.Headings_fst_row]
     ~row:(function
         | `Head ->
           H.string "Problem" ::
           H.string "Expected" :: (
             List.map (fun x ->
-                H.a ~href:(uri_of_prover x) (FrogProver.to_html_fullname x)
+                H.a ~href:(uri_of_prover x) (Prover.to_html_fullname x)
               ) provers)
         | `Pb pb ->
-          H.a ~href:(uri_of_pb pb) (FrogProblem.to_html_name pb) ::
-          FrogRes.to_html pb.FrogProblem.expected ::
+          H.a ~href:(uri_of_pb pb) (Problem.to_html_name pb) ::
+          Res.to_html pb.Problem.expected ::
           List.map (
             fun prover ->
-              match find db (FrogProver.hash prover) (FrogProblem.hash pb) with
+              match find db (Prover.hash prover) (Problem.hash pb) with
               | Some raw -> to_html_raw_result_name uri_of_raw raw
               | None -> H.string "<none>"
           ) provers
@@ -309,7 +305,7 @@ let add_server s =
       Uri.make ~path:(
         Printf.sprintf "/raw/%s/%s"
           (hash_prog r)
-          (FrogProblem.hash r.problem)
+          (Problem.hash r.problem)
       ) () in
     let h = to_html_db uri_of_prover uri_of_problem uri_of_raw_res (W.Server.db s) in
     W.Server.return_html ~title:"Results"

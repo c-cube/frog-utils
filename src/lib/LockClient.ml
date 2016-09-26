@@ -26,13 +26,13 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 (** {1 Client-Side} *)
 
-module M = FrogLockMessages
+module M = LockMessages
 
 type remote_daemon = {
   port : int;
 }
 
-let section = Lwt_log.Section.make "FrogLockClient"
+let section = Lwt_log.Section.make "LockClient"
 
 let daemon_ch port f =
   Lwt_log.ign_debug_f ~section "trying to connect to daemon on port %d..." port;
@@ -84,7 +84,7 @@ let connect_or_spawn ?(retry=1.) port f =
   with _ ->
     (* launch daemon and re-connect *)
     Lwt_log.ign_info ~section "could not connect; launch daemon...";
-    match%lwt FrogLockDaemon.fork_and_spawn port with
+    match%lwt LockDaemon.fork_and_spawn port with
     | `child thread ->
         let%lwt () = thread in
         Lwt.fail Exit

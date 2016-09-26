@@ -25,10 +25,12 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 (** {1 Scheduling script} *)
 
-let section = Lwt_log.Section.make "FrogLock"
+open Frog
+
+let section = Lwt_log.Section.make "Lock"
 
 let () =
-  FrogLockMessages.register_exn_printers();
+  LockMessages.register_exn_printers();
   Lwt.async_exception_hook :=
     (fun e ->
       Lwt_log.ign_error_f "async error: %s" (Printexc.to_string e);
@@ -65,9 +67,9 @@ let run_command params =
   let info = show_cmd params.cmd in
   let user = try Some(Sys.getenv "USER") with _ -> None in
   let cwd = Sys.getcwd () in
-  FrogLockClient.connect_or_spawn params.port
+  LockClient.connect_or_spawn params.port
     (fun daemon ->
-      FrogLockClient.acquire ~cwd ?user ~info ~cores:params.cores ~priority:params.priority ~tags:params.tags daemon
+      LockClient.acquire ~cwd ?user ~info ~cores:params.cores ~priority:params.priority ~tags:params.tags daemon
         (function
         | true ->
           let cmd, cmd_string = match params.cmd with
@@ -97,7 +99,7 @@ let run_command params =
       )
     )
 
-module M = FrogLockMessages
+module M = LockMessages
 
 let maybe_str = function
   | None -> "<none>"
@@ -112,7 +114,7 @@ let print_status params =
   in
   let now = Unix.gettimeofday() in
   try%lwt
-    let%lwt res = FrogLockClient.get_status params.port in
+    let%lwt res = LockClient.get_status params.port in
     match res with
     | None ->
       Lwt_log.info_f ~section "daemon not running"
@@ -158,7 +160,7 @@ let main params =
         then Lwt_log.add_rule "*" Lwt_log.Debug;
       match params.cmd with
       | PrintStatus -> print_status params
-      | StopAccepting -> FrogLockClient.stop_accepting params.port
+      | StopAccepting -> LockClient.stop_accepting params.port
       | Exec _
       | Shell _ ->
           let%lwt res = run_command params in
@@ -272,7 +274,7 @@ let term =
         port, which can be specified in the options. If no daemon listens on the given port,
         one will be automatically launched.";
     `S "CONFIGURATION FILE";
-    `P "Froglock uses a global configuration file located at $(b,/etc/froglock.conf). It should be composed
+    `P "lock uses a global configuration file located at $(b,/etc/froglock.conf). It should be composed
         of a line for each parameter to be set, of the form: 'parameter = value'. Currently accepted parameters are
         the following.";
     `I ("$(b,cores)", "maximum number of cores to use at any given time");

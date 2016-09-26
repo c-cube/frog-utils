@@ -2,10 +2,10 @@
 (* This file is free software, part of frog-utils. See file "license" for more details. *)
 
 open Result
-open FrogDB
+open DB
 
-module W = FrogWeb
-module Res = FrogRes
+module W = Web
+module Res = Res
 
 [@@@warning "-39"]
 type t = {
@@ -34,7 +34,7 @@ let re_expect_ =
 
 (* what is expected? *)
 let find_expected_ ~default_expect ~file () =
-  let%lwt content = FrogMisc.File.with_in ~file FrogMisc.File.read_all in
+  let%lwt content = Misc.File.with_in ~file Misc.File.read_all in
   try%lwt
     let g = Re.exec re_expect_ content in
     if Re.marked g m_unsat_ then Lwt.return Res.Unsat
@@ -83,7 +83,7 @@ let compare_res pb res =
 let print out p =
   Format.fprintf out "@[<h>%s (expect: %a)@]" p.name Res.print p.expected
 
-let to_string p = FrogMisc.Fmt.to_string print p
+let to_string p = Misc.Fmt.to_string print p
 
 let maki =
   let module V = Maki.Value in
@@ -98,7 +98,7 @@ let hash p : string =
 
 (* DB management *)
 let db_init t =
-  FrogDB.exec t
+  DB.exec t
     "CREATE TABLE IF NOT EXISTS problems (
       hash STRING PRIMARY KEY,
       name STRING,
@@ -106,32 +106,32 @@ let db_init t =
     (fun _ -> ())
 
 let find_aux row = match row with
-  | [| FrogDB.D.BLOB name; FrogDB.D.BLOB s |] ->
-    let expected = FrogRes.of_string s in
+  | [| DB.D.BLOB name; DB.D.BLOB s |] ->
+    let expected = Res.of_string s in
     { name; expected; }
   | _ -> assert false
 
 let find db h =
-  FrogDB.exec1 db
+  DB.exec1 db
     "SELECT name, expected FROM problems WHERE hash=?"
-    (FrogDB.D.string h)
-    (fun c -> match FrogDB.Cursor.head c with
+    (DB.D.string h)
+    (fun c -> match DB.Cursor.head c with
        | Some row -> Some (find_aux row)
        | None -> None)
 
 let find_all db =
-  FrogDB.exec db
+  DB.exec db
     "SELECT name, expected FROM problems"
     (fun c ->
-       FrogDB.Cursor.to_list_rev c
+       DB.Cursor.to_list_rev c
        |> List.map find_aux)
 
 let db_add db t =
-  FrogDB.exec_a db
+  DB.exec_a db
     "INSERT OR IGNORE INTO problems(hash,name,expected) VALUES (?,?,?)"
-    [| FrogDB.D.string (hash t)
-     ; FrogDB.D.string t.name
-     ; FrogDB.D.string (FrogRes.to_string t.expected)
+    [| DB.D.string (hash t)
+     ; DB.D.string t.name
+     ; DB.D.string (Res.to_string t.expected)
     |]
     (fun _ -> ())
 
@@ -152,13 +152,13 @@ let add_server s =
     | Some pb ->
       (* read the problem itself *)
       Lwt_io.with_file ~mode:Lwt_io.input pb.name
-        FrogMisc.File.read_all
+        Misc.File.read_all
       >>= fun content ->
       W.Html.list
         [ W.Html.h2 (to_html_name pb)
         ; W.Record.start
           |> W.Record.add "path" (W.Html.string pb.name)
-          |> W.Record.add "expected" (FrogRes.to_html pb.expected)
+          |> W.Record.add "expected" (Res.to_html pb.expected)
           |> W.Record.add "contents" (W.pre (W.Html.string content))
           |> W.Record.close
         ]

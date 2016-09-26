@@ -45,11 +45,11 @@ let compare a b = match a, b with
     `Mismatch
 
 let maki : t Maki.Value.ops =
-  let of_yojson x = FrogMisc.Err.to_exn (of_yojson x) in
+  let of_yojson x = Misc.Err.to_exn (of_yojson x) in
   Maki_yojson.make ~to_yojson ~of_yojson "result"
 
 let to_html s =
-  let module H = FrogWeb.Html in
+  let module H = Web.Html in
   let color = match s with
     | Unsat | Sat -> "darkgreen"
     | Timeout

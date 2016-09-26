@@ -15,13 +15,13 @@ type raw_result = {
   stime : float;
 } [@@deriving yojson]
 
-type prover  = [ `Prover of FrogProver.t ]  [@@deriving yojson]
+type prover  = [ `Prover of Prover.t ]  [@@deriving yojson]
 type checker = [ `Checker of unit ]         [@@deriving yojson]
 type program = [ prover | checker ]         [@@deriving yojson]
 
 type +'a result = {
   program : 'a;
-  problem : FrogProblem.t;
+  problem : Problem.t;
   raw : raw_result;
 } constraint 'a = [< program ]
     [@@deriving yojson]
@@ -35,21 +35,21 @@ val run_prover :
   ?env:env ->
   timeout:int ->
   memory:int ->
-  prover:FrogProver.t ->
-  pb:FrogProblem.t ->
+  prover:Prover.t ->
+  pb:Problem.t ->
   unit ->
   prover result Lwt.t
 (** Runs the prover in a sub-process, and returns a the result *)
 
-val analyze_p : prover result -> FrogRes.t
+val analyze_p : prover result -> Res.t
 
 val maki_raw_res : raw_result Maki.Value.ops
 val maki_result : program result Maki.Value.ops
 
-val db_init : FrogDB.t -> unit
-val db_add : FrogDB.t -> _ result -> unit
+val db_init : DB.t -> unit
+val db_add : DB.t -> _ result -> unit
 
-val k_add : (_ result -> unit) FrogWeb.HMap.key
+val k_add : (_ result -> unit) Web.HMap.key
 
-val add_server : FrogWeb.Server.t -> unit
+val add_server : Web.Server.t -> unit
 

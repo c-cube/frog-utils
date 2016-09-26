@@ -26,10 +26,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 (** {1 Daemon} *)
 
-module M = FrogLockMessages
+module M = LockMessages
 
 let main_config_file = "/etc/froglock.conf"
-let section = Lwt_log.Section.make "FrogLockDaemon"
+let section = Lwt_log.Section.make "LockDaemon"
 
 type acquire_task = {
   id : int;
@@ -38,7 +38,7 @@ type acquire_task = {
   oc : Lwt_io.output_channel;
 }
 
-module Q = FrogHeap.Make(struct
+module Q = Heap.Make(struct
     type t = acquire_task
     let leq t t' =
       M.(t.query.priority > t'.query.priority) ||
@@ -63,11 +63,11 @@ type state = {
 }
 
 let make_state config_files =
-  let config = FrogConfig.parse_files config_files
-    (FrogConfig.parse_or_empty main_config_file) in
+  let config = Config.parse_files config_files
+    (Config.parse_or_empty main_config_file) in
   {
     current_id = 0;
-    max_cores = FrogConfig.get_int ~default:1 config "cores";
+    max_cores = Config.get_int ~default:1 config "cores";
     num_clients = 0;
     accept = true;
     current = [];
@@ -297,8 +297,8 @@ let fork_and_spawn port =
     Lwt_daemon.daemonize ~syslog:false ~directory:"/tmp"
       ~stdin:`Close ~stdout:`Close ~stderr:`Keep ();
     let log_file =
-      let config = FrogConfig.parse_or_empty main_config_file in
-      FrogConfig.get_string ~default:"/tmp/froglock.log" config "log"
+      let config = Config.parse_or_empty main_config_file in
+      Config.get_string ~default:"/tmp/froglock.log" config "log"
     in
     let%lwt () = setup_loggers log_file () in
     Lwt_log.Section.set_level section Lwt_log.Debug;

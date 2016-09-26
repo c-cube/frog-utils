@@ -1,21 +1,22 @@
 
 (* This file is free software, part of frog-utils. See file "license" for more details. *)
 
+open Frog
 open Cmdliner
 
 let main db_path port =
   let db =
-    FrogDB.create ~db_init:[
-        FrogProver.db_init;
-        FrogProblem.db_init;
-        FrogRun.db_init;
+    DB.create ~db_init:[
+        Prover.db_init;
+        Problem.db_init;
+        Run.db_init;
     ] ~db_path ()
   in
-  let s = FrogWeb.Server.create ~port ~db () in
-  FrogProver.add_server s;
-  FrogProblem.add_server s;
-  FrogRun.add_server s;
-  let web = FrogWeb.Server.run s in
+  let s = Web.Server.create ~port ~db () in
+  Prover.add_server s;
+  Problem.add_server s;
+  Run.add_server s;
+  let web = Web.Server.run s in
   Lwt_main.run web
 
 let term =

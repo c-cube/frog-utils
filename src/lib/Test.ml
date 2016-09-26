@@ -3,25 +3,25 @@
 
 (** {1 Tools to test a prover} *)
 
-module Prover = FrogProver
-module E = FrogMisc.Err
-module W = FrogWeb
+module Prover = Prover
+module E = Misc.Err
+module W = Web
 module R = W.Record
 module H = W.Html
 
-module Res = FrogRes
-module Problem = FrogProblem
-module ProblemSet = FrogProblemSet
+module Res = Res
+module Problem = Problem
+module ProblemSet = ProblemSet
 
 module MStr = Map.Make(String)
 
-type result = FrogRun.prover FrogRun.result
+type result = Run.prover Run.result
   [@@deriving yojson]
 
 type 'a or_error = 'a E.t
 type 'a printer = Format.formatter -> 'a -> unit
-type html = FrogWeb.html
-type uri = FrogWeb.uri
+type html = Web.html
+type uri = Web.uri
 
 let fpf = Format.fprintf
 let spf = Format.asprintf
@@ -35,7 +35,7 @@ module Analyze = struct
 
   let raw_of_list l =
     List.fold_left
-      (fun acc r -> MStr.add r.FrogRun.problem.Problem.name r acc)
+      (fun acc r -> MStr.add r.Run.problem.Problem.name r acc)
       MStr.empty l
 
   let raw_to_yojson r : Yojson.Safe.json =
@@ -101,8 +101,8 @@ module Analyze = struct
       M.of_map raw
       |> OLinq.map snd
       |> OLinq.group_by
-        (fun r -> Problem.compare_res r.FrogRun.problem
-            (FrogRun.analyze_p r))
+        (fun r -> Problem.compare_res r.Run.problem
+            (Run.analyze_p r))
       |> OLinq.run_list ?limit:None
     in
     let improved = assoc_or [] `Improvement l in
@@ -118,11 +118,11 @@ module Analyze = struct
           | Res.Timeout -> add_timeout_
         ) !stat
     in
-    MStr.iter (fun _ r -> add_res (FrogRun.analyze_p r)) raw;
+    MStr.iter (fun _ r -> add_res (Run.analyze_p r)) raw;
     improved, ok, bad, disappoint, !stat
 
   let add_raw raw r =
-    MStr.add r.FrogRun.problem.Problem.name r raw
+    MStr.add r.Run.problem.Problem.name r raw
 
   let make raw =
     let improved, ok, bad, disappoint, stat = analyse_ raw in
@@ -150,13 +150,13 @@ module Analyze = struct
   let is_ok r = r.bad = []
   let num_failed r = List.length r.bad
 
-  let pp_list_ p = FrogMisc.Fmt.pp_list p
+  let pp_list_ p = Misc.Fmt.pp_list p
 
   let pp_raw_res_ out r =
     fpf out "@[<h>problem %s (expected: %a, result: %a)@]"
-      r.FrogRun.problem.Problem.name
-      Res.print r.FrogRun.problem.Problem.expected
-      Res.print (FrogRun.analyze_p r)
+      r.Run.problem.Problem.name
+      Res.print r.Run.problem.Problem.expected
+      Res.print (Run.analyze_p r)
 
   let print out r =
     let pp_l out = fpf out "[@[<hv>%a@]]" (pp_list_ pp_raw_res_) in
@@ -177,9 +177,9 @@ module Analyze = struct
 
   let to_html_raw_result_l uri_of_problem uri_of_raw_res r =
     [ H.a
-        ~href:(uri_of_problem r.FrogRun.problem)
-        (Problem.to_html_name r.FrogRun.problem)
-    ; H.a ~href:(uri_of_raw_res r) (Res.to_html @@ FrogRun.analyze_p r)
+        ~href:(uri_of_problem r.Run.problem)
+        (Problem.to_html_name r.Run.problem)
+    ; H.a ~href:(uri_of_raw_res r) (Res.to_html @@ Run.analyze_p r)
     ]
 
   let to_html_summary t =
@@ -225,22 +225,22 @@ module Analyze = struct
     let l =
       MStr.fold
         (fun _ r acc ->
-           let `Prover prover = r.FrogRun.program in
-           let res = FrogRun.analyze_p r in
+           let `Prover prover = r.Run.program in
+           let res = Run.analyze_p r in
            let name =
              Printf.sprintf "prover `%s` on problem `%s`"
                prover.Prover.name
-               r.FrogRun.problem.Problem.name
+               r.Run.problem.Problem.name
            and message =
              Printf.sprintf "result: `%s`, expected: `%s`"
-               (FrogRes.to_string res)
-               (FrogRes.to_string r.FrogRun.problem.Problem.expected)
+               (Res.to_string res)
+               (Res.to_string r.Run.problem.Problem.expected)
            and classname = ""
            and typ = ""
-           and time = r.FrogRun.raw.FrogRun.rtime
+           and time = r.Run.raw.Run.rtime
            in
            let case =
-             match Problem.compare_res r.FrogRun.problem res with
+             match Problem.compare_res r.Run.problem res with
                | `Mismatch ->
                  J.Testcase.error
                    ~typ ~classname ~time
@@ -299,20 +299,20 @@ module Config = struct
     V.map ~descr:"config"
       (fun t -> t, t.provers)
       (fun (t,_) -> t)
-      (V.pair json (V.set FrogProver.maki))
+      (V.pair json (V.set Prover.maki))
 
   let make ?(j=1) ?(timeout=5) ?(memory=1000) ?(dir=[]) ?default_expect ~pat ~provers () =
     { j; timeout; memory; provers; default_dirs=dir; default_expect; problem_pat=pat; }
 
   let update ?j ?timeout ?memory c =
-    let module O = FrogMisc.Opt in
+    let module O = Misc.Opt in
     let j = O.get c.j j in
     let timeout = O.get c.timeout timeout in
     let memory = O.get c.memory memory in
     { c with j; timeout; memory; }
 
   let of_file file =
-    let module C = FrogConfig in
+    let module C = Config in
     Lwt_log.ign_debug_f "parse config file `%s`..." file;
     try
       let main = C.parse_files [file] C.empty in
@@ -375,7 +375,7 @@ module ResultsComparison = struct
 
   (* TODO: use outer_join? to also find the disappeared/appeared *)
   let compare (a: Analyze.raw) b : t =
-    let open FrogRun in
+    let open Run in
     let module M = OLinq.AdaptMap(MStr) in
     let a = M.of_map a |> OLinq.map snd in
     let b = M.of_map b |> OLinq.map snd in
@@ -404,18 +404,18 @@ module ResultsComparison = struct
     { appeared; disappeared; mismatch; same; regressed; improved; }
 
   let fpf = Format.fprintf
-  let pp_list_ p = FrogMisc.Fmt.pp_list p
+  let pp_list_ p = Misc.Fmt.pp_list p
   let pp_hvlist_ p out = fpf out "[@[<hv>%a@]]" (pp_list_ p)
   let pp_pb_res out (pb,res) = fpf out "@[<h>%s: %a@]" pb.Problem.name Res.print res
   let pp_pb_res2 ~bold ~color out (pb,res1,res2) =
-    let module F = FrogMisc.Fmt in
+    let module F = Misc.Fmt in
     fpf out "@[<h>%s: %a@]" pb.Problem.name
       ((if bold then F.in_bold_color color else F.in_color color)
          (fun out () -> fpf out "%a -> %a" Res.print res1 Res.print res2))
       ()
 
   let print out t =
-    let module F = FrogMisc.Fmt in
+    let module F = Misc.Fmt in
     fpf out "@[<v2>comparison: {@,appeared: %a,@ disappeared: %a,@ same: %a \
              ,@ mismatch: %a,@ improved: %a,@ regressed: %a@]@,}"
       (pp_hvlist_ pp_pb_res) t.appeared
@@ -431,19 +431,19 @@ end
 (* run one particular test *)
 let run_pb_ ~config prover pb =
   Lwt_log.ign_debug_f "running %-15s/%-30s..."
-    (Filename.basename prover.FrogProver.binary) pb.Problem.name;
+    (Filename.basename prover.Prover.binary) pb.Problem.name;
   (* spawn process *)
-  let%lwt result = FrogRun.run_prover
+  let%lwt result = Run.run_prover
       ~timeout:config.Config.timeout
       ~memory:config.Config.memory
       ~prover ~pb ()
   in
   Lwt_log.ign_debug_f "output for %s/%s: `%s`, `%s`, errcode %d"
-    prover.FrogProver.binary pb.Problem.name
-    result.FrogRun.raw.FrogRun.stdout
-    result.FrogRun.raw.FrogRun.stderr
-    result.FrogRun.raw.FrogRun.errcode;
-  Lwt.return (result :> FrogRun.program FrogRun.result)
+    prover.Prover.binary pb.Problem.name
+    result.Run.raw.Run.stdout
+    result.Run.raw.Run.stderr
+    result.Run.raw.Run.errcode;
+  Lwt.return (result :> Run.program Run.result)
 
 let run_pb ?(caching=true) ?limit ~config prover pb =
   let module V = Maki.Value in
@@ -455,7 +455,7 @@ let run_pb ?(caching=true) ?limit ~config prover pb =
            V.pack V.int config.Config.memory;
            V.pack Prover.maki prover;
            V.pack Problem.maki pb]
-    ~op:FrogRun.maki_result
+    ~op:Run.maki_result
     ~name:"frogtest.run_pb"
     (fun () -> run_pb_ ~config prover pb)
 
@@ -466,11 +466,11 @@ let run ?(on_solve = nop_) ?(on_done = nop_)
   =
   let config = Config.update ?j ?timeout ?memory config in
   let limit = Maki.Limit.create config.Config.j in
-  FrogMisc.Opt.iter server
+  Misc.Opt.iter server
     ~f:(fun s ->
         Prover.add_server s;
         Problem.add_server s;
-        FrogRun.add_server s;
+        Run.add_server s;
         Config.add_server s config;
         List.iter (fun x -> W.Server.get s Prover.k_add x) config.Config.provers;
       );
@@ -488,11 +488,11 @@ let run ?(on_solve = nop_) ?(on_done = nop_)
            Lwt_list.map_p (fun pb ->
              let%lwt result = run_pb ~caching ~limit ~config prover pb in
              begin match result with
-               | { FrogRun.program = `Prover _; _ } as t ->
+               | { Run.program = `Prover _; _ } as t ->
                  let%lwt () = on_solve t in
                  (* add result to db? *)
-                 FrogMisc.Opt.iter db
-                   ~f:(fun db -> FrogRun.db_add db t);
+                 Misc.Opt.iter db
+                   ~f:(fun db -> Run.db_add db t);
                  Lwt.return t
                | _  -> assert false
                (* If this happens, it means there is a hash collision

@@ -4,10 +4,10 @@
 (* run tests, or compare results *)
 
 open Result
-module T = FrogTest
-module Prover = FrogProver
-module E = FrogMisc.LwtErr
-module W = FrogWeb
+open Frog
+module T = Test
+module E = Misc.LwtErr
+module W = Web
 
 (** {2 Results for multiple provers on multiple dirs} *)
 module Global_res = struct
@@ -53,7 +53,7 @@ module Global_res = struct
       Format.fprintf out "@[<2>%s on `%s`:@ @[%a@]@]"
         (Prover.name p) dir T.Analyze.print res
     in
-    Format.fprintf out "@[<v>%a@]" (FrogMisc.Fmt.pp_list pp_tup) r
+    Format.fprintf out "@[<v>%a@]" (Misc.Fmt.pp_list pp_tup) r
 
   type comparison_result = {
     both: (Prover.t * string * T.ResultsComparison.t) list;
@@ -99,19 +99,19 @@ module Global_res = struct
         (Prover.name p) dir which T.Analyze.print res
     in
     Format.fprintf out "@[<hv>%a@,%a@,%a@]@."
-      (FrogMisc.Fmt.pp_list pp_tup) r.both
-      (FrogMisc.Fmt.pp_list (pp_one "left")) r.left
-      (FrogMisc.Fmt.pp_list (pp_one "right")) r.right
+      (Misc.Fmt.pp_list pp_tup) r.both
+      (Misc.Fmt.pp_list (pp_one "left")) r.left
+      (Misc.Fmt.pp_list (pp_one "right")) r.right
 end
 
 (** {2 Run} *)
 module Run = struct
   (* callback that prints a result *)
   let on_solve res =
-    let module F = FrogMisc.Fmt in
-    let p_res = FrogRun.analyze_p res in
+    let module F = Misc.Fmt in
+    let p_res = Run.analyze_p res in
     let pp_res out () =
-      let str, c = match T.Problem.compare_res res.FrogRun.problem p_res with
+      let str, c = match T.Problem.compare_res res.Run.problem p_res with
         | `Same -> "ok", `Green
         | `Improvement -> "ok (improved)", `Blue
         | `Disappoint -> "disappoint", `Yellow
@@ -119,11 +119,11 @@ module Run = struct
       in
       Format.fprintf out "%a" (F.in_bold_color c Format.pp_print_string) str
     in
-    let `Prover prover = res.FrogRun.program in
-    let prover_name = Filename.basename prover.FrogProver.name in
-    let pb_name = res.FrogRun.problem.FrogProblem.name in
+    let `Prover prover = res.Run.program in
+    let prover_name = Filename.basename prover.Prover.name in
+    let pb_name = res.Run.problem.Problem.name in
     Lwt_log.ign_debug_f "result for `%s` with %s: %s"
-       prover_name pb_name (FrogRes.to_string p_res);
+       prover_name pb_name (Res.to_string p_res);
     Format.printf "%-20s%-50s %a@." prover_name (pb_name ^ " :") pp_res ();
     Lwt.return_unit
 
@@ -140,12 +140,12 @@ module Run = struct
     Format.printf "run %d tests in %s@." (T.ProblemSet.size pbs) dir;
     (* serve website *)
     let db =
-      FrogDB.create
+      DB.create
         ~db_path:db
         ~db_init:[
-          FrogProver.db_init;
-          FrogProblem.db_init;
-          FrogRun.db_init;
+          Prover.db_init;
+          Problem.db_init;
+          Run.db_init;
         ] ()
     in
     let server =
@@ -157,7 +157,7 @@ module Run = struct
     let main =
       E.ok (T.run ?j ?timeout ?memory ?caching ?provers ~on_solve ?server ~db ~config pbs)
     in
-    let web = FrogMisc.Opt.((server >|= W.Server.run) |> get Lwt.return_unit) |> E.ok in
+    let web = Misc.Opt.((server >|= W.Server.run) |> get Lwt.return_unit) |> E.ok in
     main
     >|= List.map (fun (p,r) -> p, dir, r) (* add directory *)
     >>= fun results ->
@@ -213,7 +213,7 @@ module Run = struct
     check_res results
 end
 
-(** {2 Display FrogRun} *)
+(** {2 Display Run} *)
 module Display = struct
   let main ~file () =
     let open E in
@@ -222,7 +222,7 @@ module Display = struct
     E.return ()
 end
 
-(** {2 Compare FrogRun} *)
+(** {2 Compare Run} *)
 module Compare = struct
   let main ~file1 ~file2 () =
     let open E in
@@ -239,7 +239,7 @@ end
 let term_run =
   let open Cmdliner in
   let aux dirs debug config j timeout memory nocaching web save db provers junit =
-    let config = FrogConfig.interpolate_home config in
+    let config = Config.interpolate_home config in
     if debug then (
       Maki_log.set_level 5;
       Lwt_log.add_rule "*" Lwt_log.Debug;

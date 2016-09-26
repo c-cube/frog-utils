@@ -3,7 +3,7 @@
 
 (** {1 Run Prover} *)
 
-open FrogDB
+open DB
 module StrMap = Map.Make(String)
 
 type version =
@@ -68,8 +68,8 @@ let version_to_string = function
   | Git (b, c) -> Printf.sprintf "%s#%s" b c
 
 let get_str_ d x =
-  try Some (FrogConfig.get_string d x)
-  with FrogConfig.FieldNotFound _ -> None
+  try Some (Config.get_string d x)
+  with Config.FieldNotFound _ -> None
 
 let name p = p.name
 
@@ -106,7 +106,7 @@ let get_cmd_out cmd =
   let open Lwt.Infix in
   Lwt_main.run @@
   Lwt_process.with_process_in (Lwt_process.shell cmd)
-    (fun p -> FrogMisc.File.read_all p#stdout >|= String.trim)
+    (fun p -> Misc.File.read_all p#stdout >|= String.trim)
 
 let get_commit dir : string =
   get_cmd_out (
@@ -119,26 +119,26 @@ let get_branch dir : string =
 (* recover description of prover from config file *)
 let build_from_config config name =
   let d =
-    try FrogConfig.get_table config name
-    with FrogConfig.FieldNotFound _ ->
+    try Config.get_table config name
+    with Config.FieldNotFound _ ->
       failwith ("could not find prover " ^ name ^ " in config")
   in
-  let cmd = FrogConfig.get_string d "cmd" |> String.trim in
+  let cmd = Config.get_string d "cmd" |> String.trim in
   let binary =
-    try FrogConfig.get_string d "binary"
-    with FrogConfig.FieldNotFound _ ->
-      let b, _ = FrogMisc.Str.split ~by:' ' cmd in
+    try Config.get_string d "binary"
+    with Config.FieldNotFound _ ->
+      let b, _ = Misc.Str.split ~by:' ' cmd in
       if b = "$binary" then
         failwith ("please provide $binary value for prover " ^ name)
       else
         b
   in
   let version =
-    match FrogConfig.get_string d "version" with
-    | exception FrogConfig.FieldNotFound _ ->
+    match Config.get_string d "version" with
+    | exception Config.FieldNotFound _ ->
       Tag "dev"
     | s ->
-      begin match FrogMisc.Str.split ~by:':' s with
+      begin match Misc.Str.split ~by:':' s with
         | "git", dir ->
           Git (get_branch dir, get_commit dir)
         | "cmd", cmd ->
@@ -156,7 +156,7 @@ let build_from_config config name =
 
 let find_config config name =
   (* check that the prover is listed *)
-  let provers = FrogConfig.get_string_list ~default:[] config "provers" in
+  let provers = Config.get_string_list ~default:[] config "provers" in
   if not (List.mem name provers)
   then failwith ("prover " ^ name ^ " not listed in config");
   build_from_config config name
@@ -164,7 +164,7 @@ let find_config config name =
 
 (* make a list of provers from the given config *)
 let of_config config =
-  let provers = FrogConfig.get_string_list ~default:[] config "provers" in
+  let provers = Config.get_string_list ~default:[] config "provers" in
   List.fold_left
     (fun map p_name ->
        let prover = build_from_config config p_name in
@@ -182,14 +182,14 @@ let hash t =
   |> Sha1.to_hex
 
 let db_init t =
-  FrogDB.exec t
+  DB.exec t
     "CREATE TABLE IF NOT EXISTS provers (
         hash STRING PRIMARY KEY,
         contents STRING)"
     (fun _ -> ())
 
-let find_aux (r:FrogDB.row) = match r with
-  | [| FrogDB.D.BLOB s |] ->
+let find_aux (r:DB.row) = match r with
+  | [| DB.D.BLOB s |] ->
     begin match of_yojson (Yojson.Safe.from_string s) with
       | Result.Ok t -> t
       | Result.Error _ -> assert false
@@ -197,44 +197,44 @@ let find_aux (r:FrogDB.row) = match r with
   | _ -> assert false
 
 let find db hash =
-  FrogDB.exec_a db "SELECT contents FROM provers WHERE hash=?"
-    [| FrogDB.D.string hash |]
-    (fun c -> match FrogDB.Cursor.head c with
+  DB.exec_a db "SELECT contents FROM provers WHERE hash=?"
+    [| DB.D.string hash |]
+    (fun c -> match DB.Cursor.head c with
        | Some r -> Some (find_aux r)
        | None -> None)
 
 let find_all db =
-  FrogDB.exec db "SELECT contents FROM provers"
+  DB.exec db "SELECT contents FROM provers"
     (fun c ->
        Cursor.to_list_rev c
        |> List.map find_aux)
 
 let db_add db t =
-  FrogDB.exec_a db
+  DB.exec_a db
     "INSERT OR IGNORE INTO provers(hash,contents) VALUES (?,?)"
-    [| FrogDB.D.string (hash t)
-       ; FrogDB.D.string (Yojson.Safe.to_string (to_yojson t))
+    [| DB.D.string (hash t)
+       ; DB.D.string (Yojson.Safe.to_string (to_yojson t))
     |]
     (fun _ -> ())
 
 (* HTML server *)
 let to_html_name p =
-  FrogWeb.Html.string p.name
+  Web.Html.string p.name
 
 let to_html_fullname p =
   match p.version with
   | Tag s ->
-    FrogWeb.Html.string (Format.sprintf "%s %s" p.name s)
+    Web.Html.string (Format.sprintf "%s %s" p.name s)
   | Git (branch, commit) ->
-    FrogWeb.Html.list [
-      FrogWeb.Html.string (
+    Web.Html.list [
+      Web.Html.string (
         Format.sprintf "%s@@%s" p.name branch);
-      FrogWeb.Html.br @@ FrogWeb.Html.string (
+      Web.Html.br @@ Web.Html.string (
         Format.sprintf "%s.." (String.sub commit 0 15));
     ]
 
 let to_html_full p =
-  let module R = FrogWeb.Record in
+  let module R = Web.Record in
   R.start
   |> R.add_string "version" (version_to_string p.version)
   |> R.add_string "binary" p.binary
@@ -246,28 +246,28 @@ let to_html_full p =
   |> R.add_string_option ~raw:true "out of space" p.memory
   |> R.close
 
-let k_uri = FrogWeb.HMap.Key.create ("uri_of_prover", fun _ -> Sexplib.Sexp.Atom "")
-let k_add = FrogWeb.HMap.Key.create ("add_prover", fun _ -> Sexplib.Sexp.Atom "")
+let k_uri = Web.HMap.Key.create ("uri_of_prover", fun _ -> Sexplib.Sexp.Atom "")
+let k_add = Web.HMap.Key.create ("add_prover", fun _ -> Sexplib.Sexp.Atom "")
 
 let add_server s =
   let uri_of_prover p = Uri.make ~path:("/prover/" ^ hash p) () in
-  let add_prover p = db_add (FrogWeb.Server.db s) p in
+  let add_prover p = db_add (Web.Server.db s) p in
   let handle req =
     let open Opium.Std in
     let h = param req "hash" in
-    match find (FrogWeb.Server.db s) h with
+    match find (Web.Server.db s) h with
     | Some prover ->
-      FrogWeb.Server.return_html ~title:prover.name
-        (FrogWeb.Html.list [
-            FrogWeb.Html.h2 (to_html_name prover);
+      Web.Server.return_html ~title:prover.name
+        (Web.Html.list [
+            Web.Html.h2 (to_html_name prover);
             to_html_full prover;
           ])
     | None ->
       let code = Cohttp.Code.status_of_code 404 in
-      FrogWeb.Server.return_html ~code (FrogWeb.Html.string "prover not found")
+      Web.Server.return_html ~code (Web.Html.string "prover not found")
   in
-  FrogWeb.Server.set s k_add add_prover;
-  FrogWeb.Server.set s k_uri uri_of_prover;
-  FrogWeb.Server.add_route s "/prover/:hash" handle;
+  Web.Server.set s k_add add_prover;
+  Web.Server.set s k_uri uri_of_prover;
+  Web.Server.add_route s "/prover/:hash" handle;
   ()
 

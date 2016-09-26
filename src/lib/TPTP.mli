@@ -11,7 +11,7 @@ type time = {
   system : float;
 }
 
-val time_of_res : FrogMapState.result -> time
+val time_of_res : MapState.result -> time
 val add_time : time -> time -> time
 
 type file_summary = private {
@@ -24,7 +24,7 @@ type file_summary = private {
   mutable run_time : time; (* total run time of the prover *)
 }
 
-val analyse_single_file : config:FrogConfig.t -> string -> string -> file_summary
+val analyse_single_file : config:Config.t -> string -> string -> file_summary
 
 val print_file_summary : out_channel -> file_summary -> unit
 
@@ -35,12 +35,12 @@ type run_params = {
 
 type analyse_params = {
   get_time : time -> float;
-  filter : file_summary StrMap.t -> string -> FrogMapState.result -> bool;
+  filter : file_summary StrMap.t -> string -> MapState.result -> bool;
 }
 
 val map_summaries :
   analyse_params ->
-  (StrMap.key * string * FrogProver.t * FrogMapState.job * FrogMapState.result StrMap.t) list ->
+  (StrMap.key * string * Prover.t * MapState.job * MapState.result StrMap.t) list ->
   file_summary StrMap.t
 
 type analysis_result = {
@@ -60,16 +60,16 @@ type analysis_result = {
 
 val analyse_multiple :
   analyse_params ->
-  (StrMap.key * string * FrogProver.t * FrogMapState.job * FrogMapState.result StrMap.t) list ->
+  (StrMap.key * string * Prover.t * MapState.job * MapState.result StrMap.t) list ->
   analysis_result list
 
-val box_of_ar : analysis_result list -> FrogPrintBox.Box.t
+val box_of_ar : analysis_result list -> PrintBox.Box.t
 
 val print_ar_exclusive : out_channel -> analysis_result -> unit
 
 val parse_prover_list :
-  config:FrogConfig.t ->
+  config:Config.t ->
   (string * string) list ->
-  (string * string * FrogProver.t * FrogMapState.job * FrogMapState.result StrMap.t) list
+  (string * string * Prover.t * MapState.job * MapState.result StrMap.t) list
 
 
