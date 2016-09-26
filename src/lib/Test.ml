@@ -458,6 +458,7 @@ let nop_ _ = Lwt.return_unit
 type top_result = {
   uuid: Uuidm.t;
   results: (Prover.t * Analyze.t) list;
+  timestamp: float;
 }
 
 let top_result_to_yojson (r:top_result) : Yojson.Safe.json =
@@ -467,7 +468,8 @@ let top_result_to_yojson (r:top_result) : Yojson.Safe.json =
   in
   `Assoc [
     "uuid", `String (Uuidm.to_bytes r.uuid);
-    "results", `List l
+    "results", `List l;
+    "timestamp", `String (string_of_float r.timestamp);
   ]
 
 let top_result_of_yojson (j:Yojson.Safe.json): top_result Misc.Err.t =
@@ -483,10 +485,14 @@ let top_result_of_yojson (j:Yojson.Safe.json): top_result Misc.Err.t =
             end
           | _ -> E.fail "expected string for uuid"
         end >>= fun uuid ->
+        begin match assoc_or (`String "0.") "timestamp" l with
+          | `String s -> E.return (float_of_string s)
+          | _ -> E.fail "expected timestamp to be a string"
+        end >>= fun timestamp ->
         [%of_yojson: (Prover.t * Analyze.t) list]
           (List.assoc "results" l)
         >|= fun results ->
-        { uuid; results }
+        { uuid; results; timestamp }
       | _ -> E.fail "expected record"
   with e -> E.fail (Printexc.to_string e)
 
@@ -525,6 +531,7 @@ let run ?(on_solve = nop_) ?(on_done = nop_)
   let r:top_result = {
     uuid=Uuidm.create `V4;
     results=res;
+    timestamp=Unix.gettimeofday();
   } in
   (* save result? *)
   let%lwt () = match storage with

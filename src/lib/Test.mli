@@ -102,6 +102,7 @@ end
 type top_result = {
   uuid: Uuidm.t;
   results: (Prover.t * Analyze.t) list;
+  timestamp: float;
 } [@@deriving yojson]
 
 val run :
