@@ -140,7 +140,7 @@ module Server = struct
       let hd =
         H.list
           [ meta_;
-            script "/static/frogwebclient.js";
+            script "/js/frogwebclient.js";
             H.title (H.string title);
             style (H.string css_);
           ]
@@ -184,7 +184,7 @@ module Server = struct
     Lwt_io.printlf "serve website on http://localhost:%d" t.port >>= fun () ->
     t.app
     |> App.middleware
-      (Middleware.static ~local_path:"static/" ~uri_prefix:"/static/")
+      (Middleware.static ~local_path:"js" ~uri_prefix:"/js/")
     |> App.get "/" (main t) (* main page *)
     |> App.port t.port
     |> App.start

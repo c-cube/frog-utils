@@ -3,9 +3,9 @@ OPTIONS=-use-ocamlfind -plugin-tag "package(js_of_ocaml.ocamlbuild)"
 
 LIB_NAMES=frogutils
 LIBS=$(addprefix $(LIB_NAMES), .cma .cmxa .cmxs)
-BINARIES=froglock.native froghop.native frogtest.native \
-	 frogweb.native frogwebclient.js
-TARGETS=$(addprefix src/,$(LIBS)) $(BINARIES)
+BINARIES=froglock.native froghop.native frogtest.native frogweb.native
+JS_FILES=frogwebclient.js
+TARGETS=$(addprefix src/,$(LIBS)) $(BINARIES) $(JS_FILES)
 TEST=foo.native
 
 BINDIR=/usr/local/bin/
@@ -13,9 +13,9 @@ SHAREDIR=/usr/local/share/
 
 all:
 	ocamlbuild $(OPTIONS) $(TARGETS)
-	mkdir -p static/
+	mkdir -p js/
 	for i in _build/src/*.js ; do \
-	  ln -s "$(PWD)/$$i" static/ ; \
+	  ln -sf "$(PWD)/$$i" js/ ; \
 	done
 
 clean:
@@ -34,6 +34,7 @@ install_bin: all
 	done
 	mkdir -p "$(SHAREDIR)/frogutils/"
 	cp data/*.toml "$(SHAREDIR)/frogutils/"
+	cp -r js "$(BINDIR)/"
 
 install_lib: all
 	ocamlfind install frogutils META $(INSTALL_TARGETS) # _build/src/*.{cmi,cmt}
@@ -53,6 +54,7 @@ uninstall:
 	done
 	rm -r "$(SHAREDIR)/frogutils/"
 	rm $(addprefix "$(BINDIR)/", $(BINARIES)) || true
+	rm $(addprefix "$(BINDIR)/js/", $(JS_FILES)) || true
 
 PHONY: all clean install uninstall
 
