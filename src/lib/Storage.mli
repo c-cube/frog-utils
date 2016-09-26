@@ -3,7 +3,7 @@
 
 (** {1 Storage on Disk}
 
-    Maps keys, that are {!Uuidm.t}, to content *)
+    Maps keys, that are strings, to content *)
 
 (* TODO: use inotify to watch the directories *)
 

@@ -467,7 +467,7 @@ let top_result_to_yojson (r:top_result) : Yojson.Safe.json =
       [%to_yojson: (Prover.t * Analyze.t)] r.results
   in
   `Assoc [
-    "uuid", `String (Uuidm.to_bytes r.uuid);
+    "uuid", `String (Uuidm.to_string r.uuid);
     "results", `List l;
     "timestamp", `String (string_of_float r.timestamp);
   ]
@@ -479,7 +479,7 @@ let top_result_of_yojson (j:Yojson.Safe.json): top_result Misc.Err.t =
       | `Assoc l ->
         begin match List.assoc "uuid" l with
           | `String s ->
-            begin match Uuidm.of_bytes s with
+            begin match Uuidm.of_string s with
               | Some x-> E.return x
               | None -> E.fail "invalid uuid"
             end
@@ -536,7 +536,7 @@ let run ?(on_solve = nop_) ?(on_done = nop_)
   (* save result? *)
   let%lwt () = match storage with
     | Some s ->
-      Storage.save_json s (Uuidm.to_bytes r.uuid) (top_result_to_yojson r)
+      Storage.save_json s (Uuidm.to_string r.uuid) (top_result_to_yojson r)
     | None -> Lwt.return_unit
   in
   Lwt.return r
