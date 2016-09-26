@@ -15,7 +15,8 @@ type t = {
 let make ?(conf=Config.empty) dirs : t =
   let default =
     let s = Config.interpolate_home "$HOME/.frogutils/" in
-    if Sys.file_exists s then [s] else []
+    let ret = Sys.command ("mkdir -p " ^ s) in
+    if ret=0 then [s] else []
   in
   let by_conf = Config.get_string_list ~default:[] conf "storage" in
   let dirs = dirs @ by_conf @ default in
