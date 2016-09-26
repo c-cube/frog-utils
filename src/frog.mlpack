@@ -1,6 +1,5 @@
 Cmd
 Config
-DB
 Heap
 LockClient
 LockDaemon
@@ -14,6 +13,7 @@ ProblemSet
 Prover
 Res
 Run
+Storage
 TPTP
 Test
 Web

@@ -46,10 +46,3 @@ val analyze_p : prover result -> Res.t
 val maki_raw_res : raw_result Maki.Value.ops
 val maki_result : program result Maki.Value.ops
 
-val db_init : DB.t -> unit
-val db_add : DB.t -> _ result -> unit
-
-val k_add : (_ result -> unit) Web.HMap.key
-
-val add_server : Web.Server.t -> unit
-

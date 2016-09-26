@@ -2,10 +2,9 @@
 (* This file is free software, part of frog-utils. See file "license" for more details. *)
 
 open Result
-open DB
 
 module W = Web
-module Res = Res
+module StrMap = Misc.StrMap
 
 [@@@warning "-39"]
 type t = {
@@ -13,6 +12,8 @@ type t = {
   expected: Res.t; (* result expected *)
 } [@@deriving yojson]
 [@@@warning "+39"]
+
+type problem = t
 
 let same_name t1 t2 = t1.name = t2.name
 let compare_name t1 t2 = Pervasives.compare t1.name t2.name
@@ -96,80 +97,39 @@ let maki =
 let hash p : string =
   Sha1.string p.name |> Sha1.to_hex
 
-(* DB management *)
-let db_init t =
-  DB.exec t
-    "CREATE TABLE IF NOT EXISTS problems (
-      hash STRING PRIMARY KEY,
-      name STRING,
-      expected STRING)"
-    (fun _ -> ())
-
-let find_aux row = match row with
-  | [| DB.D.BLOB name; DB.D.BLOB s |] ->
-    let expected = Res.of_string s in
-    { name; expected; }
-  | _ -> assert false
-
-let find db h =
-  DB.exec1 db
-    "SELECT name, expected FROM problems WHERE hash=?"
-    (DB.D.string h)
-    (fun c -> match DB.Cursor.head c with
-       | Some row -> Some (find_aux row)
-       | None -> None)
-
-let find_all db =
-  DB.exec db
-    "SELECT name, expected FROM problems"
-    (fun c ->
-       DB.Cursor.to_list_rev c
-       |> List.map find_aux)
-
-let db_add db t =
-  DB.exec_a db
-    "INSERT OR IGNORE INTO problems(hash,name,expected) VALUES (?,?,?)"
-    [| DB.D.string (hash t)
-     ; DB.D.string t.name
-     ; DB.D.string (Res.to_string t.expected)
-    |]
-    (fun _ -> ())
-
 (* HTML server *)
 let to_html_name p = W.Html.string (Filename.basename p.name)
 
-let k_uri = W.HMap.Key.create ("uri_of_problem", fun _ -> Sexplib.Sexp.Atom "")
-let k_add = W.HMap.Key.create ("add_problem", fun _ -> Sexplib.Sexp.Atom "")
+let uri_of_problem pb =
+  Uri.make ~path:"/problem/" ~query:["file", [pb.name]] ()
 
+(* lookup problems by their path
+   NOTE: could be a security issue if open to the net! *)
 let add_server s =
-  (* md5(problem.name) -> problem *)
-  let uri_of_pb pb = Uri.make ~path:("/problem/" ^ hash pb) () in
-  let add_pb pb = db_add (W.Server.db s) pb in
   let handler req =
     let open Opium.Std in
-    let h = param req "hash" in
-    match find (W.Server.db s) h with
-    | Some pb ->
-      (* read the problem itself *)
-      Lwt_io.with_file ~mode:Lwt_io.input pb.name
-        Misc.File.read_all
-      >>= fun content ->
-      W.Html.list
-        [ W.Html.h2 (to_html_name pb)
-        ; W.Record.start
-          |> W.Record.add "path" (W.Html.string pb.name)
-          |> W.Record.add "expected" (Res.to_html pb.expected)
-          |> W.Record.add "contents" (W.pre (W.Html.string content))
-          |> W.Record.close
-        ]
-      |> W.Server.return_html ~title:"problem"
-    | None ->
-      let code = Cohttp.Code.status_of_code 404 in
-      let h =
-        W.Html.string (Printf.sprintf "could not find problem %s" h) in
-      W.Server.return_html ~code h
+    let uri = Request.uri req in
+    match Uri.get_query_param uri "file" with
+      | None -> W.Server.return_404 "missing `file` parameter"
+      | Some name ->
+        if Sys.file_exists name
+        then (
+          (* read the problem itself *)
+          Lwt_io.with_file ~mode:Lwt_io.input name
+            Misc.File.read_all
+          >>= fun content ->
+          W.Server.return_string content
+        ) else
+          W.Server.return_404 (Printf.sprintf "could not find file `%s`" name)
   in
-  W.Server.set s k_uri uri_of_pb;
-  W.Server.set s k_add add_pb;
-  W.Server.add_route s "/problem/:hash" handler
+  W.Server.add_route s "/problem/" handler
 
+module Tbl = struct
+  type t = problem StrMap.t
+
+  let empty = StrMap.empty
+  let add pb t = StrMap.add pb.name pb t
+  let add_l = List.fold_right add
+  let find_by_name n t = try Some (StrMap.find n t) with Not_found -> None
+  let to_list t = StrMap.fold (fun _ pb acc->pb::acc) t []
+end

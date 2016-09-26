@@ -16,8 +16,6 @@ type uri = Uri.t
 
 type json = Yojson.Safe.json
 
-module HMap = Opium_hmap
-
 (** {2 Encoding Records in HTML} *)
 
 (* custom blocks *)
@@ -53,20 +51,21 @@ end = struct
       (List.rev l)
 end
 
+(* TODO: same as record, but for full tables? *)
+
 (** {2 Serve}
 
     A small webserver that displays results as they are built, computes
     regressions between results, etc. *)
 module Server : sig
   type t
-  val create: ?port:int -> db:DB.t -> unit -> t
-  val update : t -> (HMap.t -> HMap.t) -> unit
-  val map : t -> HMap.t
-  val get : t -> 'a HMap.key -> 'a
-  val set : t -> 'a HMap.key -> 'a -> unit
-  val db : t -> DB.t
+  val create: ?port:int -> storage:Storage.t -> unit -> t
+  val storage : t -> Storage.t
   val add_route : t -> ?descr:string -> string -> Opium.Rock.Handler.t -> unit
   val return_html : ?title:string -> ?code:Cohttp.Code.status_code -> html -> Opium.Response.t Lwt.t
+  val return_json : ?code:Cohttp.Code.status_code -> json -> Opium.Response.t Lwt.t
+  val return_string : ?code:Cohttp.Code.status_code -> string -> Opium.Response.t Lwt.t
+  val return_404 : string -> Opium.Response.t Lwt.t
   val set_port : t -> int -> unit
   val run : t -> unit Lwt.t
 end = struct
@@ -74,30 +73,21 @@ end = struct
   open Opium.Std
 
   type t = {
-    db: DB.t;
-    mutable map : HMap.t;
+    storage: Storage.t;
     mutable toplevel : (string * string) list; (* toplevel URLs *)
     mutable port: int;
     mutable app : App.t;
   }
 
-  let create ?(port=8000) ~db () =
-    { map=HMap.empty;
-      db;
+  let create ?(port=8000) ~storage () =
+    { 
+      storage;
       toplevel=[];
       port;
       app=App.empty;
     }
 
-  let update st f = st.map <- f st.map
-
-  let db t = t.db
-
-  let map t = t.map
-
-  let get t k = HMap.get k t.map
-
-  let set t k v = t.map <- HMap.add k v t.map
+  let storage t = t.storage
 
   let add_route t ?descr r h =
     t.app <- Opium.Std.get r h t.app;
@@ -113,53 +103,53 @@ end = struct
   let meta_ = H.meta ~attrs:["charset","UTF-8"] H.empty
 
   let css_ = "
-body {
-  width: 80%;
-  margin-left : auto;
-  margin-right: auto;
-  background-color: #fafafa;
-}
-
-h1 { font-size: larger; }
-h2 { font-size: large; }
-
-div {
-  padding: 5px;
-}
-
-pre.raw {
-  magin: 0px;
-  padding: 5px;
-  background-color: lightgrey;
-}
-
-table {
-  border: 1px solid black;
-  border-collapse: collapse;
-}
-
-tr:hover {
-  background-color: #f2f2f2;
-}
-
-td: nth-of-type(even) {
-  background-color: #f2f2f2;
-}
-
-tr {
-  border: 1px solid lightgrey;
-}
-
-td:nth-of-type(1) {
-  border: 1ps solid lightgrey;
-}
-
-th, td {
-  padding: 10px 20px;
-  text-align: left;
-  vertical-align: center;
-}
-"
+    body {
+      width: 80%;
+      margin-left : auto;
+      margin-right: auto;
+      background-color: #fafafa;
+    }
+    
+    h1 { font-size: larger; }
+    h2 { font-size: large; }
+    
+    div {
+      padding: 5px;
+    }
+    
+    pre.raw {
+      magin: 0px;
+      padding: 5px;
+      background-color: lightgrey;
+    }
+    
+    table {
+      border: 1px solid black;
+      border-collapse: collapse;
+    }
+    
+    tr:hover {
+      background-color: #f2f2f2;
+    }
+    
+    td: nth-of-type(even) {
+      background-color: #f2f2f2;
+    }
+    
+    tr {
+      border: 1px solid lightgrey;
+    }
+    
+    td:nth-of-type(1) {
+      border: 1ps solid lightgrey;
+    }
+    
+    th, td {
+      padding: 10px 20px;
+      text-align: left;
+      vertical-align: center;
+    }
+    "
 
   (* TODO: css *)
   let return_html ?title ?code h =
@@ -177,6 +167,15 @@ th, td {
     in
     let h = wrap_ ?title h in
     App.respond' ?code (`Html h)
+
+  let return_string ?code (s:string) = App.respond' ?code (`String s)
+
+  let return_json ?code (j:json) = return_string ?code (Yojson.Safe.to_string j)
+
+  let return_404 msg = 
+    let code = Cohttp.Code.status_of_code 404 in
+    let h = Html.string msg in
+    return_html ~code h
 
   (* toplevel handler *)
   let main t _req =

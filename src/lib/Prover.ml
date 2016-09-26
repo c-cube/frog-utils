@@ -3,8 +3,7 @@
 
 (** {1 Run Prover} *)
 
-open DB
-module StrMap = Map.Make(String)
+module StrMap = Misc.StrMap
 
 type version =
   | Tag of string
@@ -175,47 +174,10 @@ let make_command ?env prover ~timeout ~memory ~file =
   let binary = prover.binary in
   mk_cmd ?env ~binary ~timeout ~memory ~file prover.cmd
 
-(* DB interaction *)
 let hash t =
   Sha1.string @@
   (Printf.sprintf "%s:%s" t.name (version_to_string t.version))
   |> Sha1.to_hex
-
-let db_init t =
-  DB.exec t
-    "CREATE TABLE IF NOT EXISTS provers (
-        hash STRING PRIMARY KEY,
-        contents STRING)"
-    (fun _ -> ())
-
-let find_aux (r:DB.row) = match r with
-  | [| DB.D.BLOB s |] ->
-    begin match of_yojson (Yojson.Safe.from_string s) with
-      | Result.Ok t -> t
-      | Result.Error _ -> assert false
-    end
-  | _ -> assert false
-
-let find db hash =
-  DB.exec_a db "SELECT contents FROM provers WHERE hash=?"
-    [| DB.D.string hash |]
-    (fun c -> match DB.Cursor.head c with
-       | Some r -> Some (find_aux r)
-       | None -> None)
-
-let find_all db =
-  DB.exec db "SELECT contents FROM provers"
-    (fun c ->
-       Cursor.to_list_rev c
-       |> List.map find_aux)
-
-let db_add db t =
-  DB.exec_a db
-    "INSERT OR IGNORE INTO provers(hash,contents) VALUES (?,?)"
-    [| DB.D.string (hash t)
-       ; DB.D.string (Yojson.Safe.to_string (to_yojson t))
-    |]
-    (fun _ -> ())
 
 (* HTML server *)
 let to_html_name p =
@@ -245,29 +207,4 @@ let to_html_full p =
   |> R.add_string_option ~raw:true "timeout" p.timeout
   |> R.add_string_option ~raw:true "out of space" p.memory
   |> R.close
-
-let k_uri = Web.HMap.Key.create ("uri_of_prover", fun _ -> Sexplib.Sexp.Atom "")
-let k_add = Web.HMap.Key.create ("add_prover", fun _ -> Sexplib.Sexp.Atom "")
-
-let add_server s =
-  let uri_of_prover p = Uri.make ~path:("/prover/" ^ hash p) () in
-  let add_prover p = db_add (Web.Server.db s) p in
-  let handle req =
-    let open Opium.Std in
-    let h = param req "hash" in
-    match find (Web.Server.db s) h with
-    | Some prover ->
-      Web.Server.return_html ~title:prover.name
-        (Web.Html.list [
-            Web.Html.h2 (to_html_name prover);
-            to_html_full prover;
-          ])
-    | None ->
-      let code = Cohttp.Code.status_of_code 404 in
-      Web.Server.return_html ~code (Web.Html.string "prover not found")
-  in
-  Web.Server.set s k_add add_prover;
-  Web.Server.set s k_uri uri_of_prover;
-  Web.Server.add_route s "/prover/:hash" handle;
-  ()
 

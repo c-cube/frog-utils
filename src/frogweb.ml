@@ -4,35 +4,27 @@
 open Frog
 open Cmdliner
 
-let main db_path port =
-  let db =
-    DB.create ~db_init:[
-        Prover.db_init;
-        Problem.db_init;
-        Run.db_init;
-    ] ~db_path ()
-  in
-  let s = Web.Server.create ~port ~db () in
-  Prover.add_server s;
+let main storage_dirs port =
+  let storage = Storage.make storage_dirs in
+  let s = Web.Server.create ~port ~storage () in
   Problem.add_server s;
-  Run.add_server s;
   let web = Web.Server.run s in
   Lwt_main.run web
 
 let term =
-  let db =
-    let doc = "Path to the sqlite db" in
-    Arg.(value & opt non_dir_file "$HOME/.frogdb.sql" & info ["db"] ~doc)
+  let storage_dirs =
+    let doc = "on-disk storage directories" in
+    Arg.(value & opt (list string) ["$HOME/.frogutils"] & info ["storage"] ~doc)
   in
   let port =
     let doc = "Port on which to run the web server" in
     Arg.(value & opt int 8000 & info ["p"; "port"] ~doc)
   in
-  Term.(pure main $ db $ port)
+  Term.(pure main $ storage_dirs $ port)
 
 let parse_opt () =
   let help =
-    let doc = "Start a webservice to diplay the results in the db" in
+    let doc = "Start a webservice to diplay the results" in
     Term.info ~version:"dev" ~doc "frogweb"
   in
   Term.eval (term, help)

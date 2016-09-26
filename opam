@@ -30,7 +30,7 @@ depends: [
     "opium" { >= "0.15" }
     "cow"
     "junit"
-    "sqlite3"
+    "uuidm"
     "maki"
 ]
 available: [ "ocaml-version" >= "4.02.1" ]

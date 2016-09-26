@@ -60,4 +60,7 @@ val get_float : float getter
 val get_string : string getter
 val get_string_list : string list getter
 
+val get_string_opt : t -> string -> string option
+(** never fails, return [None] if not found *)
+
 (* TODO: other wrappers *)

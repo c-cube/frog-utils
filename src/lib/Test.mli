@@ -8,12 +8,6 @@ type 'a printer = Format.formatter -> 'a -> unit
 type html = Web.html
 type uri = Web.uri
 
-module Prover = Prover
-
-module Res = Res
-module Problem = Problem
-module ProblemSet = ProblemSet
-
 module MStr : Map.S with type key = String.t
 
 type result = Run.prover Run.result
@@ -83,11 +77,7 @@ module Config : sig
   val maki : t Maki.Value.ops
 
   val to_html : (Prover.t -> uri) -> t -> html
-
-  val add_server : Web.Server.t -> t -> unit
 end
-
-(* TODO: serialize, then make regression tests *)
 
 module ResultsComparison : sig
   type t = {
@@ -107,6 +97,13 @@ module ResultsComparison : sig
   val to_html : (Problem.t -> uri) -> t -> html
 end
 
+(* result of a full run of several provers on several problems,
+   with a unique ID in case it is stored on disk *)
+type top_result = {
+  uuid: Uuidm.t;
+  results: (Prover.t * Analyze.t) list;
+} [@@deriving yojson]
+
 val run :
   ?on_solve:(result -> unit Lwt.t) ->
   ?on_done:(Analyze.t -> unit Lwt.t) ->
@@ -114,16 +111,14 @@ val run :
   ?j:int ->
   ?timeout:int ->
   ?memory:int ->
-  ?db:DB.t ->
-  ?server:Web.Server.t ->
+  ?storage:Storage.t ->
   ?provers:string list ->
   config:Config.t ->
   ProblemSet.t ->
-  (Prover.t * Analyze.t) list Lwt.t
+  top_result Lwt.t
 (** Run the given prover(s) on the given problem set, obtaining results
     after all the problems have been dealt with.
     @param caching if true, use Maki for caching results (default true)
-    @param db if provided, register results in DB
-    @param server if provided, register some paths to the server
+    @param storage if provided, register results in storage
     @param on_solve called whenever a single problem is solved *)
 

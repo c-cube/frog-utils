@@ -8,8 +8,7 @@
 
 (** {2 Prover configurations} *)
 
-module StrMap : module type of Map.Make(String)
-(** Maps indexed by strings. *)
+module StrMap = Misc.StrMap
 
 type version =
   | Tag of string
@@ -59,19 +58,10 @@ val make_command :
   file:string ->
   string
 
-val hash : t -> string
-val db_init : DB.t -> unit
-val db_add : DB.t -> t -> unit
-val find : DB.t -> string -> t option
-val find_all : DB.t -> t list
-
 val name : t -> string
+val hash : t -> string
 
 val to_html_name : t -> Web.html
 val to_html_fullname : t -> Web.html
 val to_html_full : t -> Web.html
-
-val k_uri : (t -> Uri.t) Web.HMap.key
-val k_add : (t -> unit) Web.HMap.key
-val add_server : Web.Server.t -> unit
 

@@ -6,6 +6,8 @@ type t = {
   expected: Res.t; (* result expected *)
 } [@@deriving yojson]
 
+type problem = t
+
 val make: default_expect:Res.t option -> file:string -> unit -> t Misc.Err.t Lwt.t
 (** [make ~file ()] tries to find the expected result of [file], and
     makes a problem if it finds the result
@@ -32,14 +34,21 @@ val maki : t Maki.Value.ops
 
 val hash : t -> string
 
-val db_init : DB.t -> unit
-val db_add : DB.t -> t -> unit
-val find : DB.t -> string -> t option
-val find_all : DB.t -> t list
-
 val to_html_name : t -> Web.html
 
-val k_uri : (t -> Uri.t) Web.HMap.key
-val k_add : (t -> unit) Web.HMap.key
+val uri_of_problem : t -> Uri.t
 
 val add_server: Web.Server.t -> unit
+
+(** {2 Proper table for storing problems} *)
+module Tbl : sig
+  type t
+
+  val empty : t
+
+  val add : problem -> t -> t
+  val add_l : problem list -> t -> t
+
+  val find_by_name : string -> t -> problem option
+  val to_list : t -> problem list
+end

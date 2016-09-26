@@ -3,11 +3,11 @@
 
 (** {1 Manage TPTP provers} *)
 
-module StrMap = Map.Make(String)
 module St = MapState
 module Conf = Config
 module PB = PrintBox
 module Opt = Misc.Opt
+module StrMap = Misc.StrMap
 
 (** {2 Type Definitions} *)
 
@@ -21,8 +21,8 @@ type time = {
 type file_summary = {
   prover : string;
   mutable num_all : int;
-  mutable set_unsat : time StrMap.t;  (* pb -> time *)
-  mutable set_sat : time StrMap.t; (* pb -> time *)
+  mutable set_unsat : time Misc.StrMap.t;  (* pb -> time *)
+  mutable set_sat : time Misc.StrMap.t; (* pb -> time *)
   mutable num_error : int;
   mutable solved_time : time; (* of successfully solved problems *)
   mutable run_time : time; (* total run time of the prover *)
@@ -35,7 +35,7 @@ type run_params = {
 
 type analyse_params = {
   get_time : time -> float;
-  filter : file_summary StrMap.t -> string -> St.result -> bool;
+  filter : file_summary Misc.StrMap.t -> string -> St.result -> bool;
 }
 
 let compile_re ~msg re =
@@ -67,8 +67,8 @@ let make_summary ?(filter=(fun _ _ -> true)) prover_name prover job results =
   let s = {
     prover = prover_name;
     num_all = List.length job.St.arguments;
-    set_unsat = StrMap.empty;
-    set_sat = StrMap.empty;
+    set_unsat = Misc.StrMap.empty;
+    set_sat = Misc.StrMap.empty;
     num_error = 0;
     solved_time = { real = 0.; user = 0.; system = 0.; };
     run_time = { real = 0.; user = 0.; system = 0.; };

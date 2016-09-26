@@ -4,6 +4,8 @@
 open Result
 
 module Opt = struct
+  let return x = Some x
+  let none = None
   let (>>=) o f = match o with
     | None -> None
     | Some x -> f x
@@ -174,3 +176,4 @@ module Fmt = struct
     fpf out "\x1b[0m"
 end
 
+module StrMap = Map.Make(String)

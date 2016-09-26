@@ -3,7 +3,7 @@
 
 (** {1 Manage TPTP provers} *)
 
-module StrMap : module type of Map.Make(String)
+module StrMap = Misc.StrMap
 
 type time = {
   real : float;

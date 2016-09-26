@@ -165,6 +165,10 @@ let get_string ?default conf name =
   in
   get_or ?default get_string_exn conf name
 
+let get_string_opt conf name =
+  try Some (get_string conf name)
+  with FieldNotFound _ -> None
+
 let get_float ?default conf name =
   let f = function
     | TomlTypes.TFloat x -> Some x

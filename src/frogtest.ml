@@ -111,7 +111,7 @@ module Run = struct
     let module F = Misc.Fmt in
     let p_res = Run.analyze_p res in
     let pp_res out () =
-      let str, c = match T.Problem.compare_res res.Run.problem p_res with
+      let str, c = match Problem.compare_res res.Run.problem p_res with
         | `Same -> "ok", `Green
         | `Improvement -> "ok (improved)", `Blue
         | `Disappoint -> "disappoint", `Yellow
@@ -132,43 +132,35 @@ module Run = struct
     : (Prover.t * string * T.Analyze.t) list E.t =
     let open E in
     Format.printf "testing dir `%s`...@." dir;
-    T.ProblemSet.of_dir
+    ProblemSet.of_dir
       ~default_expect:config.T.Config.default_expect
       ~filter:(Re.execp problem_pat)
       dir
     >>= fun pbs ->
-    Format.printf "run %d tests in %s@." (T.ProblemSet.size pbs) dir;
-    (* serve website *)
-    let db =
-      DB.create
-        ~db_path:db
-        ~db_init:[
-          Prover.db_init;
-          Problem.db_init;
-          Run.db_init;
-        ] ()
-    in
+    Format.printf "run %d tests in %s@." (ProblemSet.size pbs) dir;
+    let storage = Storage.make [] in
     let server =
       if web
-      then Some (W.Server.create ~db ())
+      then Some (W.Server.create ~storage ())
       else None
     in
     (* solve *)
     let main =
-      E.ok (T.run ?j ?timeout ?memory ?caching ?provers ~on_solve ?server ~db ~config pbs)
+      E.ok (T.run ?j ?timeout ?memory ?caching ?provers
+          ~on_solve ~storage ~config pbs)
     in
     let web = Misc.Opt.((server >|= W.Server.run) |> get Lwt.return_unit) |> E.ok in
     main
-    >|= List.map (fun (p,r) -> p, dir, r) (* add directory *)
     >>= fun results ->
     List.iter
-      (fun (p,_,r) ->
+      (fun (p,r) ->
          Format.printf "@[<2>%s on `%s`:@ @[<hv>%a@]@]@."
            (Prover.name p) dir T.Analyze.print r)
-      results;
+      results.T.results;
     (* wait for webserver to return *)
     let%lwt _ = web in
-    E.return results
+    let l = List.map (fun (p,r) -> p, dir, r) results.T.results in
+    E.return l
 
   let check_res results : unit E.t =
     if List.for_all (fun (_,_,r) -> T.Analyze.is_ok r) results

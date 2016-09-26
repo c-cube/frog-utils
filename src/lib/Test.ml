@@ -3,7 +3,6 @@
 
 (** {1 Tools to test a prover} *)
 
-module Prover = Prover
 module E = Misc.Err
 module W = Web
 module R = W.Record
@@ -76,7 +75,8 @@ module Analyze = struct
 
   let pp_stat out s =
     fpf out
-      "{@[<hv>unsat: %d,@ sat: %d,@ errors: %d,@ unknown: %d,@ timeout: %d,@ total: %d@]}"
+      "{@[<hv>unsat: %d,@ sat: %d,@ errors: %d,@ unknown: %d,@ \
+       timeout: %d,@ total: %d@]}"
       s.unsat s.sat s.errors s.unknown s.timeout
       (s.unsat + s.sat + s.errors + s.unknown + s.timeout)
 
@@ -353,14 +353,6 @@ module Config = struct
             H.p @@ (H.a ~href:(uri_of_prover x) (Prover.to_html_name x)))
           c.provers)
     |> R.close
-
-  let add_server s c =
-    let uri_of_prover = W.Server.get s Prover.k_uri in
-    let handle _ =
-      W.Server.return_html (to_html uri_of_prover c)
-    in
-    W.Server.add_route s ~descr:"configuration" "/config" handle;
-    ()
 end
 
 module ResultsComparison = struct
@@ -461,19 +453,48 @@ let run_pb ?(caching=true) ?limit ~config prover pb =
 
 let nop_ _ = Lwt.return_unit
 
+(* result of a full run of several provers on several problems,
+   with a unique ID in case it is stored on disk *)
+type top_result = {
+  uuid: Uuidm.t;
+  results: (Prover.t * Analyze.t) list;
+}
+
+let top_result_to_yojson (r:top_result) : Yojson.Safe.json =
+  let l =
+    List.map
+      [%to_yojson: (Prover.t * Analyze.t)] r.results
+  in
+  `Assoc [
+    "uuid", `String (Uuidm.to_bytes r.uuid);
+    "results", `List l
+  ]
+
+let top_result_of_yojson (j:Yojson.Safe.json): top_result Misc.Err.t =
+  let open E in
+  try
+    match j with
+      | `Assoc l ->
+        begin match List.assoc "uuid" l with
+          | `String s ->
+            begin match Uuidm.of_bytes s with
+              | Some x-> E.return x
+              | None -> E.fail "invalid uuid"
+            end
+          | _ -> E.fail "expected string for uuid"
+        end >>= fun uuid ->
+        [%of_yojson: (Prover.t * Analyze.t) list]
+          (List.assoc "results" l)
+        >|= fun results ->
+        { uuid; results }
+      | _ -> E.fail "expected record"
+  with e -> E.fail (Printexc.to_string e)
+
 let run ?(on_solve = nop_) ?(on_done = nop_)
-    ?(caching=true) ?j ?timeout ?memory ?db ?server ?provers ~config set
+    ?(caching=true) ?j ?timeout ?memory ?storage ?provers ~config set
   =
   let config = Config.update ?j ?timeout ?memory config in
   let limit = Maki.Limit.create config.Config.j in
-  Misc.Opt.iter server
-    ~f:(fun s ->
-        Prover.add_server s;
-        Problem.add_server s;
-        Run.add_server s;
-        Config.add_server s config;
-        List.iter (fun x -> W.Server.get s Prover.k_add x) config.Config.provers;
-      );
   let provers = match provers with
     | None -> config.Config.provers
     | Some l ->
@@ -489,10 +510,7 @@ let run ?(on_solve = nop_) ?(on_done = nop_)
              let%lwt result = run_pb ~caching ~limit ~config prover pb in
              begin match result with
                | { Run.program = `Prover _; _ } as t ->
-                 let%lwt () = on_solve t in
-                 (* add result to db? *)
-                 Misc.Opt.iter db
-                   ~f:(fun db -> Run.db_add db t);
+                 let%lwt () = on_solve t in (* callback *)
                  Lwt.return t
                | _  -> assert false
                (* If this happens, it means there is a hash collision
@@ -504,5 +522,15 @@ let run ?(on_solve = nop_) ?(on_done = nop_)
       provers
   in
   let%lwt () = Lwt_list.iter_p (fun (_,r) -> on_done r) res in
-  Lwt.return res
+  let r:top_result = {
+    uuid=Uuidm.create `V4;
+    results=res;
+  } in
+  (* save result? *)
+  let%lwt () = match storage with
+    | Some s ->
+      Storage.save_json s (Uuidm.to_bytes r.uuid) (top_result_to_yojson r)
+    | None -> Lwt.return_unit
+  in
+  Lwt.return r
 
