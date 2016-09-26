@@ -31,6 +31,7 @@ depends: [
     "cow"
     "junit"
     "uuidm"
+    "js_of_ocaml"
     "maki"
 ]
 available: [ "ocaml-version" >= "4.02.1" ]

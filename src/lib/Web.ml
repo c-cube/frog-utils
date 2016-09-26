@@ -22,18 +22,12 @@ type json = Yojson.Safe.json
 
 let pre h = Cow.Xml.tag ~attrs:["class", "raw"] "pre" h
 let style h = Cow.Xml.tag "style" h
+let script s =
+  Cow.Xml.tag "script"
+    ~attrs:["type", "text/javascript"; "src", s]
+    Cow.Xml.empty
 
-module Record : sig
-  type t
-  val start : t
-  val add               : string -> html -> t -> t
-  val add_int           : ?raw:bool -> string -> int -> t -> t
-  val add_float         : ?raw:bool -> string -> float -> t -> t
-  val add_string        : ?raw:bool -> string -> string -> t -> t
-  val add_string_option : ?raw:bool -> string -> string option -> t -> t
-  val add_bool          : ?raw:bool -> string -> bool -> t -> t
-  val close : t -> html
-end = struct
+module Record = struct
   type t = (string * html) list
   let start = []
   let add s f l = (s, f) :: l
@@ -57,18 +51,7 @@ end
 
     A small webserver that displays results as they are built, computes
     regressions between results, etc. *)
-module Server : sig
-  type t
-  val create: ?port:int -> storage:Storage.t -> unit -> t
-  val storage : t -> Storage.t
-  val add_route : t -> ?descr:string -> string -> Opium.Rock.Handler.t -> unit
-  val return_html : ?title:string -> ?code:Cohttp.Code.status_code -> html -> Opium.Response.t Lwt.t
-  val return_json : ?code:Cohttp.Code.status_code -> json -> Opium.Response.t Lwt.t
-  val return_string : ?code:Cohttp.Code.status_code -> string -> Opium.Response.t Lwt.t
-  val return_404 : string -> Opium.Response.t Lwt.t
-  val set_port : t -> int -> unit
-  val run : t -> unit Lwt.t
-end = struct
+module Server = struct
   module H = Html
   open Opium.Std
 
@@ -80,7 +63,7 @@ end = struct
   }
 
   let create ?(port=8000) ~storage () =
-    { 
+    {
       storage;
       toplevel=[];
       port;
@@ -109,41 +92,41 @@ end = struct
       margin-right: auto;
       background-color: #fafafa;
     }
-    
+
     h1 { font-size: larger; }
     h2 { font-size: large; }
-    
+
     div {
       padding: 5px;
     }
-    
+
     pre.raw {
-      magin: 0px;
+      margin: 0px;
       padding: 5px;
       background-color: lightgrey;
     }
-    
+
     table {
       border: 1px solid black;
       border-collapse: collapse;
     }
-    
+
     tr:hover {
       background-color: #f2f2f2;
     }
-    
+
     td: nth-of-type(even) {
       background-color: #f2f2f2;
     }
-    
+
     tr {
       border: 1px solid lightgrey;
     }
-    
+
     td:nth-of-type(1) {
       border: 1ps solid lightgrey;
     }
-    
+
     th, td {
       padding: 10px 20px;
       text-align: left;
@@ -156,9 +139,11 @@ end = struct
     let wrap_ ?(title="frog-utils") h =
       let hd =
         H.list
-          [ meta_
-          ; H.title (H.string title)
-          ; style (H.string css_) ]
+          [ meta_;
+            script "/static/frogwebclient.js";
+            H.title (H.string title);
+            style (H.string css_);
+          ]
       in
       H.list
         [ H.head hd
@@ -172,7 +157,7 @@ end = struct
 
   let return_json ?code (j:json) = return_string ?code (Yojson.Safe.to_string j)
 
-  let return_404 msg = 
+  let return_404 msg =
     let code = Cohttp.Code.status_of_code 404 in
     let h = Html.string msg in
     return_html ~code h
@@ -198,6 +183,8 @@ end = struct
   let run t =
     Lwt_io.printlf "serve website on http://localhost:%d" t.port >>= fun () ->
     t.app
+    |> App.middleware
+      (Middleware.static ~local_path:"static/" ~uri_prefix:"/static/")
     |> App.get "/" (main t) (* main page *)
     |> App.port t.port
     |> App.start

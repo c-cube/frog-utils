@@ -1,9 +1,10 @@
 
-OPTIONS=-use-ocamlfind
+OPTIONS=-use-ocamlfind -plugin-tag "package(js_of_ocaml.ocamlbuild)"
 
 LIB_NAMES=frogutils
 LIBS=$(addprefix $(LIB_NAMES), .cma .cmxa .cmxs)
-BINARIES=froglock.native froghop.native frogtest.native frogweb.native
+BINARIES=froglock.native froghop.native frogtest.native \
+	 frogweb.native frogwebclient.js
 TARGETS=$(addprefix src/,$(LIBS)) $(BINARIES)
 TEST=foo.native
 
@@ -12,6 +13,10 @@ SHAREDIR=/usr/local/share/
 
 all:
 	ocamlbuild $(OPTIONS) $(TARGETS)
+	mkdir -p static/
+	for i in '_build/src/*.js' ; do \
+	  ln -s "$(PWD)/$$i" static/ ; \
+	done
 
 clean:
 	ocamlbuild -clean

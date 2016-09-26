@@ -27,6 +27,8 @@ PKG opium.unix
 PKG cow
 PKG uri
 PKG uuidm
+PKG js_of_ocaml
+PKG js_of_ocaml.ppx
 PKG junit
 
 #FLG -w +a-4-44-29-48
