@@ -14,7 +14,7 @@ SHAREDIR=/usr/local/share/
 all:
 	ocamlbuild $(OPTIONS) $(TARGETS)
 	mkdir -p static/
-	for i in '_build/src/*.js' ; do \
+	for i in _build/src/*.js ; do \
 	  ln -s "$(PWD)/$$i" static/ ; \
 	done
 
