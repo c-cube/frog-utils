@@ -192,7 +192,7 @@ module Map = struct
 
   let to_list m = fold (fun prover res acc -> (prover,res)::acc) m []
 
-  let of_list = List.fold_left (fun acc (p,r) -> add p r acc) empty
+  let of_list l = List.fold_left (fun acc (p,r) -> add p r acc) empty l
 end
 
 (* HTML server *)

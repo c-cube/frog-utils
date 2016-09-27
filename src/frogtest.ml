@@ -34,7 +34,7 @@ module Run = struct
 
   (* run provers on the given dir, return a list [prover, dir, results] *)
   let test_dir ?j ?timeout ?memory ?caching ?provers ~config ~problem_pat ~web ~db dir
-    : T.Top_result.t E.t =
+    : T.Top_result.raw E.t =
     let open E in
     Format.printf "testing dir `%s`...@." dir;
     ProblemSet.of_dir
@@ -52,28 +52,31 @@ module Run = struct
     (* solve *)
     let main =
       E.ok (T.run ?j ?timeout ?memory ?caching ?provers
-          ~on_solve ~storage ~config pbs)
+          ~on_solve ~config pbs)
     in
     let web = Misc.Opt.((server >|= W.Server.run) |> get Lwt.return_unit) |> E.ok in
     main
     >>= fun results ->
-    List.iter
-      (fun (p,r) ->
+    Prover.Map.iter
+      (fun p r ->
+         let r = T.Analyze.make r in
          Format.printf "@[<2>%s on `%s`:@ @[<hv>%a@]@]@."
            (Prover.name p) dir T.Analyze.print r)
-      results.T.results;
+      results;
     (* wait for webserver to return *)
     let%lwt _ = web in
     E.return results
 
   let check_res (results:T.top_result) : unit E.t =
-    if List.for_all (fun (_,r) -> T.Analyze.is_ok r) results.T.results
+    let l = Prover.Map.to_list results.T.results in
+    let l = List.map (fun (p,r) -> p,T.Analyze.make r) l in
+    if List.for_all (fun (_,r) -> T.Analyze.is_ok r) l
     then E.return ()
     else
       E.fail (Format.asprintf "%d failure(s)" (
           List.fold_left
             (fun n (_,r) -> n+T.Analyze.num_failed r)
-            0 results.T.results))
+            0 l))
 
   (* lwt main *)
   let main ?j ?timeout ?memory ?caching ?junit ?provers ~web ~save ~db ~config dirs () =
@@ -92,7 +95,9 @@ module Run = struct
       (test_dir ?j ?timeout ?memory ?caching ?provers ~config ~problem_pat ~web ~db)
       dirs
     >|= T.Top_result.merge_l
+    >|= T.Top_result.make ?timestamp:None
     >>= fun (results:T.Top_result.t) ->
+    (* FIXME: also put into storage? *)
     begin match save with
       | None -> ()
       | Some file ->
@@ -102,7 +107,10 @@ module Run = struct
       | None -> ()
       | Some file ->
         Lwt_log.ign_info_f "write results in Junit to file `%s`" file;
-        let suites = results.T.results |> List.map (fun (_,r) -> T.Analyze.to_junit r) in
+        let suites =
+          results.T.results
+          |> Prover.Map.to_list
+          |> List.map (fun (_,r) -> T.Analyze.to_junit (T.Analyze.make r)) in
         T.Analyze.junit_to_file suites file;
     end;
     (* now fail if results were bad *)

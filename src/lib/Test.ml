@@ -478,6 +478,7 @@ type top_result = {
 
 module Top_result = struct
   type t = top_result
+  type raw = top_result_raw
 
   let to_yojson (r:t) : Yojson.Safe.json =
     let l =
@@ -537,6 +538,9 @@ module Top_result = struct
     | [] -> Prover.Map.empty
     | r :: tail -> List.fold_left merge r tail
 
+  let make ?(timestamp=Unix.gettimeofday()) l =
+    { timestamp; uuid=Uuidm.create `V4; results=l }
+
   let pp out (r:t) =
     let pp_tup out (p,res) =
       let res = Analyze.make res in
@@ -595,7 +599,7 @@ module Top_result = struct
 end
 
 let run ?(on_solve = nop_) ?(on_done = nop_)
-    ?(caching=true) ?j ?timeout ?memory ?storage ?provers ~config set
+    ?(caching=true) ?j ?timeout ?memory ?provers ~config set
   =
   let config = Config.update ?j ?timeout ?memory config in
   let limit = Maki.Limit.create config.Config.j in
@@ -626,16 +630,6 @@ let run ?(on_solve = nop_) ?(on_done = nop_)
       provers
   in
   let%lwt () = Lwt_list.iter_p (fun (_,r) -> on_done r) res in
-  let r:top_result = {
-    uuid=Uuidm.create `V4;
-    results=Prover.Map.of_list res;
-    timestamp=Unix.gettimeofday();
-  } in
-  (* save result? *)
-  let%lwt () = match storage with
-    | Some s ->
-      Storage.save_json s (Uuidm.to_string r.uuid) (Top_result.to_yojson r)
-    | None -> Lwt.return_unit
-  in
+  let r:top_result_raw = Prover.Map.of_list res in
   Lwt.return r
 

@@ -113,6 +113,7 @@ type top_result = private {
 
 module Top_result : sig
   type t = top_result [@@deriving yojson]
+  type raw = top_result_raw
 
   val to_file : file:string -> t -> unit
 
@@ -127,9 +128,9 @@ module Top_result : sig
   val make : ?timestamp:float -> top_result_raw -> t
 
   type comparison_result = {
-    both: (Prover.t * ResultsComparison.t) list;
-    left: (Prover.t * Analyze.t) list;
-    right: (Prover.t * Analyze.t) list;
+    both: ResultsComparison.t Prover.Map.t;
+    left: Analyze.t Prover.Map.t;
+    right: Analyze.t Prover.Map.t;
   }
 
   val compare : t -> t -> comparison_result
@@ -139,19 +140,17 @@ end
 
 val run :
   ?on_solve:(result -> unit Lwt.t) ->
-  ?on_done:(Analyze.t -> unit Lwt.t) ->
+  ?on_done:(Analyze.raw -> unit Lwt.t) ->
   ?caching:bool ->
   ?j:int ->
   ?timeout:int ->
   ?memory:int ->
-  ?storage:Storage.t ->
   ?provers:string list ->
   config:Config.t ->
   ProblemSet.t ->
-  top_result Lwt.t
+  top_result_raw Lwt.t
 (** Run the given prover(s) on the given problem set, obtaining results
     after all the problems have been dealt with.
     @param caching if true, use Maki for caching results (default true)
-    @param storage if provided, register results in storage
     @param on_solve called whenever a single problem is solved *)
 
