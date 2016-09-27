@@ -150,29 +150,30 @@ let to_html_analyzed = function
   | { program = `Prover prover; _ } as t ->
     let res = analyze_p t in
     Res.to_html res
-  | { program = `Checker checker; _ } -> H.string "TODO"
+  | { program = `Checker checker; _ } -> H.pcdata "TODO"
 
 (* display the raw result *)
 let to_html_raw_result_name uri_of_raw (r: program result) =
   let content = to_html_analyzed r in
-  H.a ~href:(uri_of_raw r) content
+  H.a ~a:[H.a_href (uri_of_raw r)] [content]
 
 let to_html_raw_result uri_of_prover uri_of_problem r =
   R.start
   |> R.add "program" (
     match r with
     | { program = `Prover prover; _ } ->
-      (H.a ~href:(uri_of_prover prover) (Prover.to_html_name prover))
+      (H.a ~a:[H.a_href (uri_of_prover prover)] [H.div [Prover.to_html_name prover]])
     | { program = `Checker checker; _ } ->
-      H.string "TODO"
+      H.pcdata "TODO"
   )
   |> R.add "problem"
-    (H.a ~href:(uri_of_problem r.problem) (Problem.to_html_name r.problem))
+    (H.a ~a:[H.a_href (uri_of_problem r.problem)]
+       [H.div [Problem.to_html_name r.problem]])
   |> R.add "result" (to_html_analyzed r)
   |> R.add_int "errcode" r.raw.errcode
   |> R.add_string "real time" (Printf.sprintf "%.3f" r.raw.rtime)
   |> R.add_string "user time" (Printf.sprintf "%.3f" r.raw.utime)
   |> R.add_string "system time" (Printf.sprintf "%.3f" r.raw.stime)
-  |> R.add "stdout" (W.pre (H.string r.raw.stdout))
-  |> R.add "stderr" (W.pre (H.string r.raw.stderr))
+  |> R.add "stdout" (H.pre [H.pcdata r.raw.stdout])
+  |> R.add "stderr" (H.pre [H.pcdata r.raw.stderr])
   |> R.close

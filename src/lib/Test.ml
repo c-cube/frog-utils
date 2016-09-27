@@ -176,39 +176,45 @@ module Analyze = struct
     |> R.close
 
   let to_html_raw_result_l uri_of_problem uri_of_raw_res r =
-    [ H.a
-        ~href:(uri_of_problem r.Run.problem)
-        (Problem.to_html_name r.Run.problem)
-    ; H.a ~href:(uri_of_raw_res r) (Res.to_html @@ Run.analyze_p r)
+    [ H.div [H.a
+        ~a:[H.a_href (uri_of_problem r.Run.problem)]
+        [H.div [Problem.to_html_name r.Run.problem]]]
+    ; H.div [H.a ~a:[H.a_href (uri_of_raw_res r)]
+               [H.div[Res.to_html @@ Run.analyze_p r]]]
     ]
 
+  let to_html_raw_tbl uri_of_problem uri_of_raw_res l =
+    H.table
+      (H.tr [H.th [H.pcdata "problem"]; H.th [H.pcdata "result"]]
+       ::
+         (List.rev_map
+            (fun r ->
+               H.tr (List.map (fun d->H.td [d])
+                   (to_html_raw_result_l uri_of_problem uri_of_raw_res r)))
+            l))
+
   let to_html_summary t =
-    H.Create.table
-      ~flags:[H.Create.Tags.Headings_fst_col]
-      ~row:(fun (s, i) -> [H.string s; H.int i])
-      [
-        "ok", (List.length t.ok);
-        "improved", (List.length t.improved);
-        "disappoint", (List.length t.disappoint);
-        "bad", (List.length t.bad);
-        "total", (MStr.cardinal t.raw);
-      ]
+    H.table
+      (List.map
+         (fun (s, i) ->
+            H.tr [H.td [H.pcdata s]; H.td [H.pcdata (string_of_int i)]])
+         [
+           "ok", (List.length t.ok);
+           "improved", (List.length t.improved);
+           "disappoint", (List.length t.disappoint);
+           "bad", (List.length t.bad);
+           "total", (MStr.cardinal t.raw);
+         ])
 
   let to_html_raw uri_of_problem uri_of_raw_res r =
-    let l = MStr.fold (fun _ r acc -> `Row r::acc) r [] in
-    if l = [] then H.string "ø"
-    else H.Create.table ~flags:[H.Create.Tags.Headings_fst_row]
-        ~row:(function
-            | `Head -> [H.string "problem"; H.string "result"]
-            | `Row r -> to_html_raw_result_l uri_of_problem uri_of_raw_res r)
-        (`Head :: l)
+    let l = MStr.fold (fun _ r acc -> r::acc) r [] in
+    if l = [] then H.pcdata "ø"
+    else to_html_raw_tbl uri_of_problem uri_of_raw_res l
 
   let to_html uri_of_problem uri_of_raw_res t =
     let lst_raw_res ?cls l =
-      if l=[] then H.string "ø"
-      else H.Create.table l ~flags:[]
-          ~row:(to_html_raw_result_l uri_of_problem uri_of_raw_res)
-           |> H.div ?cls
+      if l=[] then H.pcdata "ø"
+      else to_html_raw_tbl uri_of_problem uri_of_raw_res l
     in
     R.start
     |> R.add "summary" (to_html_summary t)
@@ -338,7 +344,7 @@ module Config = struct
     | C.Error e ->
       E.fail e
 
-  let to_html uri_of_prover c =
+  let to_html uri_of_prover c : W.html =
     let module H = W.Html in
     let module R = W.Record in
     R.start
@@ -346,11 +352,13 @@ module Config = struct
     |> R.add_int "timeout" c.timeout
     |> R.add_int "memory" c.memory
     |> R.add_string ~raw:true "problems pattern" c.problem_pat
-    |> R.add "dir" (H.list (List.map H.string c.default_dirs))
+    |> R.add "dir" (H.ul (List.map (fun s->H.li [H.pcdata s]) c.default_dirs))
     |> R.add "provers"
-      (H.list @@ List.map (
-          fun x ->
-            H.p @@ (H.a ~href:(uri_of_prover x) (Prover.to_html_name x)))
+      (H.ul @@
+       List.map
+          (fun x ->
+            H.li [H.a ~a:[H.a_href (uri_of_prover x |> Uri.to_string)]
+                         [H.div [Prover.to_html_name x]]])
           c.provers)
     |> R.close
 end

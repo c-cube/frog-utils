@@ -6,43 +6,36 @@
 open Result
 
 module E = Misc.Err
-module Html = Cow.Html
+module Html = Tyxml.Html
 
 type 'a or_error = 'a Misc.Err.t
 
-type html = Html.t
-
+type html = Html_types.div_content_fun Html.elt
 type uri = Uri.t
-
 type json = Yojson.Safe.json
 
 (** {2 Encoding Records in HTML} *)
 
-(* custom blocks *)
-
-let pre h = Cow.Xml.tag ~attrs:["class", "raw"] "pre" h
-let style h = Cow.Xml.tag "style" h
-let script s =
-  Cow.Xml.tag "script"
-    ~attrs:["type", "text/javascript"; "src", s]
-    Cow.Xml.empty
+let string_of_html h =
+  Misc.Fmt.to_string (Html.pp()) h
 
 module Record = struct
   type t = (string * html) list
   let start = []
   let add s f l = (s, f) :: l
   let add_with_ fun_ ?(raw=false) s f l =
-    let body = fun_ f in
-    add s (if raw then pre body else Html.div body) l
-  let add_int = add_with_ Html.int
-  let add_float = add_with_ Html.float
-  let add_string = add_with_ Html.string
-  let add_string_option = add_with_ (function None -> Html.empty | Some s -> Html.string s)
-  let add_bool = add_with_ (fun b -> Html.string (string_of_bool b))
+    let body = Html.pcdata (fun_ f) in
+    add s (Html.div [if raw then Html.pre [body] else body]) l
+  let add_int = add_with_ string_of_int
+  let add_float = add_with_ string_of_float
+  let add_string = add_with_ (fun x->x)
+  let add_string_option = add_with_ (function None -> "" | Some s -> s)
+  let add_bool = add_with_ string_of_bool
   let close l =
-    Html.Create.table ~flags:[Html.Create.Tags.Headings_fst_col]
-      ~row:(fun (s,f) -> [Html.string s; f])
-      (List.rev l)
+    Html.table
+      (List.rev_map
+         (fun (s,f) -> Html.tr [Html.td [Html.pcdata s]; Html.td [f]])
+         l)
 end
 
 (* TODO: same as record, but for full tables? *)
@@ -83,7 +76,7 @@ module Server = struct
 
   let set_port t p = t.port <- p
 
-  let meta_ = H.meta ~attrs:["charset","UTF-8"] H.empty
+  let meta_ = H.meta ~a:[H.a_charset "UTF-8"] ()
 
   let css_ = "
     body {
@@ -135,20 +128,18 @@ module Server = struct
     "
 
   (* TODO: css *)
-  let return_html ?title ?code h =
+  let return_html ?title ?code (h:html) =
     let wrap_ ?(title="frog-utils") h =
       let hd =
-        H.list
+        H.head
+          (H.title (H.pcdata title))
           [ meta_;
-            script "/js/frogwebclient.js";
-            H.title (H.string title);
-            style (H.string css_);
+            H.script ~a:[H.a_src "/js/frogwebclient.js"] (H.pcdata "");
+            H.style [H.cdata_style css_];
           ]
       in
-      H.list
-        [ H.head hd
-        ; H.body h
-        ] |> H.to_string
+      H.html hd (H.body [H.div ~a:[H.a_id "main"] [h]])
+      |> string_of_html
     in
     let h = wrap_ ?title h in
     App.respond' ?code (`Html h)
@@ -159,7 +150,7 @@ module Server = struct
 
   let return_404 msg =
     let code = Cohttp.Code.status_of_code 404 in
-    let h = Html.string msg in
+    let h = Html.pcdata msg in
     return_html ~code h
 
   (* toplevel handler *)
@@ -167,13 +158,15 @@ module Server = struct
     let tops =
       List.map
         ~f:(fun (path,descr) ->
-          H.a ~href:(Uri.make ~path ()) (H.string descr) |> H.p)
+          H.li [H.a ~a:[H.a_href (H.uri_of_string path)] [H.pcdata descr]])
         t.toplevel
       |> H.ul
+      |> Misc.List.return
+      |> H.li
     in
     let h =
-      H.list
-        [ H.h1 (H.string "frog-utils")
+      H.ul
+        [ H.li [H.h1 [H.pcdata "frog-utils"]]
         ; tops
         ]
     in

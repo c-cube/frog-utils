@@ -24,7 +24,7 @@ PKG maki.yojson
 PKG olinq
 PKG result
 PKG opium.unix
-PKG cow
+PKG tyxml
 PKG uri
 PKG uuidm
 PKG js_of_ocaml

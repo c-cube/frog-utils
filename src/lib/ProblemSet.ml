@@ -33,9 +33,3 @@ let print out set =
   Format.fprintf out "@[<hv>%a@]" (Format.pp_print_list Problem.print) set
 
 let maki = Maki.Value.set Problem.maki
-
-let to_html uri_of_pb l =
-  let module H = Web.Html in
-  let f pb = H.a ~href:(uri_of_pb pb) (Problem.to_html_name pb) in
-  H.div ~attrs:["class", "problem_set"]
-    (H.list (List.map f l))

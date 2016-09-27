@@ -20,4 +20,3 @@ val of_dir :
 
 val print: Format.formatter -> t -> unit
 val maki : t Maki.Value.ops
-val to_html : (Problem.t -> Web.uri) -> t -> Web.html

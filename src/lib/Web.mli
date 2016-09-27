@@ -6,19 +6,13 @@
 open Result
 
 module E = Misc.Err
-module Html = Cow.Html
+module Html = Tyxml.Html
 
 type 'a or_error = 'a Misc.Err.t
 
-type html = Html.t
+type html = Html_types.div_content_fun Html.elt
 type uri = Uri.t
 type json = Yojson.Safe.json
-
-(** {2 Helpers} *)
-
-val pre : html -> html
-val style : html -> html
-val script : string -> html
 
 (** {2 Encoding Records in HTML} *)
 

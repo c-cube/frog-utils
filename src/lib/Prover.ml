@@ -181,18 +181,19 @@ let hash t =
 
 (* HTML server *)
 let to_html_name p =
-  Web.Html.string p.name
+  Web.Html.cdata p.name
 
 let to_html_fullname p =
+  let module H = Web.Html in
   match p.version with
   | Tag s ->
-    Web.Html.string (Format.sprintf "%s %s" p.name s)
+    H.div [H.pcdata (Format.sprintf "%s %s" p.name s)]
   | Git (branch, commit) ->
-    Web.Html.list [
-      Web.Html.string (
-        Format.sprintf "%s@@%s" p.name branch);
-      Web.Html.br @@ Web.Html.string (
-        Format.sprintf "%s.." (String.sub commit 0 15));
+    H.ul [
+      H.li [H.pcdata (
+          Format.sprintf "%s@@%s" p.name branch)];
+      H.li [H.pcdata (
+        Format.sprintf "%s.." (String.sub commit 0 15))];
     ]
 
 let to_html_full p =

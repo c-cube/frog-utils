@@ -98,7 +98,7 @@ let hash p : string =
   Sha1.string p.name |> Sha1.to_hex
 
 (* HTML server *)
-let to_html_name p = W.Html.string (Filename.basename p.name)
+let to_html_name p = W.Html.div [W.Html.pcdata (Filename.basename p.name)]
 
 let uri_of_problem pb =
   Uri.make ~path:"/problem/" ~query:["file", [pb.name]] ()

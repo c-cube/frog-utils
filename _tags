@@ -9,7 +9,7 @@ true: warn(+a-4-44-29-48@8)
             package(result), package(re.posix), \
             package(maki), package(maki.yojson), package(olinq), \
             package(cmdliner), package(archimedes.cairo), \
-            package(opium.unix), package(cow), package(uuidm), \
+            package(opium.unix), package(tyxml), package(uuidm), \
             package(junit), package(js_of_ocaml), \
             package(js_of_ocaml.ppx), thread
 <**/**/*>: annot, bin_annot

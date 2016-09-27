@@ -97,6 +97,7 @@ module LwtErr = struct
 end
 
 module List = struct
+  let return x = [x]
   let filter_map f l =
     let rec recurse acc l = match l with
     | [] -> List.rev acc
