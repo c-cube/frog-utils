@@ -9,101 +9,6 @@ module T = Test
 module E = Misc.LwtErr
 module W = Web
 
-(** {2 Results for multiple provers on multiple dirs} *)
-module Global_res = struct
-  type t = (Prover.t * string * T.Analyze.t) list
-
-  let to_file ~file t =
-    let json =
-      `List
-        (List.map
-           (fun (p,dir,r) ->
-              `List [Prover.to_yojson p; `String dir; T.Analyze.to_yojson r])
-           t)
-    in
-    Yojson.Safe.to_file file json
-
-  let of_file ~file : t E.t =
-    let open E in
-    try
-      let j = Yojson.Safe.from_file file in
-      begin match j with
-        | `List l ->
-          E.map_s
-            (function
-              | `List [p; `String dir; res] ->
-                Prover.of_yojson p |> E.lift >>= fun p ->
-                T.Analyze.of_yojson res |> E.lift >|= fun res ->
-                p, dir, res
-              | j ->
-                let msg =
-                  Printf.sprintf
-                    "invalid json for frogtest (expected triple,\nnot %s)"
-                    (Yojson.Safe.pretty_to_string j)
-                in
-                E.fail msg)
-            l
-        | _ -> E.fail "invalid json for frogtest (expected toplevel list)"
-      end
-    with e ->
-      E.fail (Printexc.to_string e)
-
-  let pp out (r:t) =
-    let pp_tup out (p,dir,res) =
-      Format.fprintf out "@[<2>%s on `%s`:@ @[%a@]@]"
-        (Prover.name p) dir T.Analyze.print res
-    in
-    Format.fprintf out "@[<v>%a@]" (Misc.Fmt.pp_list pp_tup) r
-
-  type comparison_result = {
-    both: (Prover.t * string * T.ResultsComparison.t) list;
-    left: (Prover.t * string * T.Analyze.t) list;
-    right: (Prover.t * string * T.Analyze.t) list;
-  }
-
-  let compare (a:t) (b:t): comparison_result =
-    let both, left =
-      List.fold_left
-        (fun (both,left) (p,dir,r_left) ->
-           try
-             (* find same (problem,dir) in [b], and compare *)
-             let _, _, r_right =
-               List.find
-                 (fun (p', dir', _) -> Prover.equal p p' && dir = dir')
-                 b
-             in
-             let cmp =
-               T.ResultsComparison.compare r_left.T.Analyze.raw  r_right.T.Analyze.raw
-             in
-             (p, dir, cmp) :: both, left
-           with Not_found ->
-             both, (p,dir,r_left)::left)
-        ([],[]) a
-    in
-    let right =
-      List.filter
-        (fun (p,dir,_) ->
-           List.for_all
-             (fun (p',dir',_) -> not (Prover.equal p p') || dir <> dir')
-             a)
-        b
-    in
-    { both; left; right; }
-
-  let pp_comparison out (r:comparison_result) =
-    let pp_tup out (p,dir,cmp) =
-      Format.fprintf out "@[<2>%s on `%s`:@ @[%a@]@]"
-        (Prover.name p) dir T.ResultsComparison.print cmp
-    and pp_one which out (p,dir,res) =
-      Format.fprintf out "@[<2>%s on `%s` (only on %s):@ @[%a@]@]"
-        (Prover.name p) dir which T.Analyze.print res
-    in
-    Format.fprintf out "@[<hv>%a@,%a@,%a@]@."
-      (Misc.Fmt.pp_list pp_tup) r.both
-      (Misc.Fmt.pp_list (pp_one "left")) r.left
-      (Misc.Fmt.pp_list (pp_one "right")) r.right
-end
-
 (** {2 Run} *)
 module Run = struct
   (* callback that prints a result *)
@@ -129,7 +34,7 @@ module Run = struct
 
   (* run provers on the given dir, return a list [prover, dir, results] *)
   let test_dir ?j ?timeout ?memory ?caching ?provers ~config ~problem_pat ~web ~db dir
-    : (Prover.t * string * T.Analyze.t) list E.t =
+    : T.Top_result.t E.t =
     let open E in
     Format.printf "testing dir `%s`...@." dir;
     ProblemSet.of_dir
@@ -159,17 +64,16 @@ module Run = struct
       results.T.results;
     (* wait for webserver to return *)
     let%lwt _ = web in
-    let l = List.map (fun (p,r) -> p, dir, r) results.T.results in
-    E.return l
+    E.return results
 
-  let check_res results : unit E.t =
-    if List.for_all (fun (_,_,r) -> T.Analyze.is_ok r) results
+  let check_res (results:T.top_result) : unit E.t =
+    if List.for_all (fun (_,r) -> T.Analyze.is_ok r) results.T.results
     then E.return ()
     else
       E.fail (Format.asprintf "%d failure(s)" (
           List.fold_left
-            (fun n (_,_,r) -> n+T.Analyze.num_failed r)
-            0 results))
+            (fun n (_,r) -> n+T.Analyze.num_failed r)
+            0 results.T.results))
 
   (* lwt main *)
   let main ?j ?timeout ?memory ?caching ?junit ?provers ~web ~save ~db ~config dirs () =
@@ -187,18 +91,18 @@ module Run = struct
     E.map_s
       (test_dir ?j ?timeout ?memory ?caching ?provers ~config ~problem_pat ~web ~db)
       dirs
-    >|= List.flatten
-    >>= fun (results:Global_res.t) ->
+    >|= T.Top_result.merge_l
+    >>= fun (results:T.Top_result.t) ->
     begin match save with
       | None -> ()
       | Some file ->
-        Global_res.to_file ~file results
+        T.Top_result.to_file ~file results
     end;
     begin match junit with
       | None -> ()
       | Some file ->
         Lwt_log.ign_info_f "write results in Junit to file `%s`" file;
-        let suites = results |> List.map (fun (_,_,r) -> T.Analyze.to_junit r) in
+        let suites = results.T.results |> List.map (fun (_,r) -> T.Analyze.to_junit r) in
         T.Analyze.junit_to_file suites file;
     end;
     (* now fail if results were bad *)
@@ -209,8 +113,8 @@ end
 module Display = struct
   let main ~file () =
     let open E in
-    Global_res.of_file ~file >>= fun res ->
-    Format.printf "%a@." Global_res.pp res;
+    Lwt.return (T.Top_result.of_file ~file) >>= fun res ->
+    Format.printf "%a@." T.Top_result.pp res;
     E.return ()
 end
 
@@ -218,10 +122,10 @@ end
 module Compare = struct
   let main ~file1 ~file2 () =
     let open E in
-    Global_res.of_file ~file:file1 >>= fun res1 ->
-    Global_res.of_file ~file:file2 >>= fun res2 ->
-    let cmp = Global_res.compare res1 res2 in
-    Format.printf "%a@." Global_res.pp_comparison cmp;
+    Lwt.return (T.Top_result.of_file ~file:file1) >>= fun res1 ->
+    Lwt.return (T.Top_result.of_file ~file:file2) >>= fun res2 ->
+    let cmp = T.Top_result.compare res1 res2 in
+    Format.printf "%a@." T.Top_result.pp_comparison cmp;
     E.return ()
 end
 

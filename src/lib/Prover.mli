@@ -61,7 +61,12 @@ val make_command :
 val name : t -> string
 val hash : t -> string
 
+module Map : sig
+  include Map.S with type key = t
+  val to_list : 'a t -> (key * 'a) list
+  val of_list : (key * 'a) list -> 'a t
+end
+
 val to_html_name : t -> Web.html
 val to_html_fullname : t -> Web.html
 val to_html_full : t -> Web.html
-

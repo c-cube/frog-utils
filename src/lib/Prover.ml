@@ -30,6 +30,8 @@ type t = {
 } [@@deriving yojson]
 [@@@warning "+39"]
 
+type t_ = t
+
 let equal p1 p2 = p1.name = p2.name
 
 let string_opt =
@@ -178,6 +180,20 @@ let hash t =
   Sha1.string @@
   (Printf.sprintf "%s:%s" t.name (version_to_string t.version))
   |> Sha1.to_hex
+
+module Map = struct
+  include Map.Make(struct
+    type t = t_
+
+    let compare p1 p2 =
+      let c = String.compare p1.name p2.name in
+      if c<>0 then c else Pervasives.compare p1.version p2.version
+  end)
+
+  let to_list m = fold (fun prover res acc -> (prover,res)::acc) m []
+
+  let of_list = List.fold_left (fun acc (p,r) -> add p r acc) empty
+end
 
 (* HTML server *)
 let to_html_name p =

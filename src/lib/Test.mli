@@ -34,6 +34,10 @@ module Analyze : sig
     bad       : result list;
   } [@@deriving yojson]
 
+  val make : raw -> t
+
+  val merge_raw : raw -> raw -> raw
+
   val is_ok : t -> bool
 
   val num_failed : t -> int
@@ -42,7 +46,7 @@ module Analyze : sig
 
   val to_file : file:string -> t -> unit
 
-  val print : Format.formatter -> t -> unit
+  val print : t printer
 
   val to_junit : t -> Junit.Testsuite.t
   (** Converts the results into a junit testsuite *)
@@ -97,13 +101,41 @@ module ResultsComparison : sig
   val to_html : (Problem.t -> uri) -> t -> html
 end
 
+type top_result_raw = Analyze.raw Prover.Map.t
+
 (* result of a full run of several provers on several problems,
    with a unique ID in case it is stored on disk *)
-type top_result = {
+type top_result = private {
   uuid: Uuidm.t;
-  results: (Prover.t * Analyze.t) list;
+  results: top_result_raw;
   timestamp: float;
-} [@@deriving yojson]
+}
+
+module Top_result : sig
+  type t = top_result [@@deriving yojson]
+
+  val to_file : file:string -> t -> unit
+
+  val of_file : file:string -> t or_error
+
+  val pp : t printer
+
+  val merge : top_result_raw -> top_result_raw -> top_result_raw
+
+  val merge_l : top_result_raw list -> top_result_raw
+
+  val make : ?timestamp:float -> top_result_raw -> t
+
+  type comparison_result = {
+    both: (Prover.t * ResultsComparison.t) list;
+    left: (Prover.t * Analyze.t) list;
+    right: (Prover.t * Analyze.t) list;
+  }
+
+  val compare : t -> t -> comparison_result
+
+  val pp_comparison : comparison_result printer
+end
 
 val run :
   ?on_solve:(result -> unit Lwt.t) ->
