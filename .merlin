@@ -29,6 +29,10 @@ PKG uri
 PKG uuidm
 PKG js_of_ocaml
 PKG js_of_ocaml.ppx
+PKG js_of_ocaml.tyxml
 PKG junit
+PKG react
+PKG olinq
+PKG reactiveData
 
 #FLG -w +a-4-44-29-48

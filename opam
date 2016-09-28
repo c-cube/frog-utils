@@ -33,6 +33,8 @@ depends: [
     "uuidm"
     "js_of_ocaml"
     "maki"
+    "react"
+    "reactiveData"
 ]
 available: [ "ocaml-version" >= "4.02.1" ]
 tags: ["lock" "batch"]
