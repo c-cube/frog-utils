@@ -14,13 +14,17 @@ type t = {
 }
 
 let make ?(conf=Config.empty) dirs : t =
+  let f = Config.interpolate_home in
   let default =
-    let s = Config.interpolate_home "$HOME/.frogutils/" in
+    let s = f "$HOME/.frogutils/" in
     let ret = Sys.command ("mkdir -p " ^ s) in
-    if ret=0 then [s] else []
+    if ret=0 then (
+      Lwt_log.ign_debug_f "default storage dir is `%s`" s;
+      [s]
+    )else []
   in
   let by_conf = Config.get_string_list ~default:[] conf "storage" in
-  let dirs = dirs @ by_conf @ default in
+  let dirs = List.map f dirs @ List.map f by_conf @ default in
   { dirs }
 
 let find_files ?(filter=fun _ -> true) storage : string list Lwt.t =
