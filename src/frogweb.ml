@@ -14,7 +14,7 @@ let main storage_dirs port debug =
 let term =
   let storage_dirs =
     let doc = "on-disk storage directories" in
-    Arg.(value & opt (list string) ["$HOME/.frogutils"] & info ["storage"] ~doc)
+    Arg.(value & opt (list string) [] & info ["storage"] ~doc)
   and port =
     let doc = "Port on which to run the web server" in
     Arg.(value & opt int 8000 & info ["p"; "port"] ~doc)
