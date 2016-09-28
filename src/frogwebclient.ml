@@ -15,10 +15,13 @@ type pb_filter = {
   pb_name : string;
 }
 
-(* Reactive values *)
+(* Base Reactive values *)
+
+let status, set_status =
+  React.S.create "Starting..."
 
 let results, set_results =
-  let l : (int * int * Run.prover Run.result) list = [] in
+  let l : (Run.prover Run.result) list = [] in
   React.S.create ~eq:(==) l
 
 let pv_filter, set_pv_filter =
@@ -29,6 +32,45 @@ let pb_filter, set_pb_filter =
   let init = { pb_name = ""; } in
   React.S.create init
 
+(* Fetching snapshots *)
+
+let snap_list s =
+  let json = Yojson.Safe.from_string s in
+  match [%of_yojson: string list] json with
+  | Result.Ok l ->
+    set_status "Parsed snapshot list !";
+    l
+  | Result.Error msg ->
+    set_status (
+      Format.sprintf "While parsing snapshots list: %s" msg);
+    []
+
+let split_events =
+  let rec aux acc_p acc_c = function
+    | [] -> acc_p, acc_c
+    | Event.Prover_run res :: r -> aux (res :: acc_p) acc_c r
+    | Event.Checker_run res :: r -> aux acc_p (res :: acc_c) r
+  in
+  aux [] []
+
+let get_snapshots () =
+  let%lwt frame = XmlHttpRequest.get "/snapshots/" in
+  let l = snap_list frame.XmlHttpRequest.content in
+  Lwt_list.iter_s (fun s ->
+      let%lwt frame = XmlHttpRequest.get (Format.sprintf "/snapshots/%s/" s) in
+      let json = Yojson.Safe.from_string frame.XmlHttpRequest.content in
+      match [%of_yojson: Event.t list] json with
+      | Result.Ok l ->
+        let l', _ = split_events l in
+        let old = React.S.value results in
+        set_results (l' @ old);
+        Lwt.return_unit
+      | Result.Error _ ->
+        Lwt.return_unit
+    ) l
+
+(* Events updates *)
+
 let pv_pre_list =
   let cmp p p' =
     let open Prover in
@@ -36,7 +78,7 @@ let pv_pre_list =
   in
   let aux t =
     OLinq.(of_list t
-           |> map (fun (_, _, r) -> r.Run.program)
+           |> map (fun r -> r.Run.program)
            |> distinct ~cmp ()
            |> sort ~cmp ()
            |> run_list)
@@ -61,7 +103,6 @@ let pb_pre_list =
   let proj p = p.Run.problem in
   let aux t =
     OLinq.(of_list t
-           |> map (fun (_, _, r) -> r)
            |> group_by ~cmp proj
            |> sort_by ~cmp fst
            |> run_list)
@@ -146,6 +187,11 @@ let table =
   let l = L.concat th trs in
   R.Html.table l
 
+(* Status bar *)
+
+let st_bar =
+  H.div ~a:[H.a_class ["status"]]
+    [ R.Html.pcdata status ]
 
 (* Buttons & co *)
 
@@ -181,11 +227,11 @@ let () =
   Lwt.async
     (fun _ ->
        Lwt_js_events.domContentLoaded () >>= fun _ ->
-       (* TODO: Load files from server *)
+       main##appendChild (Tyxml_js.To_dom.of_node st_bar) |> ignore;
        main##appendChild (Tyxml_js.To_dom.of_node search_pv) |> ignore;
        main##appendChild (Tyxml_js.To_dom.of_node search_pb) |> ignore;
        main##appendChild (Tyxml_js.To_dom.of_node table) |> ignore;
-       Lwt.return ()
+       get_snapshots ()
   );
 
   Lwt.async (fun _ ->
