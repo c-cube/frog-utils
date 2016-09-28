@@ -188,7 +188,7 @@ module Server = struct
       (Middleware.static ~local_path:"js" ~uri_prefix:"/js/")
     |> App.get "/" (main t) (* main page *)
     |> App.get "/snapshots/" (list_snapshots t)
-    |> App.get "/snapshot/:uuid:/" (serve_snapshot t)
+    |> App.get "/snapshot/:uuid" (serve_snapshot t)
     |> App.get "/problem/" (serve_problem t)
     |> App.port t.port
     |> App.start

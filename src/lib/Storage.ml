@@ -56,7 +56,11 @@ let save_json storage k v =
 
 let find storage (k:key) : string or_error Lwt.t =
   let rec aux dirs = match dirs with
-    | [] -> Misc.LwtErr.fail "no directory for storage"
+    | [] ->
+      Lwt_log.ign_debug_f "storage: could not find key `%s` in directories %s"
+        k
+        (Misc.Fmt.to_string (Misc.Fmt.pp_list Format.pp_print_string) storage.dirs);
+      Misc.LwtErr.fail "no directory for storage"
     | d :: dirs' ->
       let file = Filename.concat d k in
       if Sys.file_exists file
