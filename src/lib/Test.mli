@@ -101,7 +101,7 @@ module ResultsComparison : sig
   val to_html : (Problem.t -> uri) -> t -> html
 end
 
-type top_result_raw = Analyze.raw Prover.Map.t
+type top_result_raw = Event.t list
 
 (* result of a full run of several provers on several problems,
    with a unique ID in case it is stored on disk *)

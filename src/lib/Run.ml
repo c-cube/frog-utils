@@ -22,16 +22,14 @@ type raw_result = {
   stime : float;
 } [@@deriving yojson]
 
-type prover  = [ `Prover of Prover.t ]  [@@deriving yojson]
-type checker = [ `Checker of unit ]     [@@deriving yojson]
-type program = [ prover | checker ]     [@@deriving yojson]
+type prover  = Prover.t [@@deriving yojson]
+type checker = unit [@@deriving yojson]
 
 type +'a result = {
   program : 'a;
   problem : Problem.t;
   raw : raw_result;
-} constraint 'a = [< program ]
-    [@@deriving yojson]
+} [@@deriving yojson]
 
 let hash_prog t =
   match t.program with
@@ -44,17 +42,17 @@ let maki_raw_res =
     ~to_yojson:raw_result_to_yojson
     ~of_yojson
 
-let (maki_result : _ result Maki.Value.ops) =
-  let of_yojson x = E.to_exn (result_of_yojson program_of_yojson x) in
+let (maki_result : prover result Maki.Value.ops) =
+  let of_yojson x = E.to_exn (result_of_yojson prover_of_yojson x) in
   Maki_yojson.make "result"
-    ~to_yojson:(result_to_yojson program_to_yojson)
+    ~to_yojson:(result_to_yojson prover_to_yojson)
     ~of_yojson
 
 (* Start processes *)
 type env = (string * string) array
 
 let analyze_p t =
-  let `Prover prover = t.program in
+  let prover = t.program in
   (* find if [re: re option] is present in [stdout] *)
   let find_opt_ re = match re with
     | None -> false
@@ -142,38 +140,5 @@ let run_prover ?env ~timeout ~memory ~prover ~pb () =
   let cmd = mk_cmd ?env ~timeout ~memory ~prover ~file () in
   let%lwt raw = run_proc ~timeout cmd in
   Lwt.return {
-    program = `Prover prover;
+    program = prover;
     problem = pb; raw; }
-
-(* Display a result's analyzed result *)
-let to_html_analyzed = function
-  | { program = `Prover prover; _ } as t ->
-    let res = analyze_p t in
-    Res.to_html res
-  | { program = `Checker checker; _ } -> H.pcdata "TODO"
-
-(* display the raw result *)
-let to_html_raw_result_name uri_of_raw (r: program result) =
-  let content = to_html_analyzed r in
-  H.a ~a:[H.a_href (uri_of_raw r)] [content]
-
-let to_html_raw_result uri_of_prover uri_of_problem r =
-  R.start
-  |> R.add "program" (
-    match r with
-    | { program = `Prover prover; _ } ->
-      (H.a ~a:[H.a_href (uri_of_prover prover)] [H.div [Prover.to_html_name prover]])
-    | { program = `Checker checker; _ } ->
-      H.pcdata "TODO"
-  )
-  |> R.add "problem"
-    (H.a ~a:[H.a_href (uri_of_problem r.problem)]
-       [H.div [Problem.to_html_name r.problem]])
-  |> R.add "result" (to_html_analyzed r)
-  |> R.add_int "errcode" r.raw.errcode
-  |> R.add_string "real time" (Printf.sprintf "%.3f" r.raw.rtime)
-  |> R.add_string "user time" (Printf.sprintf "%.3f" r.raw.utime)
-  |> R.add_string "system time" (Printf.sprintf "%.3f" r.raw.stime)
-  |> R.add "stdout" (H.pre [H.pcdata r.raw.stdout])
-  |> R.add "stderr" (H.pre [H.pcdata r.raw.stderr])
-  |> R.close

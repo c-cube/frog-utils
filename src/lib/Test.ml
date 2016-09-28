@@ -236,7 +236,7 @@ module Analyze = struct
     let l =
       MStr.fold
         (fun _ r acc ->
-           let `Prover prover = r.Run.program in
+           let prover = r.Run.program in
            let res = Run.analyze_p r in
            let name =
              Printf.sprintf "prover `%s` on problem `%s`"
@@ -448,7 +448,7 @@ let run_pb_ ~config prover pb =
     result.Run.raw.Run.stdout
     result.Run.raw.Run.stderr
     result.Run.raw.Run.errcode;
-  Lwt.return (result :> Run.program Run.result)
+  Lwt.return result
 
 let run_pb ?(caching=true) ?limit ~config prover pb =
   let module V = Maki.Value in
@@ -614,16 +614,11 @@ let run ?(on_solve = nop_) ?(on_done = nop_)
     Lwt_list.map_p
       (fun prover ->
          let%lwt l =
-           Lwt_list.map_p (fun pb ->
-             let%lwt result = run_pb ~caching ~limit ~config prover pb in
-             begin match result with
-               | { Run.program = `Prover _; _ } as t ->
-                 let%lwt () = on_solve t in (* callback *)
-                 Lwt.return t
-               | _  -> assert false
-               (* If this happens, it means there is a hash collision
-                  somewhere... *)
-             end)
+           Lwt_list.map_p
+             (fun pb ->
+                let%lwt result = run_pb ~caching ~limit ~config prover pb in
+                let%lwt () = on_solve result in (* callback *)
+                Lwt.return result)
              set
          in
          Lwt.return (prover, Analyze.raw_of_list l))
