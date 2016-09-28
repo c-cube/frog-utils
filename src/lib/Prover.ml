@@ -34,36 +34,6 @@ type t_ = t
 
 let equal p1 p2 = p1.name = p2.name
 
-let string_opt =
-  Maki.Value.(
-    map
-      (function Some s -> s | None -> "")
-      (function "" -> None | s -> Some s)
-      string
-  )
-
-let maki_version =
-  Maki.Value.marshal "frogprover.version"
-
-let maki =
-  Maki.Value.(
-    map
-      (fun t -> (
-           (t.name, t.version),
-           (t.binary, t.cmd),
-           (t.unsat, t.sat),
-           (t.unknown, t.timeout, t.memory)
-         ))
-      (fun ((name, version), (binary, cmd), (unsat, sat), (unknown, timeout, memory)) ->
-         { name; version; binary; cmd; unsat; sat; unknown; timeout; memory })
-      (quad
-         (pair string maki_version)
-         (pair program string)
-         (pair string_opt string_opt)
-         (triple string_opt string_opt string_opt)
-      )
-  )
-
 let version_to_string = function
   | Tag s -> s
   | Git (b, c) -> Printf.sprintf "%s#%s" b c
@@ -93,7 +63,7 @@ let mk_cmd
         | _ -> raise Not_found)
       s
   in
-  (* XXX: seems to make zombie processes?
+  (* XXX: seems to ake zombie processes?
      add_str "ulimit -t \\$(( 1 + $time)) -v \\$(( 1000000 * $memory )); ";
   *)
   Array.iter
@@ -175,11 +145,6 @@ let of_config config =
 let make_command ?env prover ~timeout ~memory ~file =
   let binary = prover.binary in
   mk_cmd ?env ~binary ~timeout ~memory ~file prover.cmd
-
-let hash t =
-  Sha1.string @@
-  (Printf.sprintf "%s:%s" t.name (version_to_string t.version))
-  |> Sha1.to_hex
 
 module Map = struct
   include Map.Make(struct

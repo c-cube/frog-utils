@@ -19,4 +19,3 @@ val of_dir :
       used *)
 
 val print: Format.formatter -> t -> unit
-val maki : t Maki.Value.ops

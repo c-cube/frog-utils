@@ -37,9 +37,6 @@ type t = {
 val equal : t -> t -> bool
 (** Equality (by name) *)
 
-val maki : t Maki.Value.ops
-(** Maki values for provers. *)
-
 val of_config : Config.t -> t StrMap.t
 (** Get a list of supported provers from a config file. *)
 
@@ -59,7 +56,6 @@ val make_command :
   string
 
 val name : t -> string
-val hash : t -> string
 
 module Map : sig
   include Map.S with type key = t

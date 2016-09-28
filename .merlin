@@ -4,6 +4,12 @@ S src/lib
 B _build/src/lib
 S src/util
 B _build/src/util
+S src/main
+B _build/src/main
+S src/server
+B _build/src/server
+S src/js
+B _build/src/js
 S test/
 B _build/test
 
@@ -20,6 +26,7 @@ PKG toml
 PKG archimedes
 PKG cmdliner
 PKG oUnit
+PKG maki
 PKG maki.yojson
 PKG olinq
 PKG result
@@ -32,7 +39,6 @@ PKG js_of_ocaml.ppx
 PKG js_of_ocaml.tyxml
 PKG junit
 PKG react
-PKG olinq
 PKG reactiveData
 
 #FLG -w +a-4-44-29-48

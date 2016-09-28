@@ -85,17 +85,6 @@ let print out p =
 
 let to_string p = Misc.Fmt.to_string print p
 
-let maki =
-  let module V = Maki.Value in
-  V.map ~descr:"problem"
-    (fun p -> p.name, p.expected)
-    (fun (name, expected) -> {name;expected})
-    (V.pair V.file Res.maki)
-
-(* Hashes of problems *)
-let hash p : string =
-  Sha1.string p.name |> Sha1.to_hex
-
 (* HTML server *)
 let to_html_name p = Html.div [Html.pcdata (Filename.basename p.name)]
 

@@ -5,12 +5,12 @@
 
 type 'a or_error = 'a Misc.Err.t
 type 'a printer = Format.formatter -> 'a -> unit
-type html = Web.html
-type uri = Web.uri
+type html = Html.t
+type uri = Uri.t
 
 module MStr : Map.S with type key = String.t
 
-type result = Run.prover Run.result
+type result = Event.prover Event.result
 
 (** {2 Result on a single problem} *)
 
@@ -51,12 +51,6 @@ module Analyze : sig
   val to_file : file:string -> t -> unit
 
   val print : t printer
-
-  val to_junit : t -> Junit.Testsuite.t
-  (** Converts the results into a junit testsuite *)
-
-  val junit_to_file : Junit.Testsuite.t list -> string -> unit
-  (** [to_junit_file j file] writes the testsuite [j] into given file *)
 end
 
 module Config : sig
@@ -80,9 +74,9 @@ module Config : sig
     provers:Prover.t list ->
     unit -> t
 
-  val of_file : string -> t or_error
+  val update : ?j:int -> ?timeout:int -> ?memory:int -> t -> t
 
-  val maki : t Maki.Value.ops
+  val of_file : string -> t or_error
 
   val to_html : (Prover.t -> uri) -> t -> html
 end
@@ -141,20 +135,3 @@ module Top_result : sig
 
   val pp_comparison : comparison_result printer
 end
-
-val run :
-  ?on_solve:(result -> unit Lwt.t) ->
-  ?on_done:(top_result -> unit Lwt.t) ->
-  ?caching:bool ->
-  ?j:int ->
-  ?timeout:int ->
-  ?memory:int ->
-  ?provers:string list ->
-  config:Config.t ->
-  ProblemSet.t ->
-  top_result Lwt.t
-(** Run the given prover(s) on the given problem set, obtaining results
-    after all the problems have been dealt with.
-    @param caching if true, use Maki for caching results (default true)
-    @param on_solve called whenever a single problem is solved *)
-

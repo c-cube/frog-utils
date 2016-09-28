@@ -30,9 +30,6 @@ val compare_res : t -> Res.t -> [`Same | `Improvement | `Mismatch | `Disappoint]
 *)
 
 val print : Format.formatter -> t -> unit
-val maki : t Maki.Value.ops
-
-val hash : t -> string
 
 val to_html_name : t -> Html.t
 

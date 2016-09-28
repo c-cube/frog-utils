@@ -6,7 +6,6 @@
 open Lwt.Infix
 
 module E = Misc.Err
-module W = Web
 module R = Html.Record
 module H = Html
 
@@ -16,13 +15,13 @@ module ProblemSet = ProblemSet
 
 module MStr = Map.Make(String)
 
-type result = Run.prover Run.result
+type result = Event.prover Event.result
   [@@deriving yojson]
 
 type 'a or_error = 'a E.t
 type 'a printer = Format.formatter -> 'a -> unit
-type html = Web.html
-type uri = Web.uri
+type html = Html.t
+type uri = Uri.t
 
 let fpf = Format.fprintf
 let spf = Format.asprintf
@@ -37,7 +36,7 @@ module Analyze = struct
   let empty_raw = MStr.empty
 
   let add_raw r raw =
-    let pb = r.Run.problem.Problem.name in
+    let pb = r.Event.problem.Problem.name in
     MStr.add pb r raw
 
   let raw_of_list l = List.fold_left (fun acc r -> add_raw r acc) empty_raw l
@@ -95,12 +94,6 @@ module Analyze = struct
     bad: result list;
   } [@@deriving yojson]
 
-  let maki =
-    let of_yojson x = E.to_exn (of_yojson x) in
-    Maki_yojson.make "results"
-      ~to_yojson
-      ~of_yojson
-
   let merge_raw =
     MStr.merge
       (fun _ a b -> if a=None then b else a)
@@ -111,8 +104,8 @@ module Analyze = struct
       M.of_map raw
       |> OLinq.map snd
       |> OLinq.group_by
-        (fun r -> Problem.compare_res r.Run.problem
-            (Run.analyze_p r))
+        (fun r -> Problem.compare_res r.Event.problem
+            (Event.analyze_p r))
       |> OLinq.run_list ?limit:None
     in
     let improved = assoc_or [] `Improvement l in
@@ -128,11 +121,11 @@ module Analyze = struct
           | Res.Timeout -> add_timeout_
         ) !stat
     in
-    MStr.iter (fun _ r -> add_res (Run.analyze_p r)) raw;
+    MStr.iter (fun _ r -> add_res (Event.analyze_p r)) raw;
     improved, ok, bad, disappoint, !stat
 
   let add_raw r raw =
-    MStr.add r.Run.problem.Problem.name r raw
+    MStr.add r.Event.problem.Problem.name r raw
 
   let make raw =
     let improved, ok, bad, disappoint, stat = analyse_ raw in
@@ -165,9 +158,9 @@ module Analyze = struct
 
   let pp_raw_res_ out r =
     fpf out "@[<h>problem %s (expected: %a, result: %a)@]"
-      r.Run.problem.Problem.name
-      Res.print r.Run.problem.Problem.expected
-      Res.print (Run.analyze_p r)
+      r.Event.problem.Problem.name
+      Res.print r.Event.problem.Problem.expected
+      Res.print (Event.analyze_p r)
 
   let print out r =
     let pp_l out = fpf out "[@[<hv>%a@]]" (pp_list_ pp_raw_res_) in
@@ -188,10 +181,10 @@ module Analyze = struct
 
   let to_html_raw_result_l uri_of_problem uri_of_raw_res r =
     [ H.div [H.a
-        ~a:[H.a_href (uri_of_problem r.Run.problem)]
-        [H.div [Problem.to_html_name r.Run.problem]]]
+        ~a:[H.a_href (uri_of_problem r.Event.problem)]
+        [H.div [Problem.to_html_name r.Event.problem]]]
     ; H.div [H.a ~a:[H.a_href (uri_of_raw_res r)]
-               [H.div[Res.to_html @@ Run.analyze_p r]]]
+               [H.div[Res.to_html @@ Event.analyze_p r]]]
     ]
 
   let to_html_raw_tbl uri_of_problem uri_of_raw_res l =
@@ -236,64 +229,6 @@ module Analyze = struct
     |> R.add "stats" (to_html_stats t.stat)
     |> R.add "raw" (to_html_raw uri_of_problem uri_of_raw_res t.raw)
     |> R.close
-
-  let to_junit t : Junit.Testsuite.t =
-    let module J = Junit in
-    let l =
-      MStr.fold
-        (fun _ r acc ->
-           let prover = r.Run.program in
-           let res = Run.analyze_p r in
-           let name =
-             Printf.sprintf "prover `%s` on problem `%s`"
-               prover.Prover.name
-               r.Run.problem.Problem.name
-           and message =
-             Printf.sprintf "result: `%s`, expected: `%s`"
-               (Res.to_string res)
-               (Res.to_string r.Run.problem.Problem.expected)
-           and classname = ""
-           and typ = ""
-           and time = r.Run.raw.Run.rtime
-           in
-           let case =
-             match Problem.compare_res r.Run.problem res with
-               | `Mismatch ->
-                 J.Testcase.error
-                   ~typ ~classname ~time
-                   ~name
-                   ~message:""
-                   message
-               | `Disappoint
-               | `Same
-               | `Improvement ->
-                 J.Testcase.pass
-                   ~classname ~time
-                   ~name
-           in
-           case :: acc)
-        t.raw
-        []
-    in
-    let suite =
-      J.Testsuite.make
-        ?package:None
-        ?timestamp:None
-        ?hostname:None
-        ?system_out:None
-        ?system_err:None
-        ~name:"frogtest"
-    in
-    J.Testsuite.add_testcases l suite
-
-  let junit_to_file suites file =
-    let report = Junit.make suites in
-    let xml_report = Junit.to_xml report in
-    let oc = open_out file in
-    let fmt = Format.formatter_of_out_channel oc in
-    Format.fprintf fmt "@[%a@]@." (Tyxml.Xml.pp ()) xml_report;
-    close_out oc;
-    ()
 end
 
 module Config = struct
@@ -308,15 +243,6 @@ module Config = struct
     provers: Prover.t list;
   } [@@deriving yojson]
   [@@@warning "+39"]
-
-  let maki : t Maki.Value.ops =
-    let module V = Maki.Value in
-    let of_yojson x = E.to_exn (of_yojson x) in
-    let json =  Maki_yojson.make ~of_yojson ~to_yojson "config_json" in
-    V.map ~descr:"config"
-      (fun t -> t, t.provers)
-      (fun (t,_) -> t)
-      (V.pair json (V.set Prover.maki))
 
   let make ?(j=1) ?(timeout=5) ?(memory=1000) ?(dir=[]) ?default_expect ~pat ~provers () =
     { j; timeout; memory; provers; default_dirs=dir; default_expect; problem_pat=pat; }
@@ -350,12 +276,13 @@ module Config = struct
       let problem_pat = C.get_string c "problems" in
       let provers = C.get_string_list c "provers" in
       let provers = List.map (Prover.build_from_config main) provers in
-      E.return { j; timeout; memory; provers; default_expect; default_dirs; problem_pat; }
+      E.return { j; timeout; memory; provers; default_expect;
+                 default_dirs; problem_pat; }
     with
     | C.Error e ->
       E.fail e
 
-  let to_html uri_of_prover c : W.html =
+  let to_html uri_of_prover c : html =
     R.start
     |> R.add_int "j" c.j
     |> R.add_int "timeout" c.timeout
@@ -384,7 +311,7 @@ module ResultsComparison = struct
 
   (* TODO: use outer_join? to also find the disappeared/appeared *)
   let compare (a: Analyze.raw) b : t =
-    let open Run in
+    let open Event in
     let module M = OLinq.AdaptMap(MStr) in
     let a = M.of_map a |> OLinq.map snd in
     let b = M.of_map b |> OLinq.map snd in
@@ -437,39 +364,6 @@ module ResultsComparison = struct
   let to_html _ _ = assert false (* TODO! *)
 end
 
-(* run one particular test *)
-let run_pb_ ~config prover pb =
-  Lwt_log.ign_debug_f "running %-15s/%-30s..."
-    (Filename.basename prover.Prover.binary) pb.Problem.name;
-  (* spawn process *)
-  let%lwt result = Run.run_prover
-      ~timeout:config.Config.timeout
-      ~memory:config.Config.memory
-      ~prover ~pb ()
-  in
-  Lwt_log.ign_debug_f "output for %s/%s: `%s`, `%s`, errcode %d"
-    prover.Prover.binary pb.Problem.name
-    result.Run.raw.Run.stdout
-    result.Run.raw.Run.stderr
-    result.Run.raw.Run.errcode;
-  Lwt.return result
-
-let run_pb ?(caching=true) ?limit ~config prover pb =
-  let module V = Maki.Value in
-  Maki.call_exn
-    ?limit
-    ~bypass:(not caching)
-    ~lifetime:(`KeepFor Maki.Time.(days 2))
-    ~deps:[V.pack V.int config.Config.timeout;
-           V.pack V.int config.Config.memory;
-           V.pack Prover.maki prover;
-           V.pack Problem.maki pb]
-    ~op:Run.maki_result
-    ~name:"frogtest.run_pb"
-    (fun () -> run_pb_ ~config prover pb)
-
-let nop_ _ = Lwt.return_unit
-
 type top_result = {
   events: Event.t list;
   analyze: Analyze.t Prover.Map.t lazy_t;
@@ -486,7 +380,7 @@ module Top_result = struct
       |> List.fold_left
         (fun map e -> match e with
            | Event.Prover_run r ->
-             let p = r.Run.program in
+             let p = r.Event.program in
              let raw =
                try Prover.Map.find p map with Not_found -> Analyze.empty_raw
              in
@@ -568,35 +462,3 @@ module Top_result = struct
       (Misc.Fmt.pp_list (pp_one "left")) (Prover.Map.to_list r.left)
       (Misc.Fmt.pp_list (pp_one "right")) (Prover.Map.to_list r.right)
 end
-
-let run ?(on_solve = nop_) ?(on_done = nop_)
-    ?(caching=true) ?j ?timeout ?memory ?provers ~config set
-  =
-  let config = Config.update ?j ?timeout ?memory config in
-  let limit = Maki.Limit.create config.Config.j in
-  let provers = match provers with
-    | None -> config.Config.provers
-    | Some l ->
-      List.filter
-        (fun p -> List.mem (Prover.name p) l)
-        config.Config.provers
-  in
-  let%lwt res =
-    Lwt_list.map_p
-      (fun prover ->
-         let%lwt l =
-           Lwt_list.map_p
-             (fun pb ->
-                let%lwt result = run_pb ~caching ~limit ~config prover pb in
-                let%lwt () = on_solve result in (* callback *)
-                Lwt.return result)
-             set
-         in
-         Lwt.return l)
-      provers
-    >|= List.flatten
-  in
-  let r = Top_result.make (List.map Event.mk_prover res) in
-  let%lwt () = on_done r in
-  Lwt.return r
-

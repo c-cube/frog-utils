@@ -1,0 +1,73 @@
+OASISFormat: 0.4
+Name:        frogutils
+Version:     dev
+Homepage:    https://github.com/c-cube/frog-utils
+Authors:     Simon Cruanes, Guillaume Bury
+License:     BSD-2-clause
+LicenseFile: LICENSE
+Plugins:     META (0.3), DevFiles (0.3)
+OCamlVersion: >= 4.01.0
+BuildTools:  ocamlbuild
+AlphaFeatures: compiled_setup_ml, ocamlbuild_more_args
+
+XOCamlbuildExtraArgs: "-j 0 -plugin-tag 'package(js_of_ocaml.ocamlbuild)'"
+#XOCamlbuildPluginTags: package(js_of_ocaml.ocamlbuild)
+
+Synopsis:    Tools for running/testing/benchmarking provers and related logic tools
+
+Library "frog"
+  Path:             src/lib
+  Pack:             true
+  Modules:          Config, Event, Html, Misc, Problem, ProblemSet, Prover, Res, Test
+  BuildDepends:     ppx_deriving_yojson, lwt, tyxml, lwt.ppx, toml,
+                    ppx_deriving.std, re.posix, result, olinq, uri, uuidm
+
+Library "frog_server"
+  Path:             src/server
+  Pack:             true
+  Modules:          Cmd, Heap, JUnit_wrapper, LockClient, LockDaemon,
+                    LockMessages, Maki_wrapper, MapState, Plot, PrintBox,
+                    Run, Storage, TPTP, Web, Test_run
+  BuildDepends:     frog, unix, lwt.unix, lwt.preemptive, cmdliner,
+                    archimedes.cairo, opium.unix, junit, maki,
+                    maki.yojson, threads
+
+Executable frogweb
+  Path:             src/main
+  Install:          true
+  CompiledObject:   best
+  MainIs:           frogweb.ml
+  BuildDepends:     frog, frog_server
+
+Executable frogtptp
+  Path:             src/main
+  Build:            false  # FIXME
+  Install:          true
+  CompiledObject:   best
+  MainIs:           frogtptp.ml
+  BuildDepends:     frog, frog_server
+
+Executable frogtest
+  Path:             src/main
+  Install:          true
+  CompiledObject:   best
+  MainIs:           frogtest.ml
+  BuildDepends:     frog, frog_server
+
+Executable froglock
+  Path:             src/main
+  Install:          true
+  CompiledObject:   best
+  MainIs:           froglock.ml
+  BuildDepends:     frog, frog_server
+
+Executable frogwebclient
+  Path:             src/js
+  Install:          true
+  CompiledObject:   byte
+  MainIs:           frogwebclient.ml
+  BuildDepends:     frog, frog_server, js_of_ocaml, js_of_ocaml.tyxml,
+                    js_of_ocaml.ppx, react, reactiveData
+
+
+

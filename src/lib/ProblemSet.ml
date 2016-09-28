@@ -32,4 +32,3 @@ let of_dir ~default_expect ?filter:(p=fun _ -> true) d =
 let print out set =
   Format.fprintf out "@[<hv>%a@]" (Format.pp_print_list Problem.print) set
 
-let maki = Maki.Value.set Problem.maki
