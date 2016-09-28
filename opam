@@ -9,10 +9,18 @@ dev-repo: "https://github.com/c-cube/frog-utils.git"
 bug-reports: "https://github.com/c-cube/frog-utils/issues"
 license: "BSD-2-clause"
 build: [
+  ["./configure"
+    "--bindir" "%{bin}%"
+    "--sharedstatedir" "%{share}%"
+    "--mandir" "%{man}%"]
   [make]
 ]
-install: [make "MANDIR=%{man}%" "BINDIR=%{bin}%" "SHAREDIR=%{share}%" "install"]
-remove: [make "MANDIR=%{man}%" "BINDIR=%{bin}%" "SHAREDIR=%{share}%" "uninstall"]
+install: [
+  make "install"
+]
+remove: [
+  make "uninstall"
+]
 depends: [
     "ocamlfind" {build}
     "oasis" {build}
