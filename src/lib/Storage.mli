@@ -11,7 +11,7 @@ type key = string
 type json = Yojson.Safe.json
 type 'a or_error = 'a Misc.Err.t
 
-type t = {
+type t = private {
   dirs: string list; (* absolute paths to directories *)
 }
 
