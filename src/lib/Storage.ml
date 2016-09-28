@@ -17,7 +17,10 @@ let make ?(conf=Config.empty) dirs : t =
   let default =
     let s = Config.interpolate_home "$HOME/.frogutils/" in
     let ret = Sys.command ("mkdir -p " ^ s) in
-    if ret=0 then [s] else []
+    if ret=0 then (
+      Lwt_log.ign_debug_f "default storage dir is `%s`" s;
+      [s]
+    )else []
   in
   let by_conf = Config.get_string_list ~default:[] conf "storage" in
   let dirs = dirs @ by_conf @ default in
