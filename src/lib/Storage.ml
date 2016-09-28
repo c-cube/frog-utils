@@ -27,20 +27,24 @@ let make ?(conf=Config.empty) dirs : t =
   let dirs = List.map f dirs @ List.map f by_conf @ default in
   { dirs }
 
+module StrSet = Set.Make(String)
+
 let find_files ?(filter=fun _ -> true) storage : string list Lwt.t =
   let aux d =
     let%lwt dir = Lwt_unix.opendir d in
-    let acc = ref [] in
+    let acc = ref StrSet.empty in
     try%lwt
       while%lwt true do
         let%lwt s = Lwt_unix.readdir dir in
-        if filter s then acc := s :: !acc;
+        if s<>"." && s<>".." && filter s then (
+          acc := StrSet.add s !acc;
+        );
         Lwt.return_unit
       done >>= fun () ->
       assert false
     with End_of_file ->
       let%lwt () = Lwt_unix.closedir dir in
-      Lwt.return !acc
+      Lwt.return (StrSet.elements !acc)
   in
   Lwt_list.map_p aux storage.dirs >|= List.flatten
 
