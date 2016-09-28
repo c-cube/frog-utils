@@ -23,7 +23,6 @@ module Server : sig
   type t
   val create: ?port:int -> storage:Storage.t -> unit -> t
   val storage : t -> Storage.t
-  val add_route : t -> ?descr:string -> string -> Opium.Rock.Handler.t -> unit
   val return_html :
     ?title:string -> ?code:Cohttp.Code.status_code -> html -> Opium.Response.t Lwt.t
   val return_json : ?code:Cohttp.Code.status_code -> json -> Opium.Response.t Lwt.t

@@ -23,29 +23,14 @@ module Server = struct
 
   type t = {
     storage: Storage.t;
-    mutable toplevel : (string * string) list; (* toplevel URLs *)
     mutable port: int;
     mutable app : App.t;
   }
 
   let create ?(port=8000) ~storage () =
-    {
-      storage;
-      toplevel=[];
-      port;
-      app=App.empty;
-    }
+    { storage; port; app=App.empty; }
 
   let storage t = t.storage
-
-  let add_route t ?descr r h =
-    t.app <- Opium.Std.get r h t.app;
-    begin match descr with
-      | Some descr when not (String.contains r ':') ->
-        t.toplevel <- (r, descr) :: t.toplevel
-      | _ -> ()
-    end;
-    ()
 
   let set_port t p = t.port <- p
 
@@ -127,20 +112,7 @@ module Server = struct
     return_html ~code h
 
   (* toplevel handler *)
-  let main t _req =
-    let tops =
-      List.map
-        ~f:(fun (path,descr) ->
-          H.li [H.a ~a:[H.a_href (H.uri_of_string path)] [H.pcdata descr]])
-        t.toplevel
-      |> H.ul
-      |> Misc.List.return
-      |> H.li
-    in
-    let h =
-      H.ul [ H.li [H.h1 [H.pcdata "frog-utils"]] ; tops ]
-    in
-    return_html h
+  let main t _req = return_html (H.pcdata "")
 
   (* list all the snapshots *)
   let list_snapshots t _req =
