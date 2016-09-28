@@ -34,6 +34,10 @@ module Analyze : sig
     bad       : result list;
   } [@@deriving yojson]
 
+  val empty_raw : raw
+
+  val add_raw : result -> raw -> raw
+
   val make : raw -> t
 
   val merge_raw : raw -> raw -> raw
@@ -101,31 +105,31 @@ module ResultsComparison : sig
   val to_html : (Problem.t -> uri) -> t -> html
 end
 
-type top_result_raw = Event.t list
-
-(* result of a full run of several provers on several problems,
-   with a unique ID in case it is stored on disk *)
 type top_result = private {
-  uuid: Uuidm.t;
-  results: top_result_raw;
-  timestamp: float;
+  events: Event.t list;
+  analyze: Analyze.t Prover.Map.t lazy_t;
 }
+(** Main result of testing: a snapshot of the work done, + the analysis
+    per prover *)
 
 module Top_result : sig
-  type t = top_result [@@deriving yojson]
-  type raw = top_result_raw
-
-  val to_file : file:string -> t -> unit
-
-  val of_file : file:string -> t or_error
+  type t = top_result
 
   val pp : t printer
 
-  val merge : top_result_raw -> top_result_raw -> top_result_raw
+  val merge : t -> t -> t
 
-  val merge_l : top_result_raw list -> top_result_raw
+  val merge_l : t list -> t
 
-  val make : ?timestamp:float -> top_result_raw -> t
+  val make : Event.t list -> t
+
+  val snapshot : t -> Event.Snapshot.t
+
+  val of_snapshot : Event.Snapshot.t -> t
+
+  val to_file : file:string -> t -> unit or_error Lwt.t
+
+  val of_file : file:string -> t or_error Lwt.t
 
   type comparison_result = {
     both: ResultsComparison.t Prover.Map.t;
@@ -140,7 +144,7 @@ end
 
 val run :
   ?on_solve:(result -> unit Lwt.t) ->
-  ?on_done:(Analyze.raw -> unit Lwt.t) ->
+  ?on_done:(top_result -> unit Lwt.t) ->
   ?caching:bool ->
   ?j:int ->
   ?timeout:int ->
@@ -148,7 +152,7 @@ val run :
   ?provers:string list ->
   config:Config.t ->
   ProblemSet.t ->
-  top_result_raw Lwt.t
+  top_result Lwt.t
 (** Run the given prover(s) on the given problem set, obtaining results
     after all the problems have been dealt with.
     @param caching if true, use Maki for caching results (default true)

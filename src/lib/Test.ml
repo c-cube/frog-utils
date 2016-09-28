@@ -3,6 +3,8 @@
 
 (** {1 Tools to test a prover} *)
 
+open Lwt.Infix
+
 module E = Misc.Err
 module W = Web
 module R = W.Record
@@ -32,13 +34,17 @@ let assoc_or def x l =
 module Analyze = struct
   type raw = result MStr.t
 
-  let raw_of_list l =
-    List.fold_left
-      (fun acc r -> MStr.add r.Run.problem.Problem.name r acc)
-      MStr.empty l
+  let empty_raw = MStr.empty
+
+  let add_raw r raw =
+    let pb = r.Run.problem.Problem.name in
+    MStr.add pb r raw
+
+  let raw_of_list l = List.fold_left (fun acc r -> add_raw r acc) empty_raw l
 
   let raw_to_yojson r : Yojson.Safe.json =
-    let l = MStr.fold
+    let l =
+      MStr.fold
         (fun _ r acc ->
            let j = result_to_yojson r in
            j :: acc)
@@ -125,7 +131,7 @@ module Analyze = struct
     MStr.iter (fun _ r -> add_res (Run.analyze_p r)) raw;
     improved, ok, bad, disappoint, !stat
 
-  let add_raw raw r =
+  let add_raw r raw =
     MStr.add r.Run.problem.Problem.name r raw
 
   let make raw =
@@ -466,89 +472,58 @@ let run_pb ?(caching=true) ?limit ~config prover pb =
 
 let nop_ _ = Lwt.return_unit
 
-type top_result_raw = Analyze.raw Prover.Map.t
-
-(* result of a full run of several provers on several problems,
-   with a unique ID in case it is stored on disk *)
 type top_result = {
-  uuid: Uuidm.t;
-  results: top_result_raw;
-  timestamp: float;
+  events: Event.t list;
+  analyze: Analyze.t Prover.Map.t lazy_t;
 }
 
 module Top_result = struct
   type t = top_result
-  type raw = top_result_raw
 
-  let to_yojson (r:t) : Yojson.Safe.json =
-    let l =
-      List.map [%to_yojson: (Prover.t * Analyze.raw)] (Prover.Map.to_list r.results)
-    in
-    `Assoc [
-      "uuid", `String (Uuidm.to_string r.uuid);
-      "results", `List l;
-      "timestamp", `String (string_of_float r.timestamp);
-    ]
+  let snapshot t = Event.Snapshot.make t.events
 
-  let of_yojson (j:Yojson.Safe.json): t Misc.Err.t =
-    let open E in
-    try
-      match j with
-        | `Assoc l ->
-          begin match List.assoc "uuid" l with
-            | `String s ->
-              begin match Uuidm.of_string s with
-                | Some x-> E.return x
-                | None -> E.fail "invalid uuid"
-              end
-            | _ -> E.fail "expected string for uuid"
-          end >>= fun uuid ->
-          begin match assoc_or (`String "0.") "timestamp" l with
-            | `String s -> E.return (float_of_string s)
-            | _ -> E.fail "expected timestamp to be a string"
-          end >>= fun timestamp ->
-          [%of_yojson: (Prover.t * Analyze.raw) list]
-            (List.assoc "results" l)
-          >|= Prover.Map.of_list
-          >|= fun results ->
-          { uuid; results; timestamp }
-        | _ -> E.fail "expected record"
-    with e -> E.fail (Printexc.to_string e)
+  let make l =
+    let analyze = lazy (
+      l
+      |> List.fold_left
+        (fun map e -> match e with
+           | Event.Prover_run r ->
+             let p = r.Run.program in
+             let raw =
+               try Prover.Map.find p map with Not_found -> Analyze.empty_raw
+             in
+             let analyze_raw = Analyze.add_raw r raw in
+             Prover.Map.add p analyze_raw map
+           | Event.Checker_run _ -> map)
+        Prover.Map.empty
+      |> Prover.Map.map Analyze.make
+    ) in
+    { events=l; analyze; }
 
-  let to_file ~file t =
-    Yojson.Safe.to_file file (to_yojson t)
+  let of_snapshot s = make s.Event.events
 
-  let of_file ~file : t E.t =
-    let open E in
-    try
-      let j = Yojson.Safe.from_file file in
-      of_yojson j
-    with e ->
-      E.fail (Printexc.to_string e)
+  let merge a b = make (List.rev_append a.events b.events)
 
-  let merge =
-    Prover.Map.merge
-      (fun _ v1 v2 -> match v1, v2 with
-         | None, None -> assert false
-         | None, Some v
-         | Some v, None -> Some v
-         | Some v1, Some v2 -> Some (Analyze.merge_raw v1 v2))
+  let merge_l l =
+    let events = List.map (fun t->t.events) l |> List.flatten in
+    make events
 
-  let merge_l = function
-    | [] -> Prover.Map.empty
-    | r :: tail -> List.fold_left merge r tail
+  let to_file ~file r =
+    let snapshot = Event.Snapshot.make r.events in
+    Event.Snapshot.to_file ~file snapshot
 
-  let make ?(timestamp=Unix.gettimeofday()) l =
-    { timestamp; uuid=Uuidm.create `V4; results=l }
+  let of_file ~file =
+    let open Misc.LwtErr in
+    Event.Snapshot.of_file ~file >|= of_snapshot
 
   let pp out (r:t) =
     let pp_tup out (p,res) =
-      let res = Analyze.make res in
       Format.fprintf out "@[<2>%s:@ @[%a@]@]"
         (Prover.name p) Analyze.print res
     in
+    let {analyze=lazy a; _} = r in
     Format.fprintf out "@[<v>%a@]" (Misc.Fmt.pp_list pp_tup)
-      (Prover.Map.to_list r.results)
+      (Prover.Map.to_list a)
 
   type comparison_result = {
     both: ResultsComparison.t Prover.Map.t;
@@ -557,28 +532,26 @@ module Top_result = struct
   }
 
   let compare (a:t) (b:t): comparison_result =
+    let {analyze=lazy a; _} = a in
+    let {analyze=lazy b; _} = b in
     let both, left =
       Prover.Map.fold
         (fun p r_left (both,left) ->
            try
              (* find same (problem,dir) in [b], and compare *)
-             let r_right =
-               Prover.Map.find p
-                 b.results
-             in
+             let r_right = Prover.Map.find p b in
              let cmp =
-               ResultsComparison.compare r_left r_right
+               ResultsComparison.compare r_left.Analyze.raw r_right.Analyze.raw
              in
              (p, cmp) :: both, left
            with Not_found ->
-             both, (p,Analyze.make r_left)::left)
-        a.results ([],[])
+             both, (p,r_left)::left)
+        a ([],[])
     in
     let right =
       Prover.Map.filter
-        (fun p _ -> not (Prover.Map.mem p a.results))
-        b.results
-      |> Prover.Map.map Analyze.make
+        (fun p _ -> not (Prover.Map.mem p a))
+        b
     in
     let both = Prover.Map.of_list both in
     let left = Prover.Map.of_list left in
@@ -621,10 +594,11 @@ let run ?(on_solve = nop_) ?(on_done = nop_)
                 Lwt.return result)
              set
          in
-         Lwt.return (prover, Analyze.raw_of_list l))
+         Lwt.return l)
       provers
+    >|= List.flatten
   in
-  let%lwt () = Lwt_list.iter_p (fun (_,r) -> on_done r) res in
-  let r:top_result_raw = Prover.Map.of_list res in
+  let r = Top_result.make (List.map Event.mk_prover res) in
+  let%lwt () = on_done r in
   Lwt.return r
 
