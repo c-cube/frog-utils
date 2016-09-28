@@ -69,5 +69,6 @@ Executable frogwebclient
   BuildDepends:     frog, frog_server, js_of_ocaml, js_of_ocaml.tyxml,
                     js_of_ocaml.ppx, react, reactiveData
 
+PostBuildCommand: make js_links
 
 
