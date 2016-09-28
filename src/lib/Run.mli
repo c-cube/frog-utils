@@ -15,16 +15,15 @@ type raw_result = {
   stime : float;
 } [@@deriving yojson]
 
-type prover  = [ `Prover of Prover.t ]  [@@deriving yojson]
-type checker = [ `Checker of unit ]         [@@deriving yojson]
-type program = [ prover | checker ]         [@@deriving yojson]
+type prover  = Prover.t [@@deriving yojson]
+type checker = unit [@@deriving yojson]
 
 type +'a result = {
   program : 'a;
   problem : Problem.t;
   raw : raw_result;
-} constraint 'a = [< program ]
-    [@@deriving yojson]
+}
+[@@deriving yojson]
 
 val run_proc :
   timeout:int ->
@@ -44,5 +43,5 @@ val run_prover :
 val analyze_p : prover result -> Res.t
 
 val maki_raw_res : raw_result Maki.Value.ops
-val maki_result : program result Maki.Value.ops
+val maki_result : prover result Maki.Value.ops
 

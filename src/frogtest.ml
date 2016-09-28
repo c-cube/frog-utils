@@ -24,7 +24,7 @@ module Run = struct
       in
       Format.fprintf out "%a" (F.in_bold_color c Format.pp_print_string) str
     in
-    let `Prover prover = res.Run.program in
+    let prover = res.Run.program in
     let prover_name = Filename.basename prover.Prover.name in
     let pb_name = res.Run.problem.Problem.name in
     Lwt_log.ign_debug_f "result for `%s` with %s: %s"
@@ -34,7 +34,7 @@ module Run = struct
 
   (* run provers on the given dir, return a list [prover, dir, results] *)
   let test_dir ?j ?timeout ?memory ?caching ?provers ~config ~problem_pat ~web ~db dir
-    : T.Top_result.raw E.t =
+    : T.Top_result.t E.t =
     let open E in
     Format.printf "testing dir `%s`...@." dir;
     ProblemSet.of_dir
@@ -43,40 +43,31 @@ module Run = struct
       dir
     >>= fun pbs ->
     Format.printf "run %d tests in %s@." (ProblemSet.size pbs) dir;
-    let storage = Storage.make [] in
-    let server =
-      if web
-      then Some (W.Server.create ~storage ())
-      else None
-    in
     (* solve *)
     let main =
       E.ok (T.run ?j ?timeout ?memory ?caching ?provers
           ~on_solve ~config pbs)
     in
-    let web = Misc.Opt.((server >|= W.Server.run) |> get Lwt.return_unit) |> E.ok in
     main
     >>= fun results ->
     Prover.Map.iter
       (fun p r ->
-         let r = T.Analyze.make r in
          Format.printf "@[<2>%s on `%s`:@ @[<hv>%a@]@]@."
            (Prover.name p) dir T.Analyze.print r)
-      results;
+      (Lazy.force results.T.analyze);
     (* wait for webserver to return *)
     let%lwt _ = web in
     E.return results
 
   let check_res (results:T.top_result) : unit E.t =
-    let l = Prover.Map.to_list results.T.results in
-    let l = List.map (fun (p,r) -> p,T.Analyze.make r) l in
-    if List.for_all (fun (_,r) -> T.Analyze.is_ok r) l
+    let lazy map = results.T.analyze in
+    if Prover.Map.for_all (fun _ r -> T.Analyze.is_ok r) map
     then E.return ()
     else
       E.fail (Format.asprintf "%d failure(s)" (
-          List.fold_left
-            (fun n (_,r) -> n+T.Analyze.num_failed r)
-            0 l))
+          Prover.Map.fold
+            (fun _ r n -> n + T.Analyze.num_failed r)
+            map 0))
 
   (* lwt main *)
   let main ?j ?timeout ?memory ?caching ?junit ?provers ~web ~save ~db ~config dirs () =
@@ -89,39 +80,51 @@ module Run = struct
       | _::_ -> dirs
       | [] -> config.T.Config.default_dirs
     in
+    let storage = Storage.make [] in
+    let server =
+      if web
+      then Some (W.Server.create ~storage ())
+      else None
+    in
+    let web = Misc.Opt.((server >|= W.Server.run) |> get Lwt.return_unit) |> E.ok in
     (* build problem set (exclude config file!) *)
     let problem_pat = Re_posix.compile_pat config.T.Config.problem_pat in
     E.map_s
       (test_dir ?j ?timeout ?memory ?caching ?provers ~config ~problem_pat ~web ~db)
       dirs
     >|= T.Top_result.merge_l
-    >|= T.Top_result.make ?timestamp:None
     >>= fun (results:T.Top_result.t) ->
-    (* FIXME: also put into storage? *)
     begin match save with
-      | None -> ()
-      | Some file ->
+      | "none" -> E.return ()
+      | "" ->
+        (* default *)
+        let snapshot = Event.Snapshot.make results.T.events in
+        Storage.save_json storage
+          (Uuidm.to_string snapshot.Event.uuid) (Event.Snapshot.to_yojson snapshot)
+        |> E.ok
+      | file ->
         T.Top_result.to_file ~file results
-    end;
+    end >>= fun () ->
     begin match junit with
       | None -> ()
       | Some file ->
         Lwt_log.ign_info_f "write results in Junit to file `%s`" file;
         let suites =
-          results.T.results
+          Lazy.force results.T.analyze
           |> Prover.Map.to_list
-          |> List.map (fun (_,r) -> T.Analyze.to_junit (T.Analyze.make r)) in
+          |> List.map (fun (_,a) -> T.Analyze.to_junit a) in
         T.Analyze.junit_to_file suites file;
     end;
     (* now fail if results were bad *)
-    check_res results
+    check_res results >>= fun () ->
+    web
 end
 
 (** {2 Display Run} *)
 module Display = struct
   let main ~file () =
     let open E in
-    Lwt.return (T.Top_result.of_file ~file) >>= fun res ->
+    T.Top_result.of_file ~file >>= fun res ->
     Format.printf "%a@." T.Top_result.pp res;
     E.return ()
 end
@@ -130,8 +133,8 @@ end
 module Compare = struct
   let main ~file1 ~file2 () =
     let open E in
-    Lwt.return (T.Top_result.of_file ~file:file1) >>= fun res1 ->
-    Lwt.return (T.Top_result.of_file ~file:file2) >>= fun res2 ->
+    T.Top_result.of_file ~file:file1 >>= fun res1 ->
+    T.Top_result.of_file ~file:file2 >>= fun res2 ->
     let cmp = T.Top_result.compare res1 res2 in
     Format.printf "%a@." T.Top_result.pp_comparison cmp;
     E.return ()
@@ -174,7 +177,7 @@ let term_run =
   and junit =
     Arg.(value & opt (some string) None & info ["junit"] ~doc:"junit output file")
   and save =
-    Arg.(value & opt (some string) None & info ["save"] ~doc:"JSON file to save results in")
+    Arg.(value & opt string "" & info ["save"] ~doc:"JSON file to save results in")
   and dir =
     Arg.(value & pos_all string [] &
          info [] ~docv:"DIR" ~doc:"target directories (containing tests)")
