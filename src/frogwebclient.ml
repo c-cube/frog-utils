@@ -36,8 +36,7 @@ let pv_pre_list =
   in
   let aux t =
     OLinq.(of_list t
-           |> map (fun (_, _, r) ->
-               let `Prover p = r.Run.program in p)
+           |> map (fun (_, _, r) -> r.Run.program)
            |> distinct ~cmp ()
            |> sort ~cmp ()
            |> run_list)
@@ -77,8 +76,7 @@ let pb_table =
   let rec merge a b = match a, b with
     | [], [] -> []
     | (pv :: l), ((r :: l') as pbl) ->
-      let `Prover pv' = r.Run.program in
-      if cmp pv pv' = 0 then
+      if cmp pv r.Run.program = 0 then
         Some r :: (merge l l')
       else
         None :: (merge l pbl)
