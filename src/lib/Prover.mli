@@ -67,6 +67,6 @@ module Map : sig
   val of_list : (key * 'a) list -> 'a t
 end
 
-val to_html_name : t -> Web.html
-val to_html_fullname : t -> Web.html
-val to_html_full : t -> Web.html
+val to_html_name : t -> Html.t
+val to_html_fullname : t -> Html.t
+val to_html_full : t -> Html.t

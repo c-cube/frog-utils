@@ -197,10 +197,10 @@ end
 
 (* HTML server *)
 let to_html_name p =
-  Web.Html.cdata p.name
+  Html.cdata p.name
 
 let to_html_fullname p =
-  let module H = Web.Html in
+  let module H = Html in
   match p.version with
   | Tag s ->
     H.div [H.pcdata (Format.sprintf "%s %s" p.name s)]
@@ -213,7 +213,7 @@ let to_html_fullname p =
     ]
 
 let to_html_full p =
-  let module R = Web.Record in
+  let module R = Html.Record in
   R.start
   |> R.add_string "version" (version_to_string p.version)
   |> R.add_string "binary" p.binary

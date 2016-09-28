@@ -34,11 +34,9 @@ val maki : t Maki.Value.ops
 
 val hash : t -> string
 
-val to_html_name : t -> Web.html
+val to_html_name : t -> Html.t
 
 val uri_of_problem : t -> Uri.t
-
-val add_server: Web.Server.t -> unit
 
 (** {2 Proper table for storing problems} *)
 module Tbl : sig

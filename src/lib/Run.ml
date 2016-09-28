@@ -3,9 +3,6 @@
 
 open Result
 
-module W = Web
-module H = W.Html
-module R = W.Record
 module E = Misc.Err
 
 let fpf = Format.fprintf

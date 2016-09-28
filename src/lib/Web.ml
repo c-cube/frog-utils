@@ -6,39 +6,12 @@
 open Result
 
 module E = Misc.Err
-module Html = Tyxml.Html
 
 type 'a or_error = 'a Misc.Err.t
 
-type html = Html_types.div_content_fun Html.elt
+type html = Html.t
 type uri = Uri.t
 type json = Yojson.Safe.json
-
-(** {2 Encoding Records in HTML} *)
-
-let string_of_html h =
-  Misc.Fmt.to_string (Html.pp()) h
-
-module Record = struct
-  type t = (string * html) list
-  let start = []
-  let add s f l = (s, f) :: l
-  let add_with_ fun_ ?(raw=false) s f l =
-    let body = Html.pcdata (fun_ f) in
-    add s (Html.div [if raw then Html.pre [body] else body]) l
-  let add_int = add_with_ string_of_int
-  let add_float = add_with_ string_of_float
-  let add_string = add_with_ (fun x->x)
-  let add_string_option = add_with_ (function None -> "" | Some s -> s)
-  let add_bool = add_with_ string_of_bool
-  let close l =
-    Html.table
-      (List.rev_map
-         (fun (s,f) -> Html.tr [Html.td [Html.pcdata s]; Html.td [f]])
-         l)
-end
-
-(* TODO: same as record, but for full tables? *)
 
 (** {2 Serve}
 
@@ -139,7 +112,7 @@ module Server = struct
           ]
       in
       H.html hd (H.body [H.div ~a:[H.a_id "main"] [h]])
-      |> string_of_html
+      |> H.to_string
     in
     let h = wrap_ ?title h in
     App.respond' ?code (`Html h)
@@ -165,12 +138,47 @@ module Server = struct
       |> H.li
     in
     let h =
-      H.ul
-        [ H.li [H.h1 [H.pcdata "frog-utils"]]
-        ; tops
-        ]
+      H.ul [ H.li [H.h1 [H.pcdata "frog-utils"]] ; tops ]
     in
     return_html h
+
+  (* list all the snapshots *)
+  let list_snapshots t _req =
+    let%lwt l = Storage.find_files t.storage in
+    let j = [%to_yojson: string list] l in
+    return_json j
+
+  let serve_snapshot t req =
+    let uuid = param req "uuid" in
+    let%lwt res =
+      let open Misc.LwtErr in
+      Storage.find_json t.storage uuid >>?=
+      Event.Snapshot.of_yojson
+    in
+    match res with
+      | Error msg ->
+        return_404 ("could not find uuid " ^ uuid ^ " : " ^ msg)
+      | Ok snap ->
+        let l = snap.Event.events in
+        let j = [%to_yojson: Event.t list] l in
+        return_json j
+
+  (* lookup problems by their path
+     NOTE: could be a security issue if open to the net! *)
+  let serve_problem t req =
+    let uri = Request.uri req in
+    match Uri.get_query_param uri "file" with
+      | None -> return_404 "missing `file` parameter"
+      | Some name ->
+        if Sys.file_exists name
+        then (
+          (* read the problem itself *)
+          Lwt_io.with_file ~mode:Lwt_io.input name
+            Misc.File.read_all
+          >>= fun content ->
+          return_string content
+        ) else
+          return_404 (Printf.sprintf "could not find file `%s`" name)
 
   (* loop that serves the website *)
   let run t =
@@ -179,6 +187,9 @@ module Server = struct
     |> App.middleware
       (Middleware.static ~local_path:"js" ~uri_prefix:"/js/")
     |> App.get "/" (main t) (* main page *)
+    |> App.get "/snapshots/" (list_snapshots t)
+    |> App.get "/snapshot/:uuid:/" (serve_snapshot t)
+    |> App.get "/problem/" (serve_problem t)
     |> App.port t.port
     |> App.start
 end

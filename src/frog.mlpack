@@ -2,6 +2,7 @@ Cmd
 Config
 Event
 Heap
+Html
 LockClient
 LockDaemon
 LockMessages

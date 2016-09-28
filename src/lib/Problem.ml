@@ -3,7 +3,6 @@
 
 open Result
 
-module W = Web
 module StrMap = Misc.StrMap
 
 [@@@warning "-39"]
@@ -98,31 +97,10 @@ let hash p : string =
   Sha1.string p.name |> Sha1.to_hex
 
 (* HTML server *)
-let to_html_name p = W.Html.div [W.Html.pcdata (Filename.basename p.name)]
+let to_html_name p = Html.div [Html.pcdata (Filename.basename p.name)]
 
 let uri_of_problem pb =
   Uri.make ~path:"/problem/" ~query:["file", [pb.name]] ()
-
-(* lookup problems by their path
-   NOTE: could be a security issue if open to the net! *)
-let add_server s =
-  let handler req =
-    let open Opium.Std in
-    let uri = Request.uri req in
-    match Uri.get_query_param uri "file" with
-      | None -> W.Server.return_404 "missing `file` parameter"
-      | Some name ->
-        if Sys.file_exists name
-        then (
-          (* read the problem itself *)
-          Lwt_io.with_file ~mode:Lwt_io.input name
-            Misc.File.read_all
-          >>= fun content ->
-          W.Server.return_string content
-        ) else
-          W.Server.return_404 (Printf.sprintf "could not find file `%s`" name)
-  in
-  W.Server.add_route s "/problem/" handler
 
 module Tbl = struct
   type t = problem StrMap.t

@@ -9,6 +9,7 @@
 
 type key = string
 type json = Yojson.Safe.json
+type 'a or_error = 'a Misc.Err.t
 
 type t = {
   dirs: string list; (* absolute paths to directories *)
@@ -30,7 +31,10 @@ val save_json : t -> key -> json -> unit Lwt.t
 (** [save storage key content] saves [content] under a file named
     after [key] *)
 
-val find : t -> key -> string option Lwt.t
+val find : t -> key -> string or_error Lwt.t
 (** [find storage uuid] returns the content associated with the given key,
     or [None] *)
 
+val find_json : t -> key -> json or_error Lwt.t
+(** [find storage uuid] returns the json content associated with the given key,
+    or [None] *)

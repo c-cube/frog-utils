@@ -7,6 +7,7 @@ open Lwt.Infix
 
 type key = string
 type json = Yojson.Safe.json
+type 'a or_error = 'a Misc.Err.t
 
 type t = {
   dirs: string list; (* absolute paths to directories *)
@@ -49,16 +50,22 @@ let save storage k v : unit Lwt.t = match storage.dirs with
 let save_json storage k v =
   save storage k (Yojson.Safe.to_string v)
 
-let find storage (k:key) : string option Lwt.t =
+let find storage (k:key) : string or_error Lwt.t =
   let rec aux dirs = match dirs with
-    | [] -> Lwt.return_none
+    | [] -> Misc.LwtErr.fail "no directory for storage"
     | d :: dirs' ->
       let file = Filename.concat d k in
       if Sys.file_exists file
       then
-        Misc.File.with_in ~file Misc.File.read_all >|= Misc.Opt.return
+        Misc.File.with_in ~file Misc.File.read_all >|= Misc.Err.return
       else aux dirs'
   in
   aux storage.dirs
 
-
+let find_json storage k : json or_error Lwt.t =
+  let open Misc.LwtErr in
+  find storage k >>= fun s ->
+  try%lwt
+    Lwt.return (Yojson.Safe.from_string s |> Misc.Err.return)
+  with e ->
+    fail (Printexc.to_string e)

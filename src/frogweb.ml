@@ -7,7 +7,6 @@ open Cmdliner
 let main storage_dirs port =
   let storage = Storage.make storage_dirs in
   let s = Web.Server.create ~port ~storage () in
-  Problem.add_server s;
   let web = Web.Server.run s in
   Lwt_main.run web
 

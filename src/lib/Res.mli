@@ -26,4 +26,4 @@ val of_string : string -> t
 
 val print : Format.formatter -> t -> unit
 val maki : t Maki.Value.ops
-val to_html : t -> Web.html
+val to_html : t -> Html.t

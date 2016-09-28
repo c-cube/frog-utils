@@ -7,8 +7,8 @@ open Lwt.Infix
 
 module E = Misc.Err
 module W = Web
-module R = W.Record
-module H = W.Html
+module R = Html.Record
+module H = Html
 
 module Res = Res
 module Problem = Problem
@@ -356,8 +356,6 @@ module Config = struct
       E.fail e
 
   let to_html uri_of_prover c : W.html =
-    let module H = W.Html in
-    let module R = W.Record in
     R.start
     |> R.add_int "j" c.j
     |> R.add_int "timeout" c.timeout

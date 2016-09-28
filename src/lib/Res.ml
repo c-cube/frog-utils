@@ -49,7 +49,7 @@ let maki : t Maki.Value.ops =
   Maki_yojson.make ~to_yojson ~of_yojson "result"
 
 let to_html s =
-  let module H = Web.Html in
+  let module H = Html in
   let color = match s with
     | Unsat | Sat -> "darkgreen"
     | Timeout

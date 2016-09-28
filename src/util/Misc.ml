@@ -82,6 +82,13 @@ module LwtErr = struct
       | Ok x -> f x
     )
 
+  let (>>?=) : 'a t -> ('a -> 'b Err.t) -> 'b t
+  = fun e f ->
+    Lwt.bind e (function
+      | Error e -> Lwt.return (Error e)
+      | Ok x -> f x |> Lwt.return
+    )
+
   let (>|=) : 'a t -> ('a -> 'b) -> 'b t
   = fun e f ->
     Lwt.map (function
