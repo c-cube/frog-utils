@@ -57,7 +57,7 @@ let get_snapshots () =
   let%lwt frame = XmlHttpRequest.get "/snapshots/" in
   let l = snap_list frame.XmlHttpRequest.content in
   Lwt_list.iter_s (fun s ->
-      let%lwt frame = XmlHttpRequest.get (Format.sprintf "/snapshots/%s/" s) in
+      let%lwt frame = XmlHttpRequest.get (Format.sprintf "/snapshots/%s" s) in
       let json = Yojson.Safe.from_string frame.XmlHttpRequest.content in
       match [%of_yojson: Event.t list] json with
       | Result.Ok l ->
