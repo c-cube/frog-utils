@@ -93,11 +93,13 @@ module Server = struct
         H.head
           (H.title (H.pcdata title))
           [ meta_;
-            H.script ~a:[H.a_src "/js/frogwebclient.js"] (H.pcdata "");
             H.style [H.cdata_style css_];
           ]
       in
-      H.html hd (H.body [H.div ~a:[H.a_id "main"] [h]])
+      H.html hd (H.body [
+          H.div ~a:[H.a_id "main"] [h];
+          H.script ~a:[H.a_src "/js/frogwebclient.js"] (H.pcdata "");
+        ])
       |> H.to_string
     in
     let h = wrap_ ?title h in

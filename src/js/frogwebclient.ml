@@ -58,7 +58,7 @@ let get_snapshots () =
   let%lwt frame = XmlHttpRequest.get "/snapshots/" in
   let l = snap_list frame.XmlHttpRequest.content in
   Lwt_list.iter_s (fun s ->
-      let%lwt frame = XmlHttpRequest.get (Format.sprintf "/snapshots/%s" s) in
+      let%lwt frame = XmlHttpRequest.get (Format.sprintf "/snapshot/%s" s) in
       let json = Yojson.Safe.from_string frame.XmlHttpRequest.content in
       match [%of_yojson: Event.t list] json with
       | Result.Ok l ->
@@ -105,7 +105,6 @@ let pb_pre_list =
   let aux t =
     OLinq.(of_list t
            |> group_by ~cmp proj
-           |> sort_by ~cmp fst
            |> run_list)
   in
   React.S.map aux results
@@ -115,24 +114,27 @@ let pb_table =
     let open Prover in
     compare (p.name, p.version) (p'.name, p'.version)
   in
-  let rec merge a b = match a, b with
-    | [], [] -> []
-    | (pv :: l), ((r :: l') as pbl) ->
-      if cmp pv r.Event.program = 0 then
-        Some r :: (merge l l')
-      else
-        None :: (merge l pbl)
-    | _ -> assert false
+  let merge _ l l' = match l with
+    | [] -> None
+    | _ -> (Some l')
   in
   let aux pvs f t =
+    let pv_l = OLinq.of_list pvs in
     let pred (p, _) =
       let r = Regexp.regexp_case_fold f.pb_name in
       match Regexp.string_match r p.Problem.name 0 with
       | Some _ -> true | None -> false
     in
-    List.map (fun (pb, l) -> (pb, merge pvs l))
     OLinq.(of_list t
            |> filter pred
+           |> map (fun (pb, l) -> pb,
+               of_list l
+               |> outer_join ~cmp
+                 (fun x -> x)
+                 (fun r -> r.Event.program)
+                 ~merge pv_l
+               |> run_list)
+           |> sort_by ~cmp:Problem.compare_name fst
            |> run_list)
   in
   React.S.l3 aux pv_list pb_filter pb_pre_list
@@ -180,8 +182,13 @@ let table =
       H.tr (
         H.td [ H.pcdata @@ Filename.basename pb.Problem.name ] ::
         (List.map (function
-            | None -> H.td [ H.pcdata "." ]
-            | Some r -> H.td [ res_to_html @@ Event.analyze_p r ]
+             | [] -> H.td [ H.pcdata "." ]
+             | l -> H.td (
+                 List.map (fun r ->
+                     H.span [
+                       res_to_html @@ Event.analyze_p r;
+                       H.br ();
+                     ]) l)
           ) l)
       )) pbs
   in

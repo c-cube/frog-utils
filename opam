@@ -35,7 +35,7 @@ depends: [
     "archimedes"
     "cmdliner"
     "result"
-    "olinq"
+    "olinq" { >= "0.2" }
     "opium" { >= "0.15" }
     "cow"
     "junit"
