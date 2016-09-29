@@ -48,13 +48,14 @@ type snapshot = private {
   uuid: Uuidm.t;
   timestamp: float;
   events: t list;
+  meta: string; (* additional metadata *)
 }
 
 module Snapshot : sig
   type t = snapshot
   [@@deriving yojson]
 
-  val make : ?timestamp:float -> event list -> t
+  val make : ?meta:string -> ?timestamp:float -> event list -> t
 
   val to_file : file:string -> t -> unit or_error Lwt.t
 
