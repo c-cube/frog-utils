@@ -34,7 +34,7 @@ module Run = struct
     Lwt.return_unit
 
   (* run provers on the given dir, return a list [prover, dir, results] *)
-  let test_dir ?j ?timeout ?memory ?caching ?provers ~config ~problem_pat ~web ~db dir
+  let test_dir ?j ?timeout ?memory ?caching ?provers ~config ~problem_pat dir
     : T.Top_result.t E.t =
     let open E in
     Format.printf "testing dir `%s`...@." dir;
@@ -56,8 +56,6 @@ module Run = struct
          Format.printf "@[<2>%s on `%s`:@ @[<hv>%a@]@]@."
            (Prover.name p) dir T.Analyze.print r)
       (Lazy.force results.T.analyze);
-    (* wait for webserver to return *)
-    let%lwt _ = web in
     E.return results
 
   let check_res (results:T.top_result) : unit E.t =
@@ -71,7 +69,7 @@ module Run = struct
             map 0))
 
   (* lwt main *)
-  let main ?j ?timeout ?memory ?caching ?junit ?provers ~web ~save ~db ~config dirs () =
+  let main ?j ?timeout ?memory ?caching ?junit ?provers ?meta ~save ~config dirs () =
     let open E in
     (* parse config *)
     Lwt.return (Test_run.config_of_file config)
@@ -82,16 +80,10 @@ module Run = struct
       | [] -> config.T.Config.default_dirs
     in
     let storage = Storage.make [] in
-    let server =
-      if web
-      then Some (W.Server.create ~storage ())
-      else None
-    in
-    let web = Misc.Opt.((server >|= W.Server.run) |> get Lwt.return_unit) |> E.ok in
     (* build problem set (exclude config file!) *)
     let problem_pat = Re_posix.compile_pat config.T.Config.problem_pat in
     E.map_s
-      (test_dir ?j ?timeout ?memory ?caching ?provers ~config ~problem_pat ~web ~db)
+      (test_dir ?j ?timeout ?memory ?caching ?provers ~config ~problem_pat)
       dirs
     >|= T.Top_result.merge_l
     >>= fun (results:T.Top_result.t) ->
@@ -99,9 +91,10 @@ module Run = struct
       | "none" -> E.return ()
       | "" ->
         (* default *)
-        let snapshot = Event.Snapshot.make results.T.events in
-        Storage.save_json storage
-          (Uuidm.to_string snapshot.Event.uuid) (Event.Snapshot.to_yojson snapshot)
+        let snapshot = Event.Snapshot.make ?meta results.T.events in
+        let uuid_s = Uuidm.to_string snapshot.Event.uuid in
+        let%lwt () = Lwt_io.printlf "save with UUID `%s`" uuid_s in
+        Storage.save_json storage uuid_s (Event.Snapshot.to_yojson snapshot)
         |> E.ok
       | file ->
         T.Top_result.to_file ~file results
@@ -117,8 +110,7 @@ module Run = struct
         JUnit_wrapper.junit_to_file suites file;
     end;
     (* now fail if results were bad *)
-    check_res results >>= fun () ->
-    web
+    check_res results
 end
 
 (** {2 Display Run} *)
@@ -146,7 +138,7 @@ end
 (* sub-command for running tests *)
 let term_run =
   let open Cmdliner in
-  let aux dirs debug config j timeout memory nocaching web save db provers junit =
+  let aux dirs debug config j timeout memory nocaching meta save provers junit =
     let config = Config.interpolate_home config in
     if debug then (
       Maki_log.set_level 5;
@@ -154,7 +146,7 @@ let term_run =
     );
     let caching = not nocaching in
     Lwt_main.run
-      (Run.main ?j ?timeout ?memory ?junit ?provers ~caching ~web ~save ~db ~config dirs ())
+      (Run.main ?j ?timeout ?memory ?junit ?provers ~caching ~meta ~save ~config dirs ())
   in
   let debug =
     Arg.(value & flag & info ["d"; "debug"] ~doc:"enable debug")
@@ -167,10 +159,8 @@ let term_run =
     Arg.(value & opt (some int) None & info ["t"; "timeout"] ~doc:"timeout (in s)")
   and memory =
     Arg.(value & opt (some int) None & info ["m"; "memory"] ~doc:"memory (in MB)")
-  and web =
-    Arg.(value & flag & info ["web"] ~doc:"embedded web server")
-  and db =
-    Arg.(value & opt string "$HOME/.frogdb.sql" & info ["db"] ~doc:"path to database")
+  and meta =
+    Arg.(value & opt string "" & info ["meta"] ~doc:"additional metadata to save")
   and nocaching =
     Arg.(value & flag & info ["no-caching"] ~doc:"toggle caching")
   and doc =
@@ -186,7 +176,7 @@ let term_run =
     Arg.(value & opt (some (list string)) None & info ["p"; "provers"] ~doc:"select provers")
   in
   Term.(pure aux $ dir $ debug $ config $ j $ timeout $ memory
-    $ nocaching $ web $ save $ db $ provers $ junit),
+    $ nocaching $ meta $ save $ provers $ junit),
   Term.info ~doc "run"
 
 (* sub-command to display a file *)
