@@ -3,8 +3,6 @@
 
 (** {1 Run Prover} *)
 
-module StrMap = Misc.StrMap
-
 type version =
   | Tag of string
   | Git of string * string  (* branch & commit hash *)
