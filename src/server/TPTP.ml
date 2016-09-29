@@ -129,7 +129,7 @@ let print_file_summary out s =
   ()
 
 let analyse_single_file ~config prover file =
-  let p = Prover.find_config config prover in
+  let p = ProverSet.find_config config prover in
   let job, results = extract_file file in
   make_summary prover p job results
 
@@ -244,7 +244,7 @@ let print_ar_exclusive out ar =
 let parse_prover_list ~config l =
   List.map
     (fun (prover,file) ->
-       let p = Prover.find_config config prover in
+       let p = ProverSet.find_config config prover in
        let job, results = extract_file file in
        file, prover, p, job, results)
     l

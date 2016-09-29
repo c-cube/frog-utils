@@ -74,7 +74,7 @@ module Run = struct
   let main ?j ?timeout ?memory ?caching ?junit ?provers ~web ~save ~db ~config dirs () =
     let open E in
     (* parse config *)
-    Lwt.return (T.Config.of_file config)
+    Lwt.return (Test_run.config_of_file config)
     >>= fun config ->
     (* pick default directory if needed *)
     let dirs = match dirs with

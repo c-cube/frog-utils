@@ -8,8 +8,6 @@
 
 (** {2 Prover configurations} *)
 
-module StrMap = Misc.StrMap
-
 type version =
   | Tag of string
   | Git of string * string  (* branch & commit hash *)
@@ -34,18 +32,11 @@ type t = {
 } [@@deriving yojson]
 (** The type of provers configurations *)
 
+val name : t -> string
+(** Prover name *)
+
 val equal : t -> t -> bool
 (** Equality (by name) *)
-
-val of_config : Config.t -> t StrMap.t
-(** Get a list of supported provers from a config file. *)
-
-val build_from_config : Config.t -> string -> t
-(** Parse the description of a prover from a config file *)
-
-val find_config : Config.t -> string -> t
-(** Parse prover description from config file, and check it is listed
-    in the "provers" list *)
 
 val make_command :
   ?env:(string * string) array ->
@@ -54,8 +45,6 @@ val make_command :
   memory:int ->
   file:string ->
   string
-
-val name : t -> string
 
 module Map : sig
   include Map.S with type key = t
@@ -66,3 +55,4 @@ end
 val to_html_name : t -> Html.t
 val to_html_fullname : t -> Html.t
 val to_html_full : t -> Html.t
+

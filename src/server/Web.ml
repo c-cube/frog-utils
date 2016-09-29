@@ -147,7 +147,7 @@ module Server = struct
         then (
           (* read the problem itself *)
           Lwt_io.with_file ~mode:Lwt_io.input name
-            Misc.File.read_all
+            Misc_unix.File.read_all
           >>= fun content ->
           return_string content
         ) else

@@ -7,11 +7,10 @@ type t = {
 } [@@deriving yojson]
 
 type problem = t
+type problem_set = t list
 
-val make: default_expect:Res.t option -> file:string -> unit -> t Misc.Err.t Lwt.t
-(** [make ~file ()] tries to find the expected result of [file], and
-    makes a problem if it finds the result
-    @param default_expect if the "expect" field is not found, use this result *)
+val make : string -> Res.t -> t
+(** Make a problem. *)
 
 val same_name : t -> t -> bool
 val compare_name : t -> t -> int

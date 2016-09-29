@@ -11,7 +11,6 @@ module H = Html
 
 module Res = Res
 module Problem = Problem
-module ProblemSet = ProblemSet
 
 module MStr = Map.Make(String)
 
@@ -253,34 +252,6 @@ module Config = struct
     let timeout = O.get c.timeout timeout in
     let memory = O.get c.memory memory in
     { c with j; timeout; memory; }
-
-  let of_file file =
-    let module C = Config in
-    Lwt_log.ign_debug_f "parse config file `%s`..." file;
-    try
-      let main = C.parse_files [file] C.empty in
-      let c = C.get_table main "test" in
-      let j = C.get_int ~default:1 c "parallelism" in
-      let timeout = C.get_int ~default:5 c "timeout" in
-      let memory = C.get_int ~default:1000 c "memory" in
-      let default_dirs = C.get_string_list ~default:[] c "dir" in
-      let default_expect =
-        let s = C.get_string ~default:"" c "default_expect" in
-        if s="" then None
-        else (
-          let r = Res.of_string s in
-          Lwt_log.ign_debug_f "default_expect=%s" (Res.to_string r);
-          Some r
-        )
-      in
-      let problem_pat = C.get_string c "problems" in
-      let provers = C.get_string_list c "provers" in
-      let provers = List.map (Prover.build_from_config main) provers in
-      E.return { j; timeout; memory; provers; default_expect;
-                 default_dirs; problem_pat; }
-    with
-    | C.Error e ->
-      E.fail e
 
   let to_html uri_of_prover c : html =
     R.start

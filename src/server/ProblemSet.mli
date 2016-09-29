@@ -1,7 +1,16 @@
 
 (* This file is free software, part of frog-utils. See file "license" for more details. *)
 
-type t = Problem.t list
+open Frog
+
+type t = Problem.problem_set
+
+val make_pb :
+  default_expect:Res.t option ->
+  file:string -> unit -> Problem.t Misc.Err.t Lwt.t
+(** [make ~file ()] tries to find the expected result of [file], and
+    makes a problem if it finds the result
+    @param default_expect if the "expect" field is not found, use this result *)
 
 val make: default_expect:Res.t option -> string list -> t Misc.Err.t Lwt.t
 (** Build a set of problems out of file names *)

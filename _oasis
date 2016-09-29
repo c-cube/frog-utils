@@ -18,16 +18,17 @@ Synopsis:    Tools for running/testing/benchmarking provers and related logic to
 Library "frog"
   Path:             src/lib
   Pack:             true
-  Modules:          Config, Event, Html, Misc, Problem, ProblemSet, Prover, Res, Test
+  Modules:          Event, Html, Misc, Problem, Prover, Res, Test
   BuildDepends:     ppx_deriving_yojson, lwt, tyxml, lwt.ppx, toml,
                     ppx_deriving.std, re.posix, result, olinq, uri, uuidm
 
 Library "frog_server"
   Path:             src/server
   Pack:             true
-  Modules:          Cmd, Heap, JUnit_wrapper, LockClient, LockDaemon,
+  Modules:          Config, Heap, JUnit_wrapper, LockClient, LockDaemon,
                     LockMessages, Maki_wrapper, MapState, Plot, PrintBox,
-                    Run, Storage, TPTP, Web, Test_run
+                    Run, Storage, TPTP, Web, Test_run, Misc_unix,
+                    ProblemSet, ProverSet
   BuildDepends:     frog, unix, lwt.unix, lwt.preemptive, cmdliner,
                     archimedes.cairo, opium.unix, junit, maki,
                     maki.yojson, threads
@@ -66,8 +67,9 @@ Executable frogwebclient
   Install:          true
   CompiledObject:   byte
   MainIs:           frogwebclient.ml
-  BuildDepends:     frog, frog_server, js_of_ocaml, js_of_ocaml.tyxml,
-                    js_of_ocaml.ppx, react, reactiveData
+  BuildDepends:     frog, react, reactiveData,
+                    js_of_ocaml, js_of_ocaml.tyxml,
+                    js_of_ocaml.ppx, js_of_ocaml.weak
 
 PostBuildCommand: make js_links
 

@@ -76,8 +76,6 @@ module Config : sig
 
   val update : ?j:int -> ?timeout:int -> ?memory:int -> t -> t
 
-  val of_file : string -> t or_error
-
   val to_html : (Prover.t -> uri) -> t -> html
 end
 

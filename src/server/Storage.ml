@@ -71,7 +71,7 @@ let find storage (k:key) : string or_error Lwt.t =
       let file = Filename.concat d k in
       if Sys.file_exists file
       then
-        Misc.File.with_in ~file Misc.File.read_all >|= Misc.Err.return
+        Misc_unix.File.with_in ~file Misc_unix.File.read_all >|= Misc.Err.return
       else aux dirs'
   in
   aux storage.dirs

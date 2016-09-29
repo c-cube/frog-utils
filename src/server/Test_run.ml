@@ -9,6 +9,33 @@ open Lwt.Infix
 module C = Test.Config
 module T = Test
 
+let config_of_file file =
+  Lwt_log.ign_debug_f "parse config file `%s`..." file;
+  try
+    let main = Config.parse_files [file] Config.empty in
+    let c = Config.get_table main "test" in
+    let j = Config.get_int ~default:1 c "parallelism" in
+    let timeout = Config.get_int ~default:5 c "timeout" in
+    let memory = Config.get_int ~default:1000 c "memory" in
+    let default_dirs = Config.get_string_list ~default:[] c "dir" in
+    let default_expect =
+      let s = Config.get_string ~default:"" c "default_expect" in
+      if s="" then None
+      else (
+        let r = Res.of_string s in
+        Lwt_log.ign_debug_f "default_expect=%s" (Res.to_string r);
+        Some r
+      )
+    in
+    let problem_pat = Config.get_string c "problems" in
+    let provers = Config.get_string_list c "provers" in
+    let provers = List.map (ProverSet.find_config main) provers in
+    Misc.Err.return { C.j; timeout; memory; provers; default_expect;
+               default_dirs; problem_pat; }
+  with
+  | Config.Error e ->
+    Misc.Err.fail e
+
 (* run one particular test *)
 let run_pb_ ~config prover pb =
   Lwt_log.ign_debug_f "running %-15s/%-30s..."
