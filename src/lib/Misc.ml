@@ -104,6 +104,7 @@ module LwtErr = struct
 end
 
 module List = struct
+  include List
   let return x = [x]
   let filter_map f l =
     let rec recurse acc l = match l with
@@ -161,4 +162,10 @@ module Fmt = struct
     fpf out "\x1b[0m"
 end
 
-module StrMap = Map.Make(String)
+module Map_(O:Map.OrderedType) = struct
+  include Map.Make(O)
+  let to_list m = fold (fun prover res acc -> (prover,res)::acc) m []
+  let of_list l = List.fold_left (fun acc (p,r) -> add p r acc) empty l
+end
+
+module StrMap = Map_(String)

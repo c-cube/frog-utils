@@ -70,19 +70,13 @@ let make_command ?env prover ~timeout ~memory ~file =
   let binary = prover.binary in
   mk_cmd ?env ~binary ~timeout ~memory ~file prover.cmd
 
-module Map = struct
-  include Map.Make(struct
+module Map = Misc.Map_(struct
     type t = t_
 
     let compare p1 p2 =
       let c = String.compare p1.name p2.name in
       if c<>0 then c else Pervasives.compare p1.version p2.version
   end)
-
-  let to_list m = fold (fun prover res acc -> (prover,res)::acc) m []
-
-  let of_list l = List.fold_left (fun acc (p,r) -> add p r acc) empty l
-end
 
 (* HTML server *)
 let to_html_name p =
