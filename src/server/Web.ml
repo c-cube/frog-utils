@@ -134,8 +134,7 @@ module Server = struct
       | Error msg ->
         return_404 ("could not find uuid " ^ uuid ^ " : " ^ msg)
       | Ok snap ->
-        let l = snap.Event.events in
-        let j = [%to_yojson: Event.t list] l in
+        let j = Event.Snapshot.to_yojson snap in
         return_json j
 
   (* lookup problems by their path
