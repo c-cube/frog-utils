@@ -117,7 +117,7 @@ module Top_result : sig
 
   val make : Event.t list -> t
 
-  val snapshot : t -> Event.Snapshot.t
+  val snapshot : ?meta:string -> t -> Event.Snapshot.t
 
   val of_snapshot : Event.Snapshot.t -> t
 

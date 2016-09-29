@@ -372,7 +372,7 @@ type top_result = {
 module Top_result = struct
   type t = top_result
 
-  let snapshot t = Event.Snapshot.make t.events
+  let snapshot ?meta t = Event.Snapshot.make ?meta t.events
 
   let make l =
     let analyze = lazy (
