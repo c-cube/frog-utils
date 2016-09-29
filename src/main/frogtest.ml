@@ -100,8 +100,9 @@ module Run = struct
       | "" ->
         (* default *)
         let snapshot = Event.Snapshot.make results.T.events in
-        Storage.save_json storage
-          (Uuidm.to_string snapshot.Event.uuid) (Event.Snapshot.to_yojson snapshot)
+        let uuid_s = Uuidm.to_string snapshot.Event.uuid in
+        let%lwt () = Lwt_io.printlf "save with UUID `%s`" uuid_s in
+        Storage.save_json storage uuid_s (Event.Snapshot.to_yojson snapshot)
         |> E.ok
       | file ->
         T.Top_result.to_file ~file results
