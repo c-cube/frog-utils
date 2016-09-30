@@ -131,19 +131,14 @@ let split_events =
   aux [] []
 
 
-let mode_all =
+let mode_all () =
   (* flattened list of all events *)
   let results =
     let aux v =
-      set_status (Format.sprintf "Test: %d" (List.length (React.S.value snapshots)));
-      let res, l = List.fold_left (fun (acc, acc') s ->
+      let res, _l = List.fold_left (fun (acc, acc') s ->
           let l, l' = split_events s.Event.events in
           (l @ acc, l' @ acc')) ([], []) v
       in
-      (*
-      set_status (Format.sprintf "Parsed results (%d,%d / %d)"
-                    (List.length res) (List.length l) (List.length v));
-         *)
       res
     in
     React.S.map aux snapshots
@@ -304,7 +299,7 @@ let () =
     H.div [
       input_button "Refresh" get_snapshots;
       input_button "S-List" (switch mode_snap);
-      input_button "Table" (switch (fun () -> mode_all));
+      input_button "Table" (switch mode_all);
     ]
   in
   Lwt.async
