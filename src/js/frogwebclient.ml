@@ -19,18 +19,27 @@ type pb_filter = {
 }
 
 (****************************************************************************)
+(* Aux functions *)
+
+let cmp_prover p p' =
+  let open Prover in
+  compare (p.name, p.version) (p'.name, p'.version)
+
+(****************************************************************************)
 (* HTML rendering *)
 
-let pv_to_html p =
+let pv_to_line p =
   let open Prover in
   match p.version with
   | Tag s ->
-    [ H.pcdata (Format.sprintf "%s %s" p.name s) ]
+    [ H.pcdata (Format.sprintf "%s %s" p.name s); ]
   | Git (branch, commit) -> [
       H.pcdata (Format.sprintf "%s@@%s" p.name branch);
-      H.br ();
       H.pcdata (Format.sprintf "%s.." (String.sub commit 0 15));
     ]
+
+let pv_to_html p =
+  List.flatten (List.map (fun x -> [x; H.br ()]) (pv_to_line p))
 
 let res_to_html r =
   let open Res in
@@ -68,6 +77,24 @@ let input_button name callback =
       Lwt_js_events.limited_loop ~elapsed_time:0.2
         Lwt_js_events.click node (fun _ _ -> callback ()));
   b
+
+(****************************************************************************)
+(* Interace Status *)
+
+type mode =
+  | Empty
+  | Table
+  | List
+
+let mode, set_mode =
+  React.S.create Empty
+
+let switch m () =
+  set_mode m;
+  Lwt.return_unit
+
+let main =
+  Dom_html.getElementById "main"
 
 (****************************************************************************)
 (* Data & fetching *)
@@ -114,14 +141,6 @@ let get_snapshots () =
 (****************************************************************************)
 (* Interface: snapshot list *)
 
-let mode_snap () = [
-  H.div [ H.pcdata "not implemented yet..." ];
-]
-
-
-(****************************************************************************)
-(* Interface: Full table *)
-
 let split_events =
   let rec aux acc_p acc_c = function
     | [] -> acc_p, acc_c
@@ -130,8 +149,56 @@ let split_events =
   in
   aux [] []
 
+let stats_of_snapshot s =
+  let open Event in
+  let l, _ = split_events s.events in
+  let provers =
+    OLinq.(of_list l
+           |> map (fun s -> s.program)
+           |> distinct ~cmp:cmp_prover ()
+           |> sort ~cmp:cmp_prover ()
+           |> run_list)
+  in
+  let n =
+    OLinq.(of_list l
+           |> map (fun s -> s.problem)
+           |> distinct ~cmp:compare ()
+           |> size
+           |> run1)
+  in
+  (s.uuid, s.timestamp, n, provers)
 
-let mode_all () =
+let mode_list () =
+  let slist = React.S.map (fun l ->
+      List.map stats_of_snapshot l
+    ) snapshots in
+  let table =
+    let th, _ = L.create @@ [
+        H.tr [
+          H.td [ H.pcdata "Snapshot" ];
+          H.td [ H.pcdata "Timestamp" ];
+          H.td [ H.pcdata "#Problems" ];
+          H.td [ H.pcdata "Provers" ];
+        ]]
+    in
+    let trs = L.map (fun (uuid, time, n, pvs) ->
+        H.tr [
+          H.td [ H.pcdata (Uuidm.to_string uuid) ];
+          H.td [ H.pcdata (Format.sprintf "%.2f" time) ];
+          H.td [ H.pcdata (Format.sprintf "%d" n) ];
+          H.td (List.flatten @@ List.map (fun pv -> pv_to_line pv @ [ H.br () ]) pvs);
+        ]) (L.from_signal slist)
+    in
+    R.Html.table (L.concat th trs)
+  in
+  [ table ]
+
+
+(****************************************************************************)
+(* Interface: Full table *)
+
+
+let mode_table () =
   (* flattened list of all events *)
   let results =
     let aux v =
@@ -152,10 +219,7 @@ let mode_all () =
     React.S.create init in
 
   let pv_pre_list =
-    let cmp p p' =
-      let open Prover in
-      compare (p.name, p.version) (p'.name, p'.version)
-    in
+    let cmp = cmp_prover in
     let aux t =
       OLinq.(of_list t
              |> map (fun r -> r.Event.program)
@@ -192,10 +256,7 @@ let mode_all () =
   in
 
   let pb_table =
-    let cmp p p' =
-      let open Prover in
-      compare (p.name, p.version) (p'.name, p'.version)
-    in
+    let cmp = cmp_prover in
     let merge _ l l' = match l with
       | [] -> None
       | _ -> (Some l')
@@ -276,30 +337,37 @@ let mode_all () =
     table;
   ]
 
-(* Status bar *)
+(****************************************************************************)
+(* Mode switching *)
+
+let current =
+  React.S.map (function m ->
+    List.map Tyxml_js.To_dom.of_node @@
+    match m with
+    | Empty -> []
+    | List -> mode_list ()
+    | Table -> mode_table ()
+  ) mode
+
+let _s =
+  React.S.diff (fun l old ->
+      List.iter (fun c -> main##removeChild c |> ignore) old;
+      List.iter (fun c -> main##appendChild c |> ignore) l
+    ) current
+
+(****************************************************************************)
+(* Status bar and main loop *)
+
 let st_bar =
   H.div ~a:[H.a_class ["status"]]
     [ R.Html.pcdata status ]
 
-
-(* Main loop *)
 let () =
-  let main = Dom_html.getElementById "main" in
-  let current = ref [] in
-  (* Convenience function *)
-  let switch f () =
-    let l = List.map Tyxml_js.To_dom.of_node (f ()) in
-    List.iter (fun c -> main##removeChild c |> ignore) !current;
-    List.iter (fun c -> main##appendChild c |> ignore) l;
-    current := l;
-    Lwt.return_unit
-  in
-  (* Switch modes *)
   let mode_buttons =
     H.div [
       input_button "Refresh" get_snapshots;
-      input_button "S-List" (switch mode_snap);
-      input_button "Table" (switch mode_all);
+      input_button "S-List" (switch List);
+      input_button "Table" (switch Table);
     ]
   in
   Lwt.async
