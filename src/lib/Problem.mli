@@ -12,6 +12,9 @@ type problem_set = t list
 val make : string -> Res.t -> t
 (** Make a problem. *)
 
+val basename : t -> string
+(** Returns the basename of a problem *)
+
 val same_name : t -> t -> bool
 val compare_name : t -> t -> int
 (** Compare the names of problems. *)

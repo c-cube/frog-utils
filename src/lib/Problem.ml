@@ -15,6 +15,8 @@ type t = {
 type problem = t
 type problem_set = t list
 
+let basename t = Filename.basename t.name
+
 let same_name t1 t2 = t1.name = t2.name
 let compare_name t1 t2 = Pervasives.compare t1.name t2.name
 

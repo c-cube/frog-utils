@@ -18,6 +18,11 @@ type pb_filter = {
   pb_name : string;
 }
 
+
+(* Current status *)
+let status, set_status =
+  React.S.create "Starting..."
+
 (****************************************************************************)
 (* Aux functions *)
 
@@ -70,6 +75,36 @@ let input_string placeholder set =
             Lwt.return ()));
   input
 
+let multi_choice cmp to_string list (get, set) =
+  let add x =
+    let old = React.S.value get in
+    set (x :: old)
+  in
+  let rm x =
+    let old = React.S.value get in
+    set (List.filter (fun y -> cmp x y <> 0) old)
+  in
+  let is_active x =
+    List.exists (Uuidm.equal x) (React.S.value get)
+  in
+  let l' = L.map (fun x ->
+      let attrs = H.a_input_type `Checkbox :: (
+          if is_active x then [ H.a_checked () ] else [])
+      in
+      let input = H.input ~a:attrs () in
+      let node = Tyxml_js.To_dom.of_input input in
+      Lwt.async (fun _ ->
+          Lwt_js_events.limited_loop ~elapsed_time:0.2
+            Lwt_js_events.click node (fun _ _ ->
+                let b = Js.to_bool ((Tyxml_js.To_dom.of_input input)##.checked) in
+                if b then add x else rm x;
+                Lwt.return_unit));
+      H.li [ input; H.pcdata (to_string x) ]
+    ) (L.from_signal list)
+  in
+  R.Html.ul l'
+
+
 let input_button name callback =
   let b = H.button [ H.pcdata name ] in
   let node = Tyxml_js.To_dom.of_button b in
@@ -98,9 +133,6 @@ let main =
 
 (****************************************************************************)
 (* Data & fetching *)
-
-let status, set_status =
-  React.S.create "Starting..."
 
 let snapshots, set_snapshots =
   React.S.create []
@@ -137,6 +169,22 @@ let get_snapshots () =
         Lwt.return_unit
     ) l in
   Lwt.return_unit
+
+(****************************************************************************)
+(* Interface: current state *)
+
+(* Filters for table mode *)
+let snap_filter, set_snap_filter =
+  let init = [] in
+  React.S.create init
+
+let pv_filter, set_pv_filter =
+  let init = { pv_name = ""; } in
+  React.S.create init
+
+let pb_filter, set_pb_filter =
+  let init = { pb_name = ""; } in
+  React.S.create init
 
 (****************************************************************************)
 (* Interface: snapshot list *)
@@ -199,24 +247,28 @@ let mode_list () =
 
 
 let mode_table () =
+
+  (* Initialize uuidm list *)
+  let slist = React.S.map (List.map (fun s -> s.Event.uuid)) snapshots in
+
   (* flattened list of all events *)
   let results =
-    let aux v =
+    let aux v l =
+      let pred =
+        if l = [] then (fun _ -> true)
+        else (fun x -> List.exists (Uuidm.equal x) l)
+      in
       let res, _l = List.fold_left (fun (acc, acc') s ->
-          let l, l' = split_events s.Event.events in
-          (l @ acc, l' @ acc')) ([], []) v
+          if pred s.Event.uuid then
+            let l, l' = split_events s.Event.events in
+            (l @ acc, l' @ acc')
+          else (acc, acc')
+        ) ([], []) v
       in
       res
     in
-    React.S.map aux snapshots
+    React.S.l2 aux snapshots snap_filter
   in
-  (* Filters for problems and provers *)
-  let pv_filter, set_pv_filter =
-    let init = { pv_name = ""; } in
-    React.S.create init in
-  let pb_filter, set_pb_filter =
-    let init = { pb_name = ""; } in
-    React.S.create init in
 
   let pv_pre_list =
     let cmp = cmp_prover in
@@ -232,8 +284,8 @@ let mode_table () =
 
   let pv_list =
     let aux f t =
+      let r = Regexp.regexp_case_fold f.pv_name in
       let pred p =
-        let r = Regexp.regexp_case_fold f.pv_name in
         match Regexp.string_match r p.Prover.name 0 with
         | Some _ -> true | None -> false
       in
@@ -245,7 +297,7 @@ let mode_table () =
   in
 
   let pb_pre_list =
-    let cmp = Problem.compare_name in
+    let cmp p p' = compare (Problem.basename p) (Problem.basename p') in
     let proj p = p.Event.problem in
     let aux t =
       OLinq.(of_list t
@@ -263,9 +315,9 @@ let mode_table () =
     in
     let aux pvs f t =
       let pv_l = OLinq.of_list pvs in
+      let r = Regexp.regexp_case_fold f.pb_name in
       let pred (p, _) =
-        let r = Regexp.regexp_case_fold f.pb_name in
-        match Regexp.string_match r p.Problem.name 0 with
+        match Regexp.string_match r (Problem.basename p) 0 with
         | Some _ -> true | None -> false
       in
       OLinq.(of_list t
@@ -277,7 +329,7 @@ let mode_table () =
                                       (fun r -> r.Event.program)
                                       ~merge pv_l
                                     |> run_list)
-             |> sort_by ~cmp:Problem.compare_name fst
+             (* |> sort_by ~cmp fst *)
              |> run_list)
     in
     React.S.l3 aux pv_list pb_filter pb_pre_list
@@ -297,7 +349,7 @@ let mode_table () =
     let pbs = L.from_signal pb_table in
     let trs = L.map (fun (pb, l) ->
         H.tr (
-          H.td [ H.pcdata @@ Filename.basename pb.Problem.name ] ::
+          H.td [ H.pcdata @@ Problem.basename pb ] ::
           (List.map (function
                | [] -> H.td [ H.pcdata "." ]
                | l -> H.td (
@@ -313,6 +365,17 @@ let mode_table () =
     R.Html.table l
   in
   (* Buttons & co *)
+  let input_snap = multi_choice
+    Uuidm.compare Uuidm.to_string
+      slist (snap_filter, (fun l -> set_snap_filter l)) in
+  let search_snap =
+    H.div ~a:[H.a_class ["search"]] [
+      H.div ~a:[H.a_class ["container"]] [
+        H.form [input_snap]
+      ]
+    ]
+  in
+
   let input_pv = input_string "prover" (fun s ->
       set_pv_filter { pv_name = s }) in
   let search_pv =
@@ -332,6 +395,7 @@ let mode_table () =
       ]
     ]
   in [
+    search_snap;
     search_pv;
     search_pb;
     table;
