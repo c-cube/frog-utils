@@ -230,12 +230,22 @@ let mode_list () =
         ]]
     in
     let trs = L.map (fun (uuid, time, n, pvs) ->
-        H.tr [
-          H.td [ H.pcdata (Uuidm.to_string uuid) ];
-          H.td [ H.pcdata (Format.sprintf "%.2f" time) ];
-          H.td [ H.pcdata (Format.sprintf "%d" n) ];
-          H.td (List.flatten @@ List.map (fun pv -> pv_to_line pv @ [ H.br () ]) pvs);
-        ]) (L.from_signal slist)
+        let t = H.td ~a:[H.a_style "cursor:pointer"]
+            [ H.pcdata (Uuidm.to_string uuid) ] in
+        let h = H.tr [ t;
+            H.td [ H.pcdata (Format.sprintf "%.2f" time) ];
+            H.td [ H.pcdata (Format.sprintf "%d" n) ];
+            H.td (List.flatten @@ List.map (fun pv -> pv_to_line pv @ [ H.br () ]) pvs);
+          ] in
+        let elt = Tyxml_js.To_dom.of_element t in
+        Lwt.async (fun _ ->
+            Lwt_js_events.limited_loop ~elapsed_time:0.2
+              Lwt_js_events.click elt (fun _ _ ->
+                  set_snap_filter [ uuid ];
+                  switch Table ()
+                ));
+        h
+      ) (L.from_signal slist)
     in
     R.Html.table (L.concat th trs)
   in
