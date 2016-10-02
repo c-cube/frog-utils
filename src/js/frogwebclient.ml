@@ -99,7 +99,7 @@ let multi_choice cmp to_string list (get, set) =
                 let b = Js.to_bool ((Tyxml_js.To_dom.of_input input)##.checked) in
                 if b then add x else rm x;
                 Lwt.return_unit));
-      H.li [ input; H.pcdata (to_string x) ]
+      H.li [ H.label [ input; H.pcdata (to_string x) ] ]
     ) (L.from_signal list)
   in
   R.Html.ul l'
