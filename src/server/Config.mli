@@ -48,7 +48,7 @@ val parse_files : string list -> t -> t
 
 (** {2 Accessors}
 
-Accessors will raise Not_found if the value is unreachable AND
+Accessors will raise FieldNotFound if the value is unreachable AND
 no default is specified *)
 
 type 'a getter = ?default:'a -> t -> string -> 'a

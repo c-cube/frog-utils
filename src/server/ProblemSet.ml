@@ -24,15 +24,15 @@ let re_expect_ =
 (* what is expected? *)
 let find_expected_ ~default_expect ~file () =
   let%lwt content = Misc_unix.File.with_in ~file Misc_unix.File.read_all in
-  try%lwt
-    let g = Re.exec re_expect_ content in
+  match Re.exec_opt re_expect_ content with
+  | Some g ->
     if Re.marked g m_unsat_ then Lwt.return Res.Unsat
     else if Re.marked g m_sat_ then Lwt.return Res.Sat
     else if Re.marked g m_unknown_ then Lwt.return Res.Unknown
     else if Re.marked g m_timeout_ then Lwt.return Res.Timeout
     else if Re.marked g m_error_ then Lwt.return Res.Error
     else Lwt.fail (Failure "could not parse the content of the `expect:` field")
-  with Not_found ->
+  | None ->
     match default_expect with
       | Some r -> Lwt.return r
       | None -> Lwt.fail (Failure "could not find the `expect:` field")
