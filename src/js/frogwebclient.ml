@@ -19,9 +19,29 @@ type pb_filter = {
 }
 
 
+(****************************************************************************)
+(* Interface: current state *)
+
 (* Current status *)
 let status, set_status =
   React.S.create "Starting..."
+
+(* Filters for table mode *)
+let snap_filter, set_snap_filter =
+  let init = [] in
+  React.S.create init
+
+let pv_filter, set_pv_filter =
+  let init = { pv_name = ""; } in
+  React.S.create init
+
+let pb_filter, set_pb_filter =
+  let init = { pb_name = ""; } in
+  React.S.create init
+
+(* Single event printing *)
+let event, set_event =
+  React.S.create None
 
 (****************************************************************************)
 (* Aux functions *)
@@ -29,33 +49,6 @@ let status, set_status =
 let cmp_prover p p' =
   let open Prover in
   compare (p.name, p.version) (p'.name, p'.version)
-
-(****************************************************************************)
-(* HTML rendering *)
-
-let pv_to_line p =
-  let open Prover in
-  match p.version with
-  | Tag s ->
-    [ H.pcdata (Format.sprintf "%s %s" p.name s); ]
-  | Git (branch, commit) -> [
-      H.pcdata (Format.sprintf "%s@@%s#%s…" p.name branch (String.sub commit 0 15));
-    ]
-
-let pv_to_html p =
-  List.flatten (List.map (fun x -> [x; H.br ()]) (pv_to_line p))
-
-let res_to_html r =
-  let open Res in
-  let color = match r with
-    | Unsat | Sat -> "darkgreen"
-    | Timeout
-    | Unknown -> "orange"
-    | Error -> "red"
-  in
-  H.pcdata (to_string r)
-  |> Misc.List.return
-  |> H.span ~a:[H.a_class ["result"]; H.a_style ("color:"^color)]
 
 (****************************************************************************)
 (* HTML inputs *)
@@ -118,12 +111,49 @@ let on_click h k =
   h
 
 (****************************************************************************)
-(* Interace Status *)
+(* HTML rendering *)
 
-type mode =
-  | Empty
-  | Table
-  | List
+let pv_to_line p =
+  let open Prover in
+  match p.version with
+  | Tag s ->
+    [ H.pcdata (Format.sprintf "%s %s" p.name s); ]
+  | Git (branch, commit) -> [
+      H.pcdata (Format.sprintf "%s@@%s#%s…" p.name branch (String.sub commit 0 15));
+    ]
+
+let pv_to_html p =
+  List.flatten (List.map (fun x -> [x; H.br ()]) (pv_to_line p))
+
+let res_to_html r =
+  let open Res in
+  let color = match r with
+    | Unsat | Sat -> "darkgreen"
+    | Timeout
+    | Unknown -> "orange"
+    | Error -> "red"
+  in
+  H.span ~a:[H.a_class ["result"];
+             H.a_style ("color:"^color)]
+    [ H.pcdata (to_string r) ]
+
+let prover_run_to_html r =
+  H.span [
+    on_click (
+      H.a ~a:[H.a_href "#event"]
+        [res_to_html @@ Event.analyze_p r])
+      (fun () -> set_event (Some (Event.Prover_run r)); Lwt.return_unit);
+    H.br ();
+  ]
+
+let int_to_html i =
+  H.pcdata (Format.sprintf "%d" i)
+
+let float_to_html f =
+  H.pcdata (Format.sprintf "%.2f" f)
+
+let pre s =
+  H.pre [ H.pcdata s ]
 
 
 (****************************************************************************)
@@ -165,21 +195,6 @@ let get_snapshots () =
     ) l in
   Lwt.return_unit
 
-(****************************************************************************)
-(* Interface: current state *)
-
-(* Filters for table mode *)
-let snap_filter, set_snap_filter =
-  let init = [] in
-  React.S.create init
-
-let pv_filter, set_pv_filter =
-  let init = { pv_name = ""; } in
-  React.S.create init
-
-let pb_filter, set_pb_filter =
-  let init = { pb_name = ""; } in
-  React.S.create init
 
 (****************************************************************************)
 (* Interface: snapshot list *)
@@ -248,7 +263,6 @@ let mode_list () =
     R.Html.table (L.concat th trs)
   in
   [ table ]
-
 
 (****************************************************************************)
 (* Interface: Full table *)
@@ -358,16 +372,12 @@ let mode_table () =
     let trs = L.map (fun (pb, l) ->
         H.tr (
           H.td [ H.pcdata @@ Problem.basename pb ] ::
-          (List.map (function
-               | [] -> H.td [ H.pcdata "." ]
-               | l -> H.td (
-                   List.map (fun r ->
-                       H.span [
-                         res_to_html @@ Event.analyze_p r;
-                         H.br ();
-                       ]) l)
-             ) l)
-        )) pbs
+          List.map (
+            function
+            | [] -> H.td [ H.pcdata "." ]
+            | l -> H.td (List.map prover_run_to_html l)
+          ) l)
+      ) pbs
     in
     let l = L.concat th trs in
     H.div ~a:[H.a_class ["table"]] [ R.Html.table l ]
@@ -407,7 +417,48 @@ let mode_table () =
   ]
 
 (****************************************************************************)
+(* Interface: Result printing *)
+
+let mode_event () =
+  let l = React.S.map (function
+      | None ->
+        [ H.pcdata "Please select an event to print " ]
+      | Some Event.Checker_run _ ->
+        [ H.pcdata "TODO (checker events)" ]
+      | Some Event.Prover_run r ->
+        [ H.table
+          [ H.tr [ H.td [ H.pcdata "Prover" ];
+                   H.td (pv_to_html r.Event.program) ];
+            H.tr [ H.td [ H.pcdata "Problem" ];
+                   H.td [ H.pcdata (Problem.basename r.Event.problem) ] ];
+            H.tr [ H.td [ H.pcdata "Result" ];
+                   H.td [ res_to_html (Event.analyze_p r) ] ];
+            H.tr [ H.td [ H.pcdata "Errcode" ];
+                   H.td [ int_to_html r.Event.raw.Event.errcode ] ];
+            H.tr [ H.td [ H.pcdata "real time" ];
+                   H.td [ float_to_html r.Event.raw.Event.rtime ] ];
+            H.tr [ H.td [ H.pcdata "user time" ];
+                   H.td [ float_to_html r.Event.raw.Event.utime ] ];
+            H.tr [ H.td [ H.pcdata "system time" ];
+                   H.td [ float_to_html r.Event.raw.Event.stime ] ];
+            H.tr [ H.td [ H.pcdata "stdout" ];
+                   H.td [ pre r.Event.raw.Event.stdout ] ];
+            H.tr [ H.td [ H.pcdata "stderr" ];
+                   H.td [ pre r.Event.raw.Event.stderr ] ];
+          ]
+        ]
+    ) event
+  in
+  [ R.Html.div (L.from_signal l) ]
+
+(****************************************************************************)
 (* Mode switching *)
+
+type mode =
+  | Empty
+  | Table
+  | List
+  | Event
 
 let mode, set_mode =
   React.S.create Empty
@@ -426,6 +477,7 @@ let current =
       | Empty -> []
       | List -> mode_list ()
       | Table -> mode_table ()
+      | Event -> mode_event ()
     ) mode
 
 let _s =
@@ -441,6 +493,7 @@ let update_state () =
   match Url.Current.get_fragment () with
   | "list" -> switch List ()
   | "table" -> switch Table ()
+  | "event" -> switch Event ()
   | _ -> Lwt.return_unit
 
 (****************************************************************************)
@@ -458,6 +511,8 @@ let () =
           H.a ~a:[H.a_href "#list"] [ H.pcdata "List" ]];
         H.li ~a:[H.a_id "table"] [
           H.a ~a:[H.a_href "#table"] [ H.pcdata "Table" ]];
+        H.li ~a:[H.a_id "event"] [
+          H.a ~a:[H.a_href "#event"] [ H.pcdata "Event" ]];
         on_click (
           H.li ~a:[H.a_style "float:right"] [
             H.a ~a:[] [ H.pcdata "Refresh" ]])
