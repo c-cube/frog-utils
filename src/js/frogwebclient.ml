@@ -216,6 +216,10 @@ let stats_of_snapshot s =
   in
   (s.uuid, s.timestamp, n, provers)
 
+let date_to_string (t:float): string =
+  let module T = ISO8601.Permissive in
+  T.string_of_datetime t
+
 let mode_list () =
   (* list of snapshots, sorted by decreasing timestamps *)
   let slist = React.S.map (fun l ->
@@ -235,7 +239,7 @@ let mode_list () =
         let t = H.td ~a:[H.a_style "cursor:pointer"]
             [ H.pcdata (Uuidm.to_string uuid) ] in
         let h = H.tr [ t;
-            H.td [ H.pcdata (Format.sprintf "%.2f" time) ];
+            H.td [ H.pcdata (date_to_string time) ];
             H.td [ H.pcdata (Format.sprintf "%d" n) ];
             H.td (List.flatten @@ List.map (fun pv -> pv_to_line pv @ [ H.br () ]) pvs);
           ] in
