@@ -40,9 +40,15 @@ module Server = struct
   let css_ = "
     body {
       width: 80%;
+      margin-top: 0;
       margin-left : auto;
       margin-right: auto;
       background-color: #fafafa;
+    }
+
+    main {
+      padding: 0;
+      overflow: auto;
     }
 
     h1 { font-size: larger; }
@@ -83,6 +89,59 @@ module Server = struct
       padding: 10px 20px;
       text-align: left;
       vertical-align: center;
+    }
+
+    ul {
+      list-style-type: none;
+    }
+
+    nav ul {
+      margin: 0; padding: 0;
+      overflow: hidden;
+      background-color: #333;
+    }
+
+    nav li {
+      float: left;
+    }
+
+    nav li a {
+      display: block;
+      color: white;
+      text-align: center;
+      padding: 14px 16px;
+      text-decoration: none;
+    }
+
+    nav li a:hover {
+      background-color: #111;
+    }
+
+    nav li:target {
+      background-color: green;
+    }
+
+    .status {
+      width: 100%;
+      padding-top: 10px;
+      padding-bottom : 10px;
+      border-bottom: 1px solid black;
+    }
+
+    .select {
+      float: left;
+      width: 340px;
+    }
+
+    .select, .search {
+      border-radius: 25px;
+      border: 1px solid grey;
+      margin: 10px;
+    }
+
+    .search, .table {
+      padding : 10px;
+      margin-left: 380px;
     }
     "
 

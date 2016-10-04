@@ -87,7 +87,7 @@ let multi_choice cmp to_string list (get, set) =
   let is_active x =
     List.exists (Uuidm.equal x) (React.S.value get)
   in
-  let l' = L.map (fun x ->
+  let tmp = React.S.map (List.map (fun x ->
       let attrs = H.a_input_type `Checkbox :: (
           if is_active x then [ H.a_checked () ] else [])
       in
@@ -99,19 +99,24 @@ let multi_choice cmp to_string list (get, set) =
                 let b = Js.to_bool ((Tyxml_js.To_dom.of_input input)##.checked) in
                 if b then add x else rm x;
                 Lwt.return_unit));
-      H.li [ H.label [ input; H.pcdata (to_string x) ] ]
-    ) (L.from_signal list)
+      (x, input), H.li [ H.label [ input; H.pcdata (to_string x) ] ]
+    )) list
   in
-  R.Html.ul l'
+  let s = React.S.l2 (fun l inputs ->
+      (List.iter (fun ((x, input), _) ->
+           let node = Tyxml_js.To_dom.of_input input in
+           node##.checked := Js.bool (List.mem x l)
+         ) inputs)) get tmp in
+  ignore (React.S.retain get (fun () -> ignore s));
+  R.Html.ul (L.map snd (L.from_signal tmp))
 
 
-let input_button name callback =
-  let b = H.button [ H.pcdata name ] in
-  let node = Tyxml_js.To_dom.of_button b in
-  Lwt.async (fun _ ->
+let on_click h k =
+  let node = Tyxml_js.To_dom.of_element h in
+  let () = Lwt.async (fun _ ->
       Lwt_js_events.limited_loop ~elapsed_time:0.2
-        Lwt_js_events.click node (fun _ _ -> callback ()));
-  b
+        Lwt_js_events.click node (fun _ _ -> k ())) in
+  h
 
 (****************************************************************************)
 (* Interace Status *)
@@ -121,15 +126,6 @@ type mode =
   | Table
   | List
 
-let mode, set_mode =
-  React.S.create Empty
-
-let switch m () =
-  set_mode m;
-  Lwt.return_unit
-
-let main =
-  Dom_html.getElementById "main"
 
 (****************************************************************************)
 (* Data & fetching *)
@@ -230,21 +226,18 @@ let mode_list () =
         ]]
     in
     let trs = L.map (fun (uuid, time, n, pvs) ->
-        let t = H.td ~a:[H.a_style "cursor:pointer"]
-            [ H.pcdata (Uuidm.to_string uuid) ] in
-        let h = H.tr [ t;
-            H.td [ H.pcdata (Format.sprintf "%.2f" time) ];
-            H.td [ H.pcdata (Format.sprintf "%d" n) ];
-            H.td (List.flatten @@ List.map (fun pv -> pv_to_line pv @ [ H.br () ]) pvs);
+        let t = H.td [
+          on_click (
+            H.a ~a:[H.a_href "#table"; H.a_style "cursor:pointer" ]
+              [ H.pcdata (Uuidm.to_string uuid) ])
+            (fun () -> set_snap_filter [ uuid ]; Lwt.return_unit)
           ] in
-        let elt = Tyxml_js.To_dom.of_element t in
-        Lwt.async (fun _ ->
-            Lwt_js_events.limited_loop ~elapsed_time:0.2
-              Lwt_js_events.click elt (fun _ _ ->
-                  set_snap_filter [ uuid ];
-                  switch Table ()
-                ));
-        h
+        H.tr [
+          t;
+          H.td [ H.pcdata (Format.sprintf "%.2f" time) ];
+          H.td [ H.pcdata (Format.sprintf "%d" n) ];
+          H.td (List.flatten @@ List.map (fun pv -> pv_to_line pv @ [ H.br () ]) pvs);
+        ]
       ) (L.from_signal slist)
     in
     R.Html.table (L.concat th trs)
@@ -372,37 +365,34 @@ let mode_table () =
         )) pbs
     in
     let l = L.concat th trs in
-    R.Html.table l
+    H.div ~a:[H.a_class ["table"]] [ R.Html.table l ]
   in
   (* Buttons & co *)
   let input_snap = multi_choice
     Uuidm.compare Uuidm.to_string
-      slist (snap_filter, (fun l -> set_snap_filter l)) in
+    slist (snap_filter, (fun l -> set_snap_filter l)) in
   let search_snap =
-    H.div ~a:[H.a_class ["search"]] [
-      H.div ~a:[H.a_class ["container"]] [
-        H.form [input_snap]
-      ]
+    H.div ~a:[H.a_class ["select"]] [
+      H.pcdata "Snapshot filter";
+      H.form [input_snap]
     ]
   in
 
-  let input_pv = input_string "prover" (fun s ->
+  let input_pv = input_string "prover name" (fun s ->
       set_pv_filter { pv_name = s }) in
   let search_pv =
     H.div ~a:[H.a_class ["search"]] [
-      H.div ~a:[H.a_class ["container"]] [
-        H.form [input_pv]
-      ]
+      H.pcdata "Prover filter";
+      H.form [input_pv]
     ]
   in
 
-  let input_pb = input_string "problem" (fun s ->
+  let input_pb = input_string "problem name" (fun s ->
       set_pb_filter { pb_name = s }) in
   let search_pb =
     H.div ~a:[H.a_class ["search"]] [
-      H.div ~a:[H.a_class ["container"]] [
-        H.form [input_pb]
-      ]
+      H.pcdata "Problem filter";
+      H.form [input_pb]
     ]
   in [
     search_snap;
@@ -414,20 +404,39 @@ let mode_table () =
 (****************************************************************************)
 (* Mode switching *)
 
+let mode, set_mode =
+  React.S.create Empty
+
+let switch m () =
+  set_mode m;
+  Lwt.return_unit
+
+let main =
+  Dom_html.getElementById "main"
+
 let current =
   React.S.map (function m ->
-    List.map Tyxml_js.To_dom.of_node @@
-    match m with
-    | Empty -> []
-    | List -> mode_list ()
-    | Table -> mode_table ()
-  ) mode
+      List.map Tyxml_js.To_dom.of_node @@
+      match m with
+      | Empty -> []
+      | List -> mode_list ()
+      | Table -> mode_table ()
+    ) mode
 
 let _s =
   React.S.diff (fun l old ->
       List.iter (fun c -> main##removeChild c |> ignore) old;
       List.iter (fun c -> main##appendChild c |> ignore) l
     ) current
+
+(****************************************************************************)
+(* Get state from url *)
+
+let update_state () =
+  match Url.Current.get_fragment () with
+  | "list" -> switch List ()
+  | "table" -> switch Table ()
+  | _ -> Lwt.return_unit
 
 (****************************************************************************)
 (* Status bar and main loop *)
@@ -437,18 +446,29 @@ let st_bar =
     [ R.Html.pcdata status ]
 
 let () =
-  let mode_buttons =
-    H.div [
-      input_button "Refresh" get_snapshots;
-      input_button "S-List" (switch List);
-      input_button "Table" (switch Table);
-    ]
+  let nav =
+    H.nav [
+      H.ul [
+        H.li ~a:[H.a_id "list"] [
+          H.a ~a:[H.a_href "#list"] [ H.pcdata "List" ]];
+        H.li ~a:[H.a_id "table"] [
+          H.a ~a:[H.a_href "#table"] [ H.pcdata "Table" ]];
+        on_click (
+          H.li ~a:[H.a_style "float:right"] [
+            H.a ~a:[] [ H.pcdata "Refresh" ]])
+          get_snapshots;
+      ]]
   in
   Lwt.async
     (fun _ ->
+       Lwt_js_events.onhashchanges (fun _ _ -> update_state ())
+    );
+  Lwt.async
+    (fun _ ->
        Lwt_js_events.domContentLoaded () >>= fun _ ->
+       main##appendChild (Tyxml_js.To_dom.of_node nav) |> ignore;
        main##appendChild (Tyxml_js.To_dom.of_node st_bar) |> ignore;
-       main##appendChild (Tyxml_js.To_dom.of_node mode_buttons) |> ignore;
+       let%lwt () = update_state () in
        get_snapshots ()
     )
 
