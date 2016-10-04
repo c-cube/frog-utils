@@ -43,6 +43,31 @@ let pb_filter, set_pb_filter =
 let event, set_event =
   React.S.create None
 
+let prover, set_prover =
+  React.S.create None
+
+let problem, set_problem =
+  React.S.create None
+
+let pb_contents, set_pb_contents =
+  React.S.create None
+
+let _update_pb_contents =
+  React.S.map (function
+      | None -> ()
+      | Some f ->
+        Lwt.async (
+          function () ->
+            let%lwt frame = XmlHttpRequest.get
+                (Format.sprintf "/problem/?file=%s" f.Problem.name) in
+            if frame.XmlHttpRequest.code = 404 then
+              set_pb_contents (Some "Error 404")
+            else
+              set_pb_contents (Some frame.XmlHttpRequest.content);
+            Lwt.return_unit
+        )
+    ) problem
+
 (****************************************************************************)
 (* Aux functions *)
 
@@ -113,14 +138,24 @@ let on_click h k =
 (****************************************************************************)
 (* HTML rendering *)
 
+let pb_to_html pb =
+  on_click
+    (H.a ~a:[H.a_href "#problem"]
+       [ H.pcdata (Problem.basename pb) ])
+    (function () -> set_problem (Some pb); Lwt.return_unit)
+
+let version_to_string = function
+  | Prover.Tag s -> Format.sprintf " %s" s
+  | Prover.Git (branch, commit) ->
+    Format.sprintf "@@%s#%s…" branch (String.sub commit 0 15)
+
 let pv_to_line p =
   let open Prover in
-  match p.version with
-  | Tag s ->
-    [ H.pcdata (Format.sprintf "%s %s" p.name s); ]
-  | Git (branch, commit) -> [
-      H.pcdata (Format.sprintf "%s@@%s#%s…" p.name branch (String.sub commit 0 15));
-    ]
+  [ on_click
+      (H.a ~a:[H.a_href "#prover"]
+         [ H.pcdata (Format.sprintf "%s%s" p.name (version_to_string p.version)) ])
+      (fun () -> set_prover (Some p); Lwt.return_unit);
+  ]
 
 let pv_to_html p =
   List.flatten (List.map (fun x -> [x; H.br ()]) (pv_to_line p))
@@ -153,8 +188,11 @@ let float_to_html f =
   H.pcdata (Format.sprintf "%.2f" f)
 
 let pre s =
-  H.pre [ H.pcdata s ]
+  H.pre ~a:[H.a_class [ "raw" ] ] [ H.pcdata s ]
 
+let pre_opt default = function
+  | None -> H.pcdata default
+  | Some s -> pre s
 
 (****************************************************************************)
 (* Data & fetching *)
@@ -371,7 +409,7 @@ let mode_table () =
     let pbs = L.from_signal pb_table in
     let trs = L.map (fun (pb, l) ->
         H.tr (
-          H.td [ H.pcdata @@ Problem.basename pb ] ::
+          H.td [ pb_to_html pb ] ::
           List.map (
             function
             | [] -> H.td [ H.pcdata "." ]
@@ -427,28 +465,81 @@ let mode_event () =
         [ H.pcdata "TODO (checker events)" ]
       | Some Event.Prover_run r ->
         [ H.table
-          [ H.tr [ H.td [ H.pcdata "Prover" ];
-                   H.td (pv_to_html r.Event.program) ];
-            H.tr [ H.td [ H.pcdata "Problem" ];
-                   H.td [ H.pcdata (Problem.basename r.Event.problem) ] ];
-            H.tr [ H.td [ H.pcdata "Result" ];
-                   H.td [ res_to_html (Event.analyze_p r) ] ];
-            H.tr [ H.td [ H.pcdata "Errcode" ];
-                   H.td [ int_to_html r.Event.raw.Event.errcode ] ];
-            H.tr [ H.td [ H.pcdata "real time" ];
-                   H.td [ float_to_html r.Event.raw.Event.rtime ] ];
-            H.tr [ H.td [ H.pcdata "user time" ];
-                   H.td [ float_to_html r.Event.raw.Event.utime ] ];
-            H.tr [ H.td [ H.pcdata "system time" ];
-                   H.td [ float_to_html r.Event.raw.Event.stime ] ];
-            H.tr [ H.td [ H.pcdata "stdout" ];
-                   H.td [ pre r.Event.raw.Event.stdout ] ];
-            H.tr [ H.td [ H.pcdata "stderr" ];
-                   H.td [ pre r.Event.raw.Event.stderr ] ];
-          ]
+            [ H.tr [ H.td [ H.pcdata "Prover" ];
+                     H.td (pv_to_html r.Event.program) ];
+              H.tr [ H.td [ H.pcdata "Problem" ];
+                     H.td [ pb_to_html r.Event.problem ] ];
+              H.tr [ H.td [ H.pcdata "Result" ];
+                     H.td [ res_to_html (Event.analyze_p r) ] ];
+              H.tr [ H.td [ H.pcdata "Errcode" ];
+                     H.td [ int_to_html r.Event.raw.Event.errcode ] ];
+              H.tr [ H.td [ H.pcdata "real time" ];
+                     H.td [ float_to_html r.Event.raw.Event.rtime ] ];
+              H.tr [ H.td [ H.pcdata "user time" ];
+                     H.td [ float_to_html r.Event.raw.Event.utime ] ];
+              H.tr [ H.td [ H.pcdata "system time" ];
+                     H.td [ float_to_html r.Event.raw.Event.stime ] ];
+              H.tr [ H.td [ H.pcdata "stdout" ];
+                     H.td [ pre r.Event.raw.Event.stdout ] ];
+              H.tr [ H.td [ H.pcdata "stderr" ];
+                     H.td [ pre r.Event.raw.Event.stderr ] ];
+            ]
         ]
     ) event
   in
+  [ R.Html.div (L.from_signal l) ]
+
+(****************************************************************************)
+(* Interface: Prover printing *)
+
+let mode_prover () =
+  let l = React.S.map (function
+      | None ->
+        [ H.pcdata "Please select a prover to print" ]
+      | Some p ->
+        [ H.h3 (pv_to_line p);
+          H.table
+            [ H.tr [ H.td [ H.pcdata "version" ];
+                     H.td [ H.pcdata (version_to_string p.Prover.version) ] ];
+              H.tr [ H.td [ H.pcdata "binary" ];
+                     H.td [ H.pcdata p.Prover.binary ] ];
+              H.tr [ H.td [ H.pcdata "cmd" ];
+                     H.td [ pre p.Prover.cmd ] ];
+              H.tr [ H.td [ H.pcdata "sat" ];
+                     H.td [ pre_opt "<none>" p.Prover.sat ] ];
+              H.tr [ H.td [ H.pcdata "unsat" ];
+                     H.td [ pre_opt "<none>" p.Prover.unsat ] ];
+              H.tr [ H.td [ H.pcdata "unknown" ];
+                     H.td [ pre_opt "<none>" p.Prover.unknown ] ];
+              H.tr [ H.td [ H.pcdata "timeout" ];
+                     H.td [ pre_opt "<none>" p.Prover.timeout ] ];
+              H.tr [ H.td [ H.pcdata "out of space" ];
+                     H.td [ pre_opt "<none>" p.Prover.memory ] ];
+            ]
+        ]
+    ) prover
+  in
+  [ R.Html.div (L.from_signal l) ]
+
+(****************************************************************************)
+(* Interface: Problem printing *)
+
+let mode_problem () =
+  let l = React.S.l2 (fun opt contents ->
+      match opt with
+      | None ->
+        [ H.pcdata "Please select a problem to be printed" ];
+      | Some pb ->
+        [ H.h3 [ H.pcdata (Problem.basename pb) ];
+          H.table
+            [ H.tr [ H.td [ H.pcdata "Path" ];
+                     H.td [ H.pcdata pb.Problem.name ] ];
+              H.tr [ H.td [ H.pcdata "Expected" ];
+                     H.td [ res_to_html pb.Problem.expected ] ];
+              H.tr [ H.td [ H.pcdata "Contents" ];
+                     H.td [ pre_opt "fetching data..." contents ] ];
+            ]
+        ]) problem pb_contents in
   [ R.Html.div (L.from_signal l) ]
 
 (****************************************************************************)
@@ -459,6 +550,8 @@ type mode =
   | Table
   | List
   | Event
+  | Prover
+  | Problem
 
 let mode, set_mode =
   React.S.create Empty
@@ -478,6 +571,8 @@ let current =
       | List -> mode_list ()
       | Table -> mode_table ()
       | Event -> mode_event ()
+      | Prover -> mode_prover ()
+      | Problem -> mode_problem ()
     ) mode
 
 let _s =
@@ -494,6 +589,8 @@ let update_state () =
   | "list" -> switch List ()
   | "table" -> switch Table ()
   | "event" -> switch Event ()
+  | "prover" -> switch Prover ()
+  | "problem" -> switch Problem ()
   | _ -> Lwt.return_unit
 
 (****************************************************************************)
@@ -513,6 +610,10 @@ let () =
           H.a ~a:[H.a_href "#table"] [ H.pcdata "Table" ]];
         H.li ~a:[H.a_id "event"] [
           H.a ~a:[H.a_href "#event"] [ H.pcdata "Event" ]];
+        H.li ~a:[H.a_id "prover"] [
+          H.a ~a:[H.a_href "#prover"] [ H.pcdata "Prover" ]];
+        H.li ~a:[H.a_id "problem"] [
+          H.a ~a:[H.a_href "#problem"] [ H.pcdata "Problem" ]];
         on_click (
           H.li ~a:[H.a_style "float:right"] [
             H.a ~a:[] [ H.pcdata "Refresh" ]])
