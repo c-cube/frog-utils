@@ -217,8 +217,10 @@ let stats_of_snapshot s =
   (s.uuid, s.timestamp, n, provers)
 
 let mode_list () =
+  (* list of snapshots, sorted by decreasing timestamps *)
   let slist = React.S.map (fun l ->
       List.map stats_of_snapshot l
+      |> List.sort (fun (_,t1,_,_)(_,t2,_,_) -> compare t2 t1)
     ) snapshots in
   let table =
     let th, _ = L.create @@ [
