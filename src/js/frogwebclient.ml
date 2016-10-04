@@ -39,8 +39,7 @@ let pv_to_line p =
   | Tag s ->
     [ H.pcdata (Format.sprintf "%s %s" p.name s); ]
   | Git (branch, commit) -> [
-      H.pcdata (Format.sprintf "%s@@%s" p.name branch);
-      H.pcdata (Format.sprintf "%s.." (String.sub commit 0 15));
+      H.pcdata (Format.sprintf "%s@@%s#%s…" p.name branch (String.sub commit 0 15));
     ]
 
 let pv_to_html p =
