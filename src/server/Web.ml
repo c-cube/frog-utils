@@ -54,10 +54,6 @@ module Server = struct
     h1 { font-size: larger; }
     h2 { font-size: large; }
 
-    div {
-      padding: 5px;
-    }
-
     pre.raw {
       margin: 0px;
       padding: 5px;
@@ -134,7 +130,8 @@ module Server = struct
     }
 
     .select, .search {
-      border-radius: 25px;
+      padding: 10px;
+      border-radius: 10px;
       border: 1px solid grey;
       margin: 10px;
     }
@@ -142,6 +139,10 @@ module Server = struct
     .search, .table {
       padding : 10px;
       margin-left: 380px;
+    }
+
+    table {
+      margin: 10px;
     }
     "
 
