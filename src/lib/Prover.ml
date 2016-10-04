@@ -38,6 +38,8 @@ let version_to_string = function
 
 let name p = p.name
 
+exception Subst_not_found of string
+
 (* Internal function, do NOT export ! *)
 let mk_cmd
     ?(env=[||])
@@ -54,7 +56,7 @@ let mk_cmd
         | "timeout" | "time" -> string_of_int timeout
         | "file" -> file
         | "binary" -> binary
-        | _ -> raise Not_found)
+        | s -> raise (Subst_not_found s))
       s
   in
   (* XXX: seems to ake zombie processes?
@@ -68,7 +70,10 @@ let mk_cmd
 
 let make_command ?env prover ~timeout ~memory ~file =
   let binary = prover.binary in
-  mk_cmd ?env ~binary ~timeout ~memory ~file prover.cmd
+  try mk_cmd ?env ~binary ~timeout ~memory ~file prover.cmd
+  with Subst_not_found s ->
+    failwith (Printf.sprintf
+        "cannot make command for prover %s: cannot find field %s" prover.name s)
 
 module Map = Misc.Map_(struct
     type t = t_

@@ -35,6 +35,7 @@ let config_of_file file =
   with
   | Config.Error e ->
     Misc.Err.fail e
+  | e -> Misc.Err.fail (Printexc.to_string e)
 
 (* run one particular test *)
 let run_pb_ ~config prover pb =

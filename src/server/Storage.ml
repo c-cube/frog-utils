@@ -79,7 +79,7 @@ let find storage (k:key) : string or_error Lwt.t =
 let find_json storage k : json or_error Lwt.t =
   let open Misc.LwtErr in
   find storage k >>= fun s ->
-  try%lwt
+  try
     Lwt.return (Yojson.Safe.from_string s |> Misc.Err.return)
   with e ->
     fail (Printexc.to_string e)

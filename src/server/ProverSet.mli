@@ -10,4 +10,5 @@ val of_config : Config.t -> Prover.t StrMap.t
 
 val find_config : Config.t -> string -> Prover.t
 (** Parse prover description from config file, and check it is listed
-    in the "provers" list *)
+    in the "provers" list
+    @raise Failure if prover not found *)

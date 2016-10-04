@@ -44,6 +44,7 @@ depends: [
     "maki"
     "react"
     "reactiveData"
+    "ISO8601"
 ]
 available: [ "ocaml-version" >= "4.02.1" ]
 tags: ["lock" "batch"]

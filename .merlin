@@ -40,5 +40,6 @@ PKG js_of_ocaml.tyxml
 PKG junit
 PKG react
 PKG reactiveData
+PKG ISO8601
 
 #FLG -w +a-4-44-29-48

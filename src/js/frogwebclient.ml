@@ -39,8 +39,7 @@ let pv_to_line p =
   | Tag s ->
     [ H.pcdata (Format.sprintf "%s %s" p.name s); ]
   | Git (branch, commit) -> [
-      H.pcdata (Format.sprintf "%s@@%s" p.name branch);
-      H.pcdata (Format.sprintf "%s.." (String.sub commit 0 15));
+      H.pcdata (Format.sprintf "%s@@%s#%s…" p.name branch (String.sub commit 0 15));
     ]
 
 let pv_to_html p =
@@ -212,9 +211,15 @@ let stats_of_snapshot s =
   in
   (s.uuid, s.timestamp, n, provers)
 
+let date_to_string (t:float): string =
+  let module T = ISO8601.Permissive in
+  T.string_of_datetime t
+
 let mode_list () =
+  (* list of snapshots, sorted by decreasing timestamps *)
   let slist = React.S.map (fun l ->
       List.map stats_of_snapshot l
+      |> List.sort (fun (_,t1,_,_)(_,t2,_,_) -> compare t2 t1)
     ) snapshots in
   let table =
     let th, _ = L.create @@ [
@@ -234,7 +239,7 @@ let mode_list () =
           ] in
         H.tr [
           t;
-          H.td [ H.pcdata (Format.sprintf "%.2f" time) ];
+          H.td [ H.pcdata (date_to_string time) ];
           H.td [ H.pcdata (Format.sprintf "%d" n) ];
           H.td (List.flatten @@ List.map (fun pv -> pv_to_line pv @ [ H.br () ]) pvs);
         ]

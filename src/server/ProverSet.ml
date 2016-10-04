@@ -10,6 +10,8 @@ let get_str_ d x =
   try Some (Config.get_string d x)
   with Config.FieldNotFound _ -> None
 
+exception Subst_not_found of string
+
 (* Internal function, do NOT export ! *)
 let mk_cmd
     ?(env=[||])
@@ -26,7 +28,7 @@ let mk_cmd
         | "timeout" | "time" -> string_of_int timeout
         | "file" -> file
         | "binary" -> binary
-        | _ -> raise Not_found)
+        | s -> raise (Subst_not_found s))
       s
   in
   (* XXX: seems to ake zombie processes?
@@ -79,7 +81,11 @@ let build_from_config config name =
         | "git", dir ->
           Git (get_branch dir, get_commit dir)
         | "cmd", cmd ->
-          Tag (get_cmd_out @@ mk_cmd ~binary cmd)
+          begin try
+              Tag (get_cmd_out @@ mk_cmd ~binary cmd)
+            with Subst_not_found s ->
+              Tag (Printf.sprintf "command `%s` failed: cannot find field %s" cmd s)
+          end
         | _ -> Tag s
         | exception Not_found -> Tag s
       end
