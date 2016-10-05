@@ -53,6 +53,14 @@ module Server = struct
 
     h1 { font-size: larger; }
     h2 { font-size: large; }
+    h3 {
+      margin-top: 5px;
+      margin-bottom: 5px;
+    }
+    h5 {
+      margin-top: 5px;
+      margin-bottom: 5px;
+    }
 
     pre.raw {
       margin: 0px;
@@ -149,17 +157,18 @@ module Server = struct
       overflow: auto;
     }
 
-    .choice {
+    .searchbox {
       float: left;
+      margin: 10px;
     }
 
     .choice ul {
-      margin: 0;
-      padding: 10px;
+      margin: 5px;
+      padding-left: 5px;
     }
 
     form input {
-      margin: 10px;
+      margin: 5px;
     }
     "
 

@@ -475,8 +475,11 @@ let mode_table () =
     ulist (s_filter, (fun l -> set_s_filter l)) in
   let search_snap =
     H.div ~a:[H.a_class ["select"]] [
-      H.h3 [ H.pcdata "Snapshot filter" ];
-      input_snap;
+      H.h3 [ H.pcdata "Snapshots" ];
+      H.div~a:[H.a_class ["searchbox"]] [
+        H.h5 [ H.pcdata "List" ];
+        input_snap;
+      ];
     ]
   in
 
@@ -484,11 +487,6 @@ let mode_table () =
       set_pv_filter { pv_name = s }) in
   let input_pb = input_string "problem name" (fun s ->
       set_pb_filter { pb_name = s }) in
-  let filter_p =
-    H.div ~a:[H.a_class ["search"]] [
-      H.h3 [ H.pcdata "Prover&Problem filter" ];
-      H.form [input_pv; input_pb];
-    ] in
   let input_res = multi_choice
       compare Res.to_string
       (React.S.const [Res.Sat;Res.Unsat;Res.Unknown;Res.Timeout;Res.Error])
@@ -501,16 +499,27 @@ let mode_table () =
       ((React.S.map (fun { expect; _ } -> expect) ev_filter),
        (fun l -> set_ev_filter { (React.S.value ev_filter) with expect = l; }))
   in
-  let filter_e =
+  let filter =
     H.div ~a:[H.a_class ["search"]] [
-      H.h3 [ H.pcdata "Event filter" ];
-      input_res;
-      input_expect;
+      H.h3 [ H.pcdata "Filter" ];
+      H.form ~a:[H.a_class ["searchbox"]] [
+        H.h5 [ H.pcdata "Prover&Problem" ];
+        input_pv;
+        H.br ();
+        input_pb;
+      ];
+      H.div ~a:[H.a_class ["searchbox"]] [
+        H.h5 [ H.pcdata "Result" ];
+        input_res;
+      ];
+      H.div ~a:[H.a_class ["searchbox"]] [
+        H.h5 [ H.pcdata "Expect" ];
+        input_expect;
+      ];
     ] in
   [
     search_snap;
-    filter_p;
-    filter_e;
+    filter;
     table;
   ]
 
