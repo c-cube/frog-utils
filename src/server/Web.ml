@@ -144,9 +144,25 @@ module Server = struct
     table {
       margin: 10px;
     }
+
+    .search {
+      overflow: auto;
+    }
+
+    .choice {
+      float: left;
+    }
+
+    .choice ul {
+      margin: 0;
+      padding: 10px;
+    }
+
+    form input {
+      margin: 10px;
+    }
     "
 
-  (* TODO: css *)
   let return_html ?title ?code (h:html) =
     let wrap_ ?(title="frog-utils") h =
       let hd =

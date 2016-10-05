@@ -18,6 +18,16 @@ type pb_filter = {
   pb_name : string;
 }
 
+type expect =
+  | Same
+  | Better
+  | Mismatch
+  | Compatible
+
+type ev_filter = {
+  res : Res.t list;
+  expect : expect list;
+}
 
 (****************************************************************************)
 (* Interface: current state *)
@@ -27,7 +37,7 @@ let status, set_status =
   React.S.create "Starting..."
 
 (* Filters for table mode *)
-let snap_filter, set_snap_filter =
+let s_filter, set_s_filter =
   let init = [] in
   React.S.create init
 
@@ -37,6 +47,10 @@ let pv_filter, set_pv_filter =
 
 let pb_filter, set_pb_filter =
   let init = { pb_name = ""; } in
+  React.S.create init
+
+let ev_filter, set_ev_filter =
+  let init = { res = [] ; expect = [] } in
   React.S.create init
 
 (* Single event printing *)
@@ -71,9 +85,59 @@ let _update_pb_contents =
 (****************************************************************************)
 (* Aux functions *)
 
+let cmp_res r r' =
+  match Res.compare r r' with
+  | `Same -> Same
+  | `Mismatch -> Mismatch
+  | `LeftBetter -> Better
+  | `RightBetter -> Compatible
+
+let expect_to_string = function
+  | Same -> "correct"
+  | Better -> "better"
+  | Mismatch -> "mismatch"
+  | Compatible -> "compatible"
+
+let mem ?(cmp=compare) x = function
+  | [] -> true
+  | l -> List.exists (fun y -> cmp x y = 0) l
+
 let cmp_prover p p' =
   let open Prover in
   compare (p.name, p.version) (p'.name, p'.version)
+
+let filter_s =
+  React.S.map ~eq:(==) (function
+      | [] -> (fun _ -> true)
+      | l -> (fun s ->
+          List.exists (Uuidm.equal s.Event.uuid) l)
+    ) s_filter
+
+let filter_pv =
+  React.S.map ~eq:(==) (function { pv_name; } ->
+      let r = Regexp.regexp_case_fold pv_name in
+      (fun p ->
+         match Regexp.string_match r p.Prover.name 0 with
+         | Some _ -> true | None -> false)
+    ) pv_filter
+
+let filter_pb =
+  React.S.map ~eq:(==) (function { pb_name; } ->
+      let r = Regexp.regexp_case_fold pb_name in
+      (fun p ->
+         match Regexp.string_match r (Problem.basename p) 0 with
+         | Some _ -> true | None -> false)
+    ) pb_filter
+
+let filter_ev =
+  React.S.map ~eq:(==) (function { res; expect; } ->
+      (function
+        | Event.Prover_run result ->
+          let r = Event.analyze_p result in
+          mem r res && mem (cmp_res r result.Event.problem.Problem.expected) expect
+        | Event.Checker_run _ -> true
+      )
+    ) ev_filter
 
 (****************************************************************************)
 (* HTML inputs *)
@@ -101,14 +165,8 @@ let multi_choice cmp to_string list (get, set) =
     let old = React.S.value get in
     set (List.filter (fun y -> cmp x y <> 0) old)
   in
-  let is_active x =
-    List.exists (Uuidm.equal x) (React.S.value get)
-  in
   let tmp = React.S.map (List.map (fun x ->
-      let attrs = H.a_input_type `Checkbox :: (
-          if is_active x then [ H.a_checked () ] else [])
-      in
-      let input = H.input ~a:attrs () in
+      let input = H.input ~a:[H.a_input_type `Checkbox] () in
       let node = Tyxml_js.To_dom.of_input input in
       Lwt.async (fun _ ->
           Lwt_js_events.limited_loop ~elapsed_time:0.2
@@ -122,10 +180,11 @@ let multi_choice cmp to_string list (get, set) =
   let s = React.S.l2 (fun l inputs ->
       (List.iter (fun ((x, input), _) ->
            let node = Tyxml_js.To_dom.of_input input in
-           node##.checked := Js.bool (List.mem x l)
+           node##.checked := Js.bool (List.exists (fun y -> cmp x y = 0) l)
          ) inputs)) get tmp in
   ignore (React.S.retain get (fun () -> ignore s));
-  R.Html.ul (L.map snd (L.from_signal tmp))
+  H.div ~a:[H.a_class ["choice"]]
+    [ R.Html.ul (L.map snd (L.from_signal tmp)) ]
 
 
 let on_click h k =
@@ -288,7 +347,7 @@ let mode_list () =
           on_click (
             H.a ~a:[H.a_href "#table"; H.a_style "cursor:pointer" ]
               [ H.pcdata (Uuidm.to_string uuid) ])
-            (fun () -> set_snap_filter [ uuid ]; Lwt.return_unit)
+            (fun () -> set_s_filter [ uuid ]; Lwt.return_unit)
           ] in
         H.tr [
           t;
@@ -309,25 +368,23 @@ let mode_list () =
 let mode_table () =
 
   (* Initialize uuidm list *)
-  let slist = React.S.map (List.map (fun s -> s.Event.uuid)) snapshots in
+  let ulist = React.S.map (List.map (fun s -> s.Event.uuid)) snapshots in
 
   (* flattened list of all events *)
+  let snap_list =
+    React.S.l2 List.filter filter_s snapshots
+  in
+
   let results =
-    let aux v l =
-      let pred =
-        if l = [] then (fun _ -> true)
-        else (fun x -> List.exists (Uuidm.equal x) l)
-      in
+    let aux pred l =
       let res, _l = List.fold_left (fun (acc, acc') s ->
-          if pred s.Event.uuid then
-            let l, l' = split_events s.Event.events in
-            (l @ acc, l' @ acc')
-          else (acc, acc')
-        ) ([], []) v
+          let evs = List.filter pred s.Event.events in
+          let l, l' = split_events evs in
+          (l @ acc, l' @ acc')) ([], []) l
       in
       res
     in
-    React.S.l2 aux snapshots snap_filter
+    React.S.l2 aux filter_ev snap_list
   in
 
   let pv_pre_list =
@@ -343,17 +400,12 @@ let mode_table () =
   in
 
   let pv_list =
-    let aux f t =
-      let r = Regexp.regexp_case_fold f.pv_name in
-      let pred p =
-        match Regexp.string_match r p.Prover.name 0 with
-        | Some _ -> true | None -> false
-      in
+    let aux pred t =
       OLinq.(of_list t
              |> filter pred
              |> run_list)
     in
-    React.S.l2 aux pv_filter pv_pre_list
+    React.S.l2 aux filter_pv pv_pre_list
   in
 
   let pb_pre_list =
@@ -373,26 +425,23 @@ let mode_table () =
       | [] -> None
       | _ -> (Some l')
     in
-    let aux pvs f t =
+    let aux pvs pred t =
       let pv_l = OLinq.of_list pvs in
-      let r = Regexp.regexp_case_fold f.pb_name in
-      let pred (p, _) =
-        match Regexp.string_match r (Problem.basename p) 0 with
-        | Some _ -> true | None -> false
-      in
       OLinq.(of_list t
-             |> filter pred
-             |> map (fun (pb, l) -> pb,
-                                    of_list l
-                                    |> outer_join ~cmp
-                                      (fun x -> x)
-                                      (fun r -> r.Event.program)
-                                      ~merge pv_l
-                                    |> run_list)
+             |> filter (fun (pb, _) -> pred pb)
+             |> map (fun (pb, l) ->
+                 let l' =
+                   of_list l
+                   |> outer_join ~cmp
+                     (fun x -> x)
+                     (fun r -> r.Event.program)
+                     ~merge pv_l
+                   |> run_list
+                 in pb, l')
              (* |> sort_by ~cmp fst *)
              |> run_list)
     in
-    React.S.l3 aux pv_list pb_filter pb_pre_list
+    React.S.l3 aux pv_list filter_pb pb_pre_list
   in
   let table =
     (* Compute the headers of the table *)
@@ -423,34 +472,45 @@ let mode_table () =
   (* Buttons & co *)
   let input_snap = multi_choice
     Uuidm.compare Uuidm.to_string
-    slist (snap_filter, (fun l -> set_snap_filter l)) in
+    ulist (s_filter, (fun l -> set_s_filter l)) in
   let search_snap =
     H.div ~a:[H.a_class ["select"]] [
-      H.pcdata "Snapshot filter";
-      H.form [input_snap]
+      H.h3 [ H.pcdata "Snapshot filter" ];
+      input_snap;
     ]
   in
 
   let input_pv = input_string "prover name" (fun s ->
       set_pv_filter { pv_name = s }) in
-  let search_pv =
-    H.div ~a:[H.a_class ["search"]] [
-      H.pcdata "Prover filter";
-      H.form [input_pv]
-    ]
-  in
-
   let input_pb = input_string "problem name" (fun s ->
       set_pb_filter { pb_name = s }) in
-  let search_pb =
+  let filter_p =
     H.div ~a:[H.a_class ["search"]] [
-      H.pcdata "Problem filter";
-      H.form [input_pb]
-    ]
-  in [
+      H.h3 [ H.pcdata "Prover&Problem filter" ];
+      H.form [input_pv; input_pb];
+    ] in
+  let input_res = multi_choice
+      compare Res.to_string
+      (React.S.const [Res.Sat;Res.Unsat;Res.Unknown;Res.Timeout;Res.Error])
+      ((React.S.map (fun { res; _ } -> res) ev_filter),
+       (fun l -> set_ev_filter { (React.S.value ev_filter) with res = l; }))
+  in
+  let input_expect = multi_choice
+      compare expect_to_string
+      (React.S.const [Same; Better; Mismatch; Compatible])
+      ((React.S.map (fun { expect; _ } -> expect) ev_filter),
+       (fun l -> set_ev_filter { (React.S.value ev_filter) with expect = l; }))
+  in
+  let filter_e =
+    H.div ~a:[H.a_class ["search"]] [
+      H.h3 [ H.pcdata "Event filter" ];
+      input_res;
+      input_expect;
+    ] in
+  [
     search_snap;
-    search_pv;
-    search_pb;
+    filter_p;
+    filter_e;
     table;
   ]
 
