@@ -400,12 +400,7 @@ let mode_table () =
   in
 
   let pv_list =
-    let aux pred t =
-      OLinq.(of_list t
-             |> filter pred
-             |> run_list)
-    in
-    React.S.l2 aux filter_pv pv_pre_list
+    React.S.l2 List.filter filter_pv pv_pre_list
   in
 
   let pb_pre_list =
