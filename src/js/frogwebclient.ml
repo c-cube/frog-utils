@@ -10,6 +10,10 @@ module L = ReactiveData.RList
 
 (* Type definitions *)
 
+type 'a change =
+  | Reset
+  | Add of 'a
+
 type pv_filter = {
   pv_name : string;
 }
@@ -101,6 +105,10 @@ let expect_to_string = function
 let mem ?(cmp=compare) x = function
   | [] -> true
   | l -> List.exists (fun y -> cmp x y = 0) l
+
+let cmp_pb p p' =
+  let open Problem in
+  compare (basename p) (basename p')
 
 let cmp_prover p p' =
   let open Prover in
@@ -254,10 +262,28 @@ let pre_opt default = function
   | Some s -> pre s
 
 (****************************************************************************)
+(* Reactive sorted lists *)
+
+let insert ~cmp l (t, handle) =
+  let rec insert_single acc n x r = function
+    | [] as l ->
+      insert_list (L.I (n, x) :: acc) (n + 1) l r
+    | y :: l ->
+      if cmp x y > 0 then
+        insert_single acc (n + 1) x r l
+      else
+        insert_list (L.I (n, x) :: acc) (n + 1) l r
+  and insert_list acc n l = function
+    | [] -> List.rev acc
+    | x :: r -> insert_single acc n x r l
+  in
+  insert_list []
+
+(****************************************************************************)
 (* Data & fetching *)
 
-let snapshots, set_snapshots =
-  React.S.create []
+let snapshots, add_snapshot, clear_snapshots =
+  mk_sorted_rlist (fun s s' -> compare s.Event.uuid s'.Event.uuid)
 
 let snap_list s =
   let json = Yojson.Safe.from_string s in
@@ -271,7 +297,7 @@ let snap_list s =
     []
 
 let get_snapshots () =
-  set_snapshots [];
+  clear_snapshots ();
   let%lwt frame = XmlHttpRequest.get "/snapshots/" in
   let l = snap_list frame.XmlHttpRequest.content in
   let n = List.length l in
@@ -283,8 +309,7 @@ let get_snapshots () =
       match [%of_yojson: Event.Snapshot.t] json with
       | Result.Ok s ->
         set_status (Format.sprintf "Adding snapshot %d/%d ..." (i + 1) n);
-        let old = React.S.value snapshots in
-        set_snapshots (s :: old);
+        add_snapshot s;
         Lwt.return_unit
       | Result.Error _ ->
         set_status (Format.sprintf "Error while reading snapshot %d" (i + 1));
@@ -328,11 +353,6 @@ let date_to_string (t:float): string =
   T.string_of_datetime t
 
 let mode_list () =
-  (* list of snapshots, sorted by decreasing timestamps *)
-  let slist = React.S.map (fun l ->
-      List.map stats_of_snapshot l
-      |> List.sort (fun (_,t1,_,_)(_,t2,_,_) -> compare t2 t1)
-    ) snapshots in
   let table =
     let th, _ = L.create @@ [
         H.tr [
@@ -355,7 +375,7 @@ let mode_list () =
           H.td [ H.pcdata (Format.sprintf "%d" n) ];
           H.td (List.flatten @@ List.map (fun pv -> pv_to_line pv @ [ H.br () ]) pvs);
         ]
-      ) (L.from_signal slist)
+      ) (L.map stats_of_snapshot snapshots)
     in
     R.Html.table (L.concat th trs)
   in
@@ -367,103 +387,13 @@ let mode_list () =
 
 let mode_table () =
 
-  (* Initialize uuidm list *)
-  let ulist = React.S.map (List.map (fun s -> s.Event.uuid)) snapshots in
+  
 
-  (* flattened list of all events *)
-  let snap_list =
-    React.S.l2 List.filter filter_s snapshots
-  in
 
-  let results =
-    let aux pred l =
-      let res, _l = List.fold_left (fun (acc, acc') s ->
-          let evs = List.filter pred s.Event.events in
-          let l, l' = split_events evs in
-          (l @ acc, l' @ acc')) ([], []) l
-      in
-      res
-    in
-    React.S.l2 aux filter_ev snap_list
-  in
+  let pbs, add_pb, clear_pbs = mk_sorted_rlist cmp_pb in
+  let pvs, add_pv, clear_pvs = mk_sorted_rlist cmp_prover in
 
-  let pv_pre_list =
-    let cmp = cmp_prover in
-    let aux t =
-      OLinq.(of_list t
-             |> map (fun r -> r.Event.program)
-             |> distinct ~cmp ()
-             |> sort ~cmp ()
-             |> run_list)
-    in
-    React.S.map aux results
-  in
 
-  let pv_list =
-    React.S.l2 List.filter filter_pv pv_pre_list
-  in
-
-  let pb_pre_list =
-    let cmp p p' = compare (Problem.basename p) (Problem.basename p') in
-    let proj p = p.Event.problem in
-    let aux t =
-      OLinq.(of_list t
-             |> group_by ~cmp proj
-             |> run_list)
-    in
-    React.S.map aux results
-  in
-
-  let pb_table =
-    let cmp = cmp_prover in
-    let merge _ l l' = match l with
-      | [] -> None
-      | _ -> (Some l')
-    in
-    let aux pvs pred t =
-      let pv_l = OLinq.of_list pvs in
-      OLinq.(of_list t
-             |> filter (fun (pb, _) -> pred pb)
-             |> map (fun (pb, l) ->
-                 let l' =
-                   of_list l
-                   |> outer_join ~cmp
-                     (fun x -> x)
-                     (fun r -> r.Event.program)
-                     ~merge pv_l
-                   |> run_list
-                 in pb, l')
-             (* |> sort_by ~cmp fst *)
-             |> run_list)
-    in
-    React.S.l3 aux pv_list filter_pb pb_pre_list
-  in
-  let table =
-    (* Compute the headers of the table *)
-    let pvs = L.from_signal pv_list in
-    let t, _ = L.create [ [ H.pcdata "" ] ] in
-    let th, _ = L.create @@ [
-        R.Html.tr (
-          L.map H.th @@
-          L.concat t (L.map pv_to_html pvs)
-        )
-      ]
-    in
-    (* Compute the rows *)
-    let pbs = L.from_signal pb_table in
-    let trs = L.map (fun (pb, l) ->
-        H.tr (
-          H.td [ pb_to_html pb ] ::
-          List.map (
-            function
-            | [] -> H.td [ H.pcdata "." ]
-            | l -> H.td (List.map prover_run_to_html l)
-          ) l)
-      ) pbs
-    in
-    let l = L.concat th trs in
-    H.div ~a:[H.a_class ["table"]] [ R.Html.table l ]
-  in
   (* Buttons & co *)
   let input_snap = multi_choice
     Uuidm.compare Uuidm.to_string
