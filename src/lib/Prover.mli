@@ -35,6 +35,8 @@ type t = {
 val name : t -> string
 (** Prover name *)
 
+val pp_name : Format.formatter -> t -> unit
+
 val equal : t -> t -> bool
 (** Equality (by name) *)
 
@@ -51,6 +53,8 @@ module Map : sig
   val to_list : 'a t -> (key * 'a) list
   val of_list : (key * 'a) list -> 'a t
 end
+
+module Set : Set.S with type elt = t
 
 val to_html_name : t -> Html.t
 val to_html_fullname : t -> Html.t

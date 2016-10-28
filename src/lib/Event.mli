@@ -61,5 +61,7 @@ module Snapshot : sig
 
   val of_file : file:string -> t or_error Lwt.t
 
+  val provers : t -> Prover.Set.t
+
   val pp : t printer
 end

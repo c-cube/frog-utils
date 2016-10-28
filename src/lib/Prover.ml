@@ -38,6 +38,8 @@ let version_to_string = function
 
 let name p = p.name
 
+let pp_name out p = Format.pp_print_string out p.name
+
 exception Subst_not_found of string
 
 (* Internal function, do NOT export ! *)
@@ -75,13 +77,16 @@ let make_command ?env prover ~timeout ~memory ~file =
     failwith (Printf.sprintf
         "cannot make command for prover %s: cannot find field %s" prover.name s)
 
-module Map = Misc.Map_(struct
-    type t = t_
+module As_key = struct
+  type t = t_
 
-    let compare p1 p2 =
-      let c = String.compare p1.name p2.name in
-      if c<>0 then c else Pervasives.compare p1.version p2.version
-  end)
+  let compare p1 p2 =
+    let c = String.compare p1.name p2.name in
+    if c<>0 then c else Pervasives.compare p1.version p2.version
+end
+
+module Map = Misc.Map_(As_key)
+module Set = Set.Make(As_key)
 
 (* HTML server *)
 let to_html_name p =

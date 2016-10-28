@@ -110,4 +110,13 @@ module Snapshot = struct
       "{@[<hv>timestamp:%.2f;@ uuid: %s;@ events: @[<v>%a@]@]}"
       r.timestamp (Uuidm.to_string r.uuid)
       (Misc.Fmt.pp_list pp) r.events
+
+  let provers t =
+    List.fold_left
+      (fun set e -> match e with
+         | Prover_run {program=p;_} ->
+           Prover.Set.add p set
+         | Checker_run _ -> set)
+      Prover.Set.empty
+      t.events
 end
