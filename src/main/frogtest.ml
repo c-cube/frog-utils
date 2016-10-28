@@ -133,6 +133,22 @@ module Compare = struct
     E.return ()
 end
 
+(** { List} *)
+module List_run = struct
+  let pp_snap_summary out (s:Event.Snapshot.t): unit =
+    let len = List.length s.Event.events in
+    Format.fprintf out "@[<h>uuid: %s, time: %a, num: %d@]"
+      (Uuidm.to_string s.Event.uuid) ISO8601.Permissive.pp_date s.Event.timestamp len
+
+  let main () =
+    let open E in
+    let storage = Storage.make [] in
+    Event_storage.list_snapshots storage >>= fun l ->
+    Format.printf "@[<v>%a@]@."
+      (Misc.Fmt.pp_list ~start:"" ~stop:"" ~sep:"" pp_snap_summary) l;
+    E.return ()
+end
+
 (** {2 Main: Parse CLI} *)
 
 (* sub-command for running tests *)
@@ -197,6 +213,12 @@ let term_compare =
   and doc = "compare two result files" in
   Term.(pure aux $ file1 $ file2), Term.info ~doc "compare"
 
+let term_list =
+  let open Cmdliner in
+  let aux () = Lwt_main.run (List_run.main ()) in
+  let doc = "compare two result files" in
+  Term.(pure aux $ pure ()), Term.info ~doc "list snapshots"
+
 let parse_opt () =
   let open Cmdliner in
   let help =
@@ -213,7 +235,7 @@ let parse_opt () =
     Term.info ~version:"dev" ~man ~doc "frogtest"
   in
   Cmdliner.Term.eval_choice
-    help [ term_run; term_compare; term_display ]
+    help [ term_run; term_compare; term_display; term_list ]
 
 let () =
   match parse_opt () with
