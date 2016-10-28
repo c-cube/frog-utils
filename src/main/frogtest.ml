@@ -136,10 +136,12 @@ end
 (** { List} *)
 module List_run = struct
   let pp_snap_summary out (s:Event.Snapshot.t): unit =
+    let provers = Event.Snapshot.provers s |> Prover.Set.elements in
     let len = List.length s.Event.events in
-    Format.fprintf out "@[<h>uuid: %s, time: %a, num: %d@]"
+    Format.fprintf out "@[<h>uuid: %s time: %a num: %d provers: [@[<h>%a@]]@]"
       (Uuidm.to_string s.Event.uuid)
       ISO8601.Permissive.pp_datetime s.Event.timestamp len
+      (Misc.Fmt.pp_list ~start:"" ~stop:"" ~sep:"," Prover.pp_name) provers
 
   let main () =
     let open E in
