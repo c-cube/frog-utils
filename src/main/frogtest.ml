@@ -117,7 +117,8 @@ end
 module Display = struct
   let main ~file () =
     let open E in
-    T.Top_result.of_file ~file >>= fun res ->
+    let storage = Storage.make [] in
+    Test_run.find_results ~storage file >>= fun res ->
     Format.printf "%a@." T.Top_result.pp res;
     E.return ()
 end
@@ -126,14 +127,15 @@ end
 module Compare = struct
   let main ~file1 ~file2 () =
     let open E in
-    T.Top_result.of_file ~file:file1 >>= fun res1 ->
-    T.Top_result.of_file ~file:file2 >>= fun res2 ->
+    let storage = Storage.make [] in
+    Test_run.find_results ~storage file1 >>= fun res1 ->
+    Test_run.find_results ~storage file2 >>= fun res2 ->
     let cmp = T.Top_result.compare res1 res2 in
     Format.printf "%a@." T.Top_result.pp_comparison cmp;
     E.return ()
 end
 
-(** { List} *)
+(** {2 List} *)
 module List_run = struct
   let pp_snap_summary out (s:Event.Snapshot.t): unit =
     let provers = Event.Snapshot.provers s |> Prover.Set.elements in
@@ -150,6 +152,14 @@ module List_run = struct
     Format.printf "@[<v>%a@]@."
       (Misc.Fmt.pp_list ~start:"" ~stop:"" ~sep:"" pp_snap_summary) l;
     E.return ()
+end
+
+(** {2 Global Summary}
+
+    Summary of a snapshot compared to other ones with similar provers and
+    files *)
+module Summary_run = struct
+
 end
 
 (** {2 Main: Parse CLI} *)
