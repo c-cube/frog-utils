@@ -138,7 +138,8 @@ module List_run = struct
   let pp_snap_summary out (s:Event.Snapshot.t): unit =
     let len = List.length s.Event.events in
     Format.fprintf out "@[<h>uuid: %s, time: %a, num: %d@]"
-      (Uuidm.to_string s.Event.uuid) ISO8601.Permissive.pp_date s.Event.timestamp len
+      (Uuidm.to_string s.Event.uuid)
+      ISO8601.Permissive.pp_datetime s.Event.timestamp len
 
   let main () =
     let open E in
