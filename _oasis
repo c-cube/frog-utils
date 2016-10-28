@@ -28,7 +28,7 @@ Library "frog_server"
   Modules:          Config, Heap, JUnit_wrapper, LockClient, LockDaemon,
                     LockMessages, Maki_wrapper, MapState, Plot, PrintBox,
                     Run, Storage, TPTP, Web, Test_run, Misc_unix,
-                    ProblemSet, ProverSet
+                    Event_storage, ProblemSet, ProverSet
   BuildDepends:     frog, unix, lwt.unix, lwt.preemptive, cmdliner,
                     archimedes.cairo, opium.unix, junit, maki,
                     maki.yojson, threads
