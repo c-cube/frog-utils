@@ -25,6 +25,8 @@ Library "frog"
 Library "frog_server"
   Path:             src/server
   Pack:             true
+  FindlibName:      server
+  FindlibParent:    frog
   Modules:          Config, Heap, JUnit_wrapper, LockClient, LockDaemon,
                     LockMessages, Maki_wrapper, MapState, Plot, PrintBox,
                     Run, Storage, TPTP, Web, Test_run, Misc_unix,
