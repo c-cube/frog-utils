@@ -5,6 +5,8 @@
 
 open Frog
 
+type 'a or_error = 'a Misc.Err.t
+
 val config_of_file : string -> Test.Config.t Misc.Err.t
 
 val run :
@@ -23,3 +25,5 @@ val run :
     @param caching if true, use Maki for caching results (default true)
     @param on_solve called whenever a single problem is solved *)
 
+val find_results : ?storage:Storage.t -> string -> Test.Top_result.t or_error Lwt.t
+(** Find results in file or storage (try both) *)

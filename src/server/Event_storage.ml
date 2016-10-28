@@ -7,6 +7,11 @@ open Frog
 
 type 'a or_error = 'a Misc.Err.t
 
+let find_snapshot storage str =
+  let open Misc.LwtErr in
+  Storage.find_json storage str >>?=
+  Event.Snapshot.of_yojson
+
 let list_snapshots storage =
   let open Misc.LwtErr in
   let%lwt l = Storage.find_files storage in

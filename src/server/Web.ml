@@ -210,11 +210,7 @@ module Server = struct
 
   let serve_snapshot t req =
     let uuid = param req "uuid" in
-    let%lwt res =
-      let open Misc.LwtErr in
-      Storage.find_json t.storage uuid >>?=
-      Event.Snapshot.of_yojson
-    in
+    let%lwt res = Event_storage.find_snapshot t.storage uuid in
     match res with
       | Error msg ->
         return_404 ("could not find uuid " ^ uuid ^ " : " ^ msg)

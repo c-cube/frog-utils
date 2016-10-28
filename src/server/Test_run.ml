@@ -3,11 +3,15 @@
 
 (** {1 Run Tests} *)
 
+open Result
 open Frog
 open Lwt.Infix
 
+type 'a or_error = 'a Misc.Err.t
+
 module C = Test.Config
 module T = Test
+module E = Misc.LwtErr
 
 let config_of_file file =
   Lwt_log.ign_debug_f "parse config file `%s`..." file;
@@ -100,4 +104,18 @@ let run ?(on_solve = nop_) ?(on_done = nop_)
   let r = T.Top_result.make (List.map Event.mk_prover res) in
   let%lwt () = on_done r in
   Lwt.return r
+
+let find_results ?storage str =
+  match storage with
+    | None -> T.Top_result.of_file str
+    | Some storage ->
+      let open E in
+      let%lwt res1 =
+        Event_storage.find_snapshot storage str
+        >|= T.Top_result.of_snapshot
+      in
+      match res1 with
+        | Ok x -> E.return x
+        | Error _ ->
+          T.Top_result.of_file str
 
