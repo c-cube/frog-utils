@@ -96,26 +96,35 @@ module ResultsComparison : sig
   val print : t printer
   (** Display comparison in a readable way *)
 
+  val print_short : t printer
+  (** Display comparison in a compact way *)
+
   val to_html : (Problem.t -> uri) -> t -> html
 end
 
+(** {2 Top Result}
+
+    Main result of testing: a snapshot of the work done, + the analysis
+    per prover *)
+
 type top_result = private {
+  uuid: Uuidm.t lazy_t; (* unique ID *)
   events: Event.t list;
   analyze: Analyze.t Prover.Map.t lazy_t;
 }
-(** Main result of testing: a snapshot of the work done, + the analysis
-    per prover *)
 
 module Top_result : sig
   type t = top_result
 
   val pp : t printer
 
+  val pp_uuid : t printer
+
   val merge : t -> t -> t
 
   val merge_l : t list -> t
 
-  val make : Event.t list -> t
+  val make : ?uuid:Uuidm.t -> Event.t list -> t
 
   val snapshot : ?meta:string -> t -> Event.Snapshot.t
 

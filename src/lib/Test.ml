@@ -314,28 +314,40 @@ module ResultsComparison = struct
   let pp_list_ p = Misc.Fmt.pp_list p
   let pp_hvlist_ p out = fpf out "[@[<hv>%a@]]" (pp_list_ p)
   let pp_pb_res out (pb,res) = fpf out "@[<h>%s: %a@]" pb.Problem.name Res.print res
-  let pp_pb_res2 ~bold ~color out (pb,res1,res2) =
+  let pp_pb_res2 ?(color=`Normal) ~bold out (pb,res1,res2) =
     let module F = Misc.Fmt in
     fpf out "@[<h>%s: %a@]" pb.Problem.name
       ((if bold then F.in_bold_color color else F.in_color color)
          (fun out () -> fpf out "%a -> %a" Res.print res1 Res.print res2))
       ()
 
-  let print out t =
+  let print out (t:t) =
     let module F = Misc.Fmt in
     fpf out "@[<v2>comparison: {@,appeared: %a,@ disappeared: %a,@ same: %a \
              ,@ mismatch: %a,@ improved: %a,@ regressed: %a@]@,}"
       (pp_hvlist_ pp_pb_res) t.appeared
       (pp_hvlist_ pp_pb_res) t.disappeared
       (pp_hvlist_ pp_pb_res) t.same
-      (pp_hvlist_ (pp_pb_res2 ~bold:true ~color:`Red)) t.mismatch (* RED *)
-      (pp_hvlist_ (pp_pb_res2 ~bold:false ~color:`Green)) t.improved (* GREEN *)
-      (pp_hvlist_ (pp_pb_res2 ~bold:true ~color:`Yellow)) t.regressed (* YELLOW *)
+      (pp_hvlist_ (pp_pb_res2 ~bold:true ~color:`Red)) t.mismatch
+      (pp_hvlist_ (pp_pb_res2 ~bold:false ~color:`Green)) t.improved
+      (pp_hvlist_ (pp_pb_res2 ~bold:true ~color:`Yellow)) t.regressed
+
+  let print_short out (t:t) =
+    let module F = Misc.Fmt in
+    fpf out "(@[<v2>comparison@ appeared: %d,@ disappeared: %d@ same: %d \
+             @ mismatch: %a@ improved: %a@ regressed: %a@])"
+      (List.length t.appeared)
+      (List.length t.disappeared)
+      (List.length t.same)
+      (pp_hvlist_ (pp_pb_res2 ~bold:true ~color:`Normal)) t.mismatch
+      (pp_hvlist_ (pp_pb_res2 ~bold:false ~color:`Green)) t.improved
+      (pp_hvlist_ (pp_pb_res2 ~bold:true ~color:`Yellow)) t.regressed
 
   let to_html _ _ = assert false (* TODO! *)
 end
 
 type top_result = {
+  uuid: Uuidm.t lazy_t; (* unique ID *)
   events: Event.t list;
   analyze: Analyze.t Prover.Map.t lazy_t;
 }
@@ -343,9 +355,14 @@ type top_result = {
 module Top_result = struct
   type t = top_result
 
-  let snapshot ?meta t = Event.Snapshot.make ?meta t.events
+  let snapshot ?meta t =
+    Event.Snapshot.make ?meta ~uuid:(Lazy.force t.uuid) t.events
 
-  let make l =
+  let make ?uuid l =
+    let uuid = match uuid with
+      | Some u -> Lazy.from_val u
+      | None -> lazy (Uuidm.create `V4)
+    in
     let analyze = lazy (
       l
       |> List.fold_left
@@ -361,9 +378,9 @@ module Top_result = struct
         Prover.Map.empty
       |> Prover.Map.map Analyze.make
     ) in
-    { events=l; analyze; }
+    { uuid; events=l; analyze; }
 
-  let of_snapshot s = make s.Event.events
+  let of_snapshot s = make ~uuid:s.Event.uuid s.Event.events
 
   let merge a b = make (List.rev_append a.events b.events)
 
@@ -372,21 +389,24 @@ module Top_result = struct
     make events
 
   let to_file ~file r =
-    let snapshot = Event.Snapshot.make r.events in
+    let snapshot = Event.Snapshot.make ~uuid:(Lazy.force r.uuid) r.events in
     Event.Snapshot.to_file ~file snapshot
 
   let of_file ~file =
     let open Misc.LwtErr in
     Event.Snapshot.of_file ~file >|= of_snapshot
 
+  let pp_uuid out t =
+    Format.fprintf out "(uuid %s)" (Uuidm.to_string (Lazy.force t.uuid))
+
   let pp out (r:t) =
     let pp_tup out (p,res) =
       Format.fprintf out "@[<2>%s:@ @[%a@]@]"
         (Prover.name p) Analyze.print res
     in
-    let {analyze=lazy a; _} = r in
-    Format.fprintf out "@[<v>%a@]" (Misc.Fmt.pp_list pp_tup)
-      (Prover.Map.to_list a)
+    let {analyze=lazy a; uuid=lazy u; _} = r in
+    Format.fprintf out "(@[<2>%s@ @[<v>%a@]@])"
+      (Uuidm.to_string u) (Misc.Fmt.pp_list pp_tup) (Prover.Map.to_list a)
 
   type comparison_result = {
     both: ResultsComparison.t Prover.Map.t;

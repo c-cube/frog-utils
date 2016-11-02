@@ -102,8 +102,8 @@ module Snapshot = struct
     with e ->
       E.fail (Printexc.to_string e) |> Lwt.return
 
-  let make ?(meta="") ?(timestamp=Unix.gettimeofday()) l =
-    { timestamp; uuid=Uuidm.create `V4; events=l; meta; }
+  let make ?(uuid=Uuidm.create `V4) ?(meta="") ?(timestamp=Unix.gettimeofday()) l =
+    { timestamp; uuid; events=l; meta; }
 
   let pp out (r:t) =
     Format.fprintf out

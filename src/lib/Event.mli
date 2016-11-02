@@ -55,7 +55,7 @@ module Snapshot : sig
   type t = snapshot
   [@@deriving yojson]
 
-  val make : ?meta:string -> ?timestamp:float -> event list -> t
+  val make : ?uuid:Uuidm.t -> ?meta:string -> ?timestamp:float -> event list -> t
 
   val to_file : file:string -> t -> unit or_error Lwt.t
 
