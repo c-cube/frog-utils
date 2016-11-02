@@ -36,12 +36,12 @@ let compare a b = match a, b with
   | Error, Error -> `Same
   | Unknown, Timeout -> `LeftBetter
   | Timeout, Unknown -> `RightBetter
-  | (Unknown | Timeout), (Sat | Unsat) -> `RightBetter
-  | (Sat | Unsat), (Unknown | Timeout) -> `LeftBetter
-  | (Unsat | Error), Sat
-  | (Sat | Error), Unsat
-  | Error, (Unknown | Timeout)
-  | (Sat | Unknown | Timeout | Unsat), Error ->
+  | (Unknown | Timeout | Error), (Sat | Unsat) -> `RightBetter
+  | (Sat | Unsat), (Unknown | Timeout | Error) -> `LeftBetter
+  | Error, (Unknown | Timeout) -> `RightBetter
+  | (Unknown | Timeout), Error -> `LeftBetter
+  | Unsat, Sat
+  | Sat, Unsat ->
     `Mismatch
 
 let to_html s =
