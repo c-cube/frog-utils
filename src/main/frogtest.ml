@@ -149,6 +149,10 @@ module List_run = struct
     let open E in
     let storage = Storage.make [] in
     Event_storage.list_snapshots storage >>= fun l ->
+    (* sort: most recent first *)
+    let l =
+      List.sort (fun s1 s2 -> compare s2.Event.timestamp s1.Event.timestamp) l
+    in
     Format.printf "@[<v>%a@]@."
       (Misc.Fmt.pp_list ~start:"" ~stop:"" ~sep:"" pp_snap_summary) l;
     E.return ()
