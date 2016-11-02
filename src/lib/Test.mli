@@ -144,3 +144,22 @@ module Top_result : sig
 
   val pp_comparison : comparison_result printer
 end
+
+(** {2 Compare a {!Top_result.t} with others} *)
+module Summary : sig
+  type individual_diff = {
+    wrt: Top_result.t;
+    raw_comparison: ResultsComparison.t Prover.Map.t; (* not empty *)
+  }
+
+  type t = private {
+    main: Top_result.t;
+    others: individual_diff list;
+  }
+
+  val make : Top_result.t -> Top_result.t list -> t
+
+  val print : t printer
+
+  (* TODO: to_html *)
+end

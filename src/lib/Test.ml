@@ -453,3 +453,43 @@ module Top_result = struct
       (Misc.Fmt.pp_list (pp_one "left")) (Prover.Map.to_list r.left)
       (Misc.Fmt.pp_list (pp_one "right")) (Prover.Map.to_list r.right)
 end
+
+(** {2 Compare a {!Top_result.t} with others} *)
+module Summary = struct
+  type individual_diff = {
+    wrt: Top_result.t;
+    raw_comparison: ResultsComparison.t Prover.Map.t;
+  }
+
+  type t = {
+    main: Top_result.t;
+    others: individual_diff list;
+  }
+
+  let mk_individual_ (a:top_result)(other:top_result): individual_diff option =
+    if a.uuid = other.uuid then None
+    else (
+      let r = Top_result.compare other a in
+      if Prover.Map.is_empty r.Top_result.both
+      then None
+      else Some { wrt=other; raw_comparison=r.Top_result.both; }
+    )
+
+  let make res l =
+    let others = Misc.List.filter_map (mk_individual_ res) l in
+    { main=res; others }
+
+  let pp_diff out (i:individual_diff) =
+    let pp_tup out (p,cmp) =
+      Format.fprintf out "@[<2>%s:@ @[%a@]@]"
+        (Prover.name p) ResultsComparison.print_short cmp
+    in
+    Format.fprintf out "(@[<2>compare_to %a@ (@[<v>%a@])@])"
+      Top_result.pp_uuid i.wrt
+      (Misc.Fmt.pp_list pp_tup) (Prover.Map.to_list i.raw_comparison)
+
+  let print out (t:t) =
+    Format.fprintf out "(@[summary %a@ (@[<hv>%a@])@])"
+      Top_result.pp_uuid t.main
+      (Misc.Fmt.pp_list pp_diff) t.others
+end

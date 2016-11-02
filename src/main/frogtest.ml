@@ -159,7 +159,14 @@ end
     Summary of a snapshot compared to other ones with similar provers and
     files *)
 module Summary_run = struct
-
+  let main name : _ E.t =
+    let open E in
+    let storage = Storage.make [] in
+    Test_run.find_results ~storage name >>= fun main_res ->
+    Test_run.all_results storage >>= fun l ->
+    let summary = Test.Summary.make main_res l in
+    Format.printf "@[<v>%a@]@." Test.Summary.print summary;
+    E.return ()
 end
 
 (** {2 Main: Parse CLI} *)
@@ -232,6 +239,16 @@ let term_list =
   let doc = "compare two result files" in
   Term.(pure aux $ pure ()), Term.info ~doc "list snapshots"
 
+(* sub-command to compare a snapshot to the others *)
+let term_summary =
+  let open Cmdliner in
+  let aux name = Lwt_main.run (Summary_run.main name) in
+  let file_name =
+    Arg.(required & pos 0 (some string) None
+         & info [] ~docv:"FILE" ~doc:"file/name containing results")
+  and doc = "summar of results from a file, compared to the other snapshots" in
+  Term.(pure aux $ file_name), Term.info ~doc "summary"
+
 let parse_opt () =
   let open Cmdliner in
   let help =
@@ -248,7 +265,7 @@ let parse_opt () =
     Term.info ~version:"dev" ~man ~doc "frogtest"
   in
   Cmdliner.Term.eval_choice
-    help [ term_run; term_compare; term_display; term_list ]
+    help [ term_run; term_compare; term_display; term_list; term_summary; ]
 
 let () =
   match parse_opt () with
