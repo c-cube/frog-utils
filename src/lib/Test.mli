@@ -152,9 +152,21 @@ module Summary : sig
     raw_comparison: ResultsComparison.t Prover.Map.t; (* not empty *)
   }
 
+  type regression_by_prover = {
+    reg_prover: Prover.t;
+    reg_res: (Problem.t * Res.t * Res.t) list;
+  }
+
+  (* a summary of regression *)
+  type regression = {
+    reg_wrt: Top_result.t;
+    reg_by_prover: regression_by_prover list; (* not empty *)
+  }
+
   type t = private {
     main: Top_result.t;
     others: individual_diff list;
+    regressions: regression list;
   }
 
   val make : Top_result.t -> Top_result.t list -> t

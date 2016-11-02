@@ -113,6 +113,10 @@ module List = struct
       let acc' = match f x with | None -> acc | Some y -> y::acc in
       recurse acc' l'
     in recurse [] l
+  let flat_map f l = flatten (map f l)
+  let cons_opt o l = match o with
+    | None -> l
+    | Some x -> x :: l
 end
 
 (** Yay formatting! *)

@@ -358,6 +358,9 @@ module Top_result = struct
   let snapshot ?meta t =
     Event.Snapshot.make ?meta ~uuid:(Lazy.force t.uuid) t.events
 
+  let same_uuid (a:t)(b:t): bool =
+    Uuidm.equal (Lazy.force a.uuid) (Lazy.force b.uuid)
+
   let make ?uuid l =
     let uuid = match uuid with
       | Some u -> Lazy.from_val u
@@ -461,23 +464,62 @@ module Summary = struct
     raw_comparison: ResultsComparison.t Prover.Map.t;
   }
 
+  type regression_by_prover = {
+    reg_prover: Prover.t;
+    reg_res: (Problem.t * Res.t * Res.t) list;
+  }
+
+  (* a summary of regression *)
+  type regression = {
+    reg_wrt: Top_result.t;
+    reg_by_prover: regression_by_prover list; (* not empty *)
+  }
+
   type t = {
     main: Top_result.t;
     others: individual_diff list;
+    regressions: regression list;
   }
 
-  let mk_individual_ (a:top_result)(other:top_result): individual_diff option =
-    if a.uuid = other.uuid then None
+  let compare_to_ (a:top_result)(other:top_result): individual_diff option * regression option =
+    if Top_result.same_uuid a other then None, None
     else (
       let r = Top_result.compare other a in
       if Prover.Map.is_empty r.Top_result.both
-      then None
-      else Some { wrt=other; raw_comparison=r.Top_result.both; }
+      then None, None
+      else (
+        let o = { wrt=other; raw_comparison=r.Top_result.both; } in
+        let regs_by_prover =
+          Prover.Map.fold
+            (fun prover comp acc ->
+               let res = comp.ResultsComparison.regressed in
+               if res=[] then acc
+               else
+                 let reg = {reg_prover=prover; reg_res=res} in
+                 reg :: acc)
+            r.Top_result.both []
+        in
+        let regs =
+          if regs_by_prover = [] then None
+          else Some {reg_wrt=other; reg_by_prover=regs_by_prover}
+        in
+        Some o, regs
+      )
     )
 
   let make res l =
-    let others = Misc.List.filter_map (mk_individual_ res) l in
-    { main=res; others }
+    let others, regressions =
+      List.fold_left
+        (fun (others,regressions) wrt ->
+           let o, r = compare_to_ res wrt in
+           let others = Misc.List.cons_opt o others in
+           let regressions = Misc.List.cons_opt r regressions in
+           others, regressions)
+        ([], []) l
+    in
+    { main=res; others=List.rev others; regressions=List.rev regressions; }
+
+  let pp_list p = Misc.Fmt.pp_list p
 
   let pp_diff out (i:individual_diff) =
     let pp_tup out (p,cmp) =
@@ -486,10 +528,20 @@ module Summary = struct
     in
     Format.fprintf out "(@[<2>compare_to %a@ (@[<v>%a@])@])"
       Top_result.pp_uuid i.wrt
-      (Misc.Fmt.pp_list pp_tup) (Prover.Map.to_list i.raw_comparison)
+      (pp_list pp_tup) (Prover.Map.to_list i.raw_comparison)
+
+  let pp_reg_by_prover out (r:regression_by_prover) =
+    Format.fprintf out "(@[<hv2>prover %a@ (@[<v>%a@])@])"
+      Prover.pp_name r.reg_prover
+      (pp_list (ResultsComparison.pp_pb_res2 ~bold:true ~color:`Yellow)) r.reg_res
+
+  let pp_reg out (r:regression) =
+    Format.fprintf out "(@[<hv2>%a@ (@[<v>%a@])@])"
+      Top_result.pp_uuid r.reg_wrt (pp_list pp_reg_by_prover) r.reg_by_prover
 
   let print out (t:t) =
-    Format.fprintf out "(@[summary %a@ (@[<hv>%a@])@])"
+    Format.fprintf out "(@[summary %a@ (@[<hv>%a@])@ (@[<hv2>regressions@ %a@])@])"
       Top_result.pp_uuid t.main
-      (Misc.Fmt.pp_list pp_diff) t.others
+      (pp_list pp_diff) t.others
+      (pp_list pp_reg) t.regressions
 end
