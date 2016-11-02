@@ -133,7 +133,7 @@ module Fmt = struct
     | `Yellow -> 3
     | `Blue -> 4
 
-  let pp_list ?(start="[") ?(stop="]") ?(sep="; ") pp fmt l =
+  let pp_list ?(start="") ?(stop="") ?(sep=",") pp fmt l =
     let rec pp_list l = match l with
       | x::((_::_) as l) ->
         pp fmt x;

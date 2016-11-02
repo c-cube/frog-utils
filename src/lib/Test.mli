@@ -50,6 +50,8 @@ module Analyze : sig
 
   val to_file : file:string -> t -> unit
 
+  val pp_stat : stat printer
+
   val print : t printer
 end
 

@@ -153,7 +153,7 @@ module Analyze = struct
   let is_ok r = r.bad = []
   let num_failed r = List.length r.bad
 
-  let pp_list_ p = Misc.Fmt.pp_list p
+  let pp_list_ p = Misc.Fmt.pp_list ~start:"" ~stop:"" p
 
   let pp_raw_res_ out r =
     fpf out "@[<h>problem %s (expected: %a, result: %a)@]"
