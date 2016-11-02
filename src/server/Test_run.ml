@@ -119,3 +119,8 @@ let find_results ?storage str =
         | Error _ ->
           T.Top_result.of_file str
 
+let all_results storage =
+  let open E in
+  Event_storage.list_snapshots storage >>= fun l ->
+  E.map_s (fun snap -> T.Top_result.of_snapshot snap |> E.return) l
+

@@ -27,3 +27,6 @@ val run :
 
 val find_results : ?storage:Storage.t -> string -> Test.Top_result.t or_error Lwt.t
 (** Find results in file or storage (try both) *)
+
+val all_results : Storage.t -> Test.Top_result.t list or_error Lwt.t
+(** All test results *)
