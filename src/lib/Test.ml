@@ -161,14 +161,15 @@ module Analyze = struct
       Res.print r.Event.problem.Problem.expected
       Res.print (Event.analyze_p r)
 
-  let print out r =
+  let print out { raw; stat; improved; ok; disappoint; bad } =
     let pp_l out = fpf out "[@[<hv>%a@]]" (pp_list_ pp_raw_res_) in
     fpf out
-      "@[<hv2>results: {@,stat:%a,@ %-15s: %a,@ %-15s: %a,@ %-15s: %a@]@,}"
-      pp_stat r.stat
-      "ok" pp_l r.ok
-      "disappoint" pp_l r.disappoint
-      "bad" pp_l r.bad
+      "@[<hv2>results: {@,stat:%a,@ %-15s: %a,@ %-15s: %a,@ %-15s: %a,@ %-15s: %a@]@,}"
+      pp_stat stat
+      "ok" pp_l ok
+      "improved" pp_l improved
+      "disappoint" pp_l disappoint
+      "bad" pp_l bad
 
   let to_html_stats s =
     R.start
