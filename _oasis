@@ -25,8 +25,8 @@ Library "frog"
 Library "frog_server"
   Path:             src/server
   Pack:             true
-  FindlibName:      server
   FindlibParent:    frog
+  FindlibName:      server
   Modules:          Config, Heap, JUnit_wrapper, LockClient, LockDaemon,
                     LockMessages, Maki_wrapper, MapState, Plot, PrintBox,
                     Run, Storage, TPTP, Web, Test_run, Misc_unix,
@@ -40,7 +40,7 @@ Executable frogweb
   Install:          true
   CompiledObject:   best
   MainIs:           frogweb.ml
-  BuildDepends:     frog, frog_server
+  BuildDepends:     frog, frog.server, threads
 
 Executable frogtptp
   Path:             src/main
@@ -48,21 +48,21 @@ Executable frogtptp
   Install:          true
   CompiledObject:   best
   MainIs:           frogtptp.ml
-  BuildDepends:     frog, frog_server
+  BuildDepends:     frog, frog.server, threads
 
 Executable frogtest
   Path:             src/main
   Install:          true
   CompiledObject:   best
   MainIs:           frogtest.ml
-  BuildDepends:     frog, frog_server
+  BuildDepends:     frog, frog.server, threads
 
 Executable froglock
   Path:             src/main
   Install:          true
   CompiledObject:   best
   MainIs:           froglock.ml
-  BuildDepends:     frog, frog_server
+  BuildDepends:     frog, frog.server, threads
 
 Executable frogwebclient
   Path:             src/js
