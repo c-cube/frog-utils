@@ -41,10 +41,10 @@ depends: [
     "junit"
     "uuidm"
     "maki"
+    "js_of_ocaml"
 ]
 depopts: [
     "opium"
-    "js_of_ocaml"
     "react"
     "reactiveData"
     "ISO8601"
