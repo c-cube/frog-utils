@@ -12,7 +12,7 @@ build: [
   ["./configure"
     "--bindir" "%{bin}%"
     "--sharedstatedir" "%{share}%"
-    "--%{enable:opium+js_of_ocaml+react+reactiveData+ISO8601}%-web"
+    w"--%{opium+js_of_ocaml+react+reactiveData+ISO8601:enable}%-web"
     "--mandir" "%{man}%"]
   [make]
 ]
@@ -43,14 +43,19 @@ depends: [
     "maki"
 ]
 depopts: [
-    "opium" { >= "0.15" }
+    "opium"
     "js_of_ocaml"
     "react"
     "reactiveData"
     "ISO8601"
 ]
-available: [ "ocaml-version" >= "4.02.1" ]
-tags: ["lock" "batch"]
+available: [
+  "ocaml-version" >= "4.02.1"
+]
+conflicts: [
+  "opium" { < "0.15" }
+]
+tags: ["lock" "batch" "benchmark" "tptp" "test"]
 post-messages: [
     "Config files can be found in %{share}%/frogutils/. Tools provide a --help option as well as man pages."
 ]
