@@ -15,6 +15,10 @@ XOCamlbuildExtraArgs: "-j 0 -plugin-tag 'package(js_of_ocaml.ocamlbuild)'"
 
 Synopsis:    Tools for running/testing/benchmarking provers and related logic tools
 
+Flag "web"
+  Description:      build and install the web UI for frogutils
+  Default:          true
+
 Library "frog"
   Path:             src/lib
   Pack:             true
@@ -41,6 +45,7 @@ Executable frogweb
   CompiledObject:   best
   MainIs:           frogweb.ml
   BuildDepends:     frog, frog.server, threads
+  Build$:           flag(web)
 
 Executable frogtptp
   Path:             src/main
@@ -69,6 +74,7 @@ Executable frogwebclient
   Install:          true
   CompiledObject:   byte
   MainIs:           frogwebclient.ml
+  Build$:           flag(web)
   BuildDepends:     frog, react, reactiveData,
                     js_of_ocaml, js_of_ocaml.tyxml,
                     js_of_ocaml.ppx, js_of_ocaml.weak, ISO8601
