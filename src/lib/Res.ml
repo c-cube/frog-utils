@@ -31,11 +31,12 @@ let print out s = Format.pp_print_string out (to_string s)
 let compare a b = match a, b with
   | Unsat, Unsat
   | Sat, Sat
-  | Unknown, Unknown
-  | Timeout, Timeout
+  | (Unknown | Timeout), (Unknown | Timeout)
   | Error, Error -> `Same
+    (*
   | Unknown, Timeout -> `LeftBetter
   | Timeout, Unknown -> `RightBetter
+       *)
   | (Unknown | Timeout | Error), (Sat | Unsat) -> `RightBetter
   | (Sat | Unsat), (Unknown | Timeout | Error) -> `LeftBetter
   | Error, (Unknown | Timeout) -> `RightBetter
