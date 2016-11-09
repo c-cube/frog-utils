@@ -51,7 +51,7 @@ module Run = struct
     in
     main
     >>= fun results ->
-    Prover.Map.iter
+    Prover.Map_name.iter
       (fun p r ->
          Format.printf "@[<2>%s on `%s`:@ @[<hv>%a@]@]@."
            (Prover.name p) dir T.Analyze.print r)
@@ -60,11 +60,11 @@ module Run = struct
 
   let check_res (results:T.top_result) : unit E.t =
     let lazy map = results.T.analyze in
-    if Prover.Map.for_all (fun _ r -> T.Analyze.is_ok r) map
+    if Prover.Map_name.for_all (fun _ r -> T.Analyze.is_ok r) map
     then E.return ()
     else
       E.fail (Format.asprintf "%d failure(s)" (
-          Prover.Map.fold
+          Prover.Map_name.fold
             (fun _ r n -> n + T.Analyze.num_failed r)
             map 0))
 
@@ -105,7 +105,7 @@ module Run = struct
         Lwt_log.ign_info_f "write results in Junit to file `%s`" file;
         let suites =
           Lazy.force results.T.analyze
-          |> Prover.Map.to_list
+          |> Prover.Map_name.to_list
           |> List.map (fun (_,a) -> JUnit_wrapper.test_analyze a) in
         JUnit_wrapper.junit_to_file suites file;
     end;

@@ -77,6 +77,11 @@ let make_command ?env prover ~timeout ~memory ~file =
     failwith (Printf.sprintf
         "cannot make command for prover %s: cannot find field %s" prover.name s)
 
+module Map_name = Misc.Map_(struct
+    type t = t_
+    let compare a b = String.compare a.name b.name
+  end)
+
 module As_key = struct
   type t = t_
 

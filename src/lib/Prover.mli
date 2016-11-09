@@ -48,6 +48,14 @@ val make_command :
   file:string ->
   string
 
+(** Map by name *)
+module Map_name : sig
+  include Map.S with type key = t
+  val to_list : 'a t -> (key * 'a) list
+  val of_list : (key * 'a) list -> 'a t
+end
+
+(** Map with full compare *)
 module Map : sig
   include Map.S with type key = t
   val to_list : 'a t -> (key * 'a) list

@@ -350,7 +350,7 @@ end
 type top_result = {
   uuid: Uuidm.t lazy_t; (* unique ID *)
   events: Event.t list;
-  analyze: Analyze.t Prover.Map.t lazy_t;
+  analyze: Analyze.t Prover.Map_name.t lazy_t;
 }
 
 module Top_result = struct
@@ -374,13 +374,13 @@ module Top_result = struct
            | Event.Prover_run r ->
              let p = r.Event.program in
              let raw =
-               try Prover.Map.find p map with Not_found -> Analyze.empty_raw
+               try Prover.Map_name.find p map with Not_found -> Analyze.empty_raw
              in
              let analyze_raw = Analyze.add_raw r raw in
-             Prover.Map.add p analyze_raw map
+             Prover.Map_name.add p analyze_raw map
            | Event.Checker_run _ -> map)
-        Prover.Map.empty
-      |> Prover.Map.map Analyze.make
+        Prover.Map_name.empty
+      |> Prover.Map_name.map Analyze.make
     ) in
     { uuid; events=l; analyze; }
 
@@ -410,23 +410,23 @@ module Top_result = struct
     in
     let {analyze=lazy a; uuid=lazy u; _} = r in
     Format.fprintf out "(@[<2>%s@ @[<v>%a@]@])"
-      (Uuidm.to_string u) (Misc.Fmt.pp_list pp_tup) (Prover.Map.to_list a)
+      (Uuidm.to_string u) (Misc.Fmt.pp_list pp_tup) (Prover.Map_name.to_list a)
 
   type comparison_result = {
-    both: ResultsComparison.t Prover.Map.t;
-    left: Analyze.t Prover.Map.t;
-    right: Analyze.t Prover.Map.t;
+    both: ResultsComparison.t Prover.Map_name.t;
+    left: Analyze.t Prover.Map_name.t;
+    right: Analyze.t Prover.Map_name.t;
   }
 
   let compare (a:t) (b:t): comparison_result =
     let {analyze=lazy a; _} = a in
     let {analyze=lazy b; _} = b in
     let both, left =
-      Prover.Map.fold
+      Prover.Map_name.fold
         (fun p r_left (both,left) ->
            try
              (* find same (problem,dir) in [b], and compare *)
-             let r_right = Prover.Map.find p b in
+             let r_right = Prover.Map_name.find p b in
              let cmp =
                ResultsComparison.compare r_left.Analyze.raw r_right.Analyze.raw
              in
@@ -436,12 +436,12 @@ module Top_result = struct
         a ([],[])
     in
     let right =
-      Prover.Map.filter
-        (fun p _ -> not (Prover.Map.mem p a))
+      Prover.Map_name.filter
+        (fun p _ -> not (Prover.Map_name.mem p a))
         b
     in
-    let both = Prover.Map.of_list both in
-    let left = Prover.Map.of_list left in
+    let both = Prover.Map_name.of_list both in
+    let left = Prover.Map_name.of_list left in
     { both; left; right; }
 
   let pp_comparison out (r:comparison_result) =
@@ -453,16 +453,16 @@ module Top_result = struct
         (Prover.name p) which Analyze.print res
     in
     Format.fprintf out "@[<hv>%a@,%a@,%a@]@."
-      (Misc.Fmt.pp_list pp_tup) (Prover.Map.to_list r.both)
-      (Misc.Fmt.pp_list (pp_one "left")) (Prover.Map.to_list r.left)
-      (Misc.Fmt.pp_list (pp_one "right")) (Prover.Map.to_list r.right)
+      (Misc.Fmt.pp_list pp_tup) (Prover.Map_name.to_list r.both)
+      (Misc.Fmt.pp_list (pp_one "left")) (Prover.Map_name.to_list r.left)
+      (Misc.Fmt.pp_list (pp_one "right")) (Prover.Map_name.to_list r.right)
 end
 
 (** {2 Compare a {!Top_result.t} with others} *)
 module Summary = struct
   type individual_diff = {
     wrt: Top_result.t;
-    raw_comparison: ResultsComparison.t Prover.Map.t;
+    raw_comparison: ResultsComparison.t Prover.Map_name.t; (* not empty *)
   }
 
   type regression_by_prover = {
@@ -486,12 +486,12 @@ module Summary = struct
     if Top_result.same_uuid a other then None, None
     else (
       let r = Top_result.compare other a in
-      if Prover.Map.is_empty r.Top_result.both
+      if Prover.Map_name.is_empty r.Top_result.both
       then None, None
       else (
         let o = { wrt=other; raw_comparison=r.Top_result.both; } in
         let regs_by_prover =
-          Prover.Map.fold
+          Prover.Map_name.fold
             (fun prover comp acc ->
                let res = comp.ResultsComparison.regressed in
                if res=[] then acc
@@ -529,7 +529,7 @@ module Summary = struct
     in
     Format.fprintf out "(@[<2>compare_to %a@ (@[<v>%a@])@])"
       Top_result.pp_uuid i.wrt
-      (pp_list pp_tup) (Prover.Map.to_list i.raw_comparison)
+      (pp_list pp_tup) (Prover.Map_name.to_list i.raw_comparison)
 
   let pp_reg_by_prover out (r:regression_by_prover) =
     Format.fprintf out "(@[<hv2>prover %a@ (@[<v>%a@])@])"

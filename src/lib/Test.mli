@@ -110,7 +110,7 @@ end
 type top_result = private {
   uuid: Uuidm.t lazy_t; (* unique ID *)
   events: Event.t list;
-  analyze: Analyze.t Prover.Map.t lazy_t;
+  analyze: Analyze.t Prover.Map_name.t lazy_t;
 }
 
 module Top_result : sig
@@ -135,9 +135,9 @@ module Top_result : sig
   val of_file : file:string -> t or_error Lwt.t
 
   type comparison_result = {
-    both: ResultsComparison.t Prover.Map.t;
-    left: Analyze.t Prover.Map.t;
-    right: Analyze.t Prover.Map.t;
+    both: ResultsComparison.t Prover.Map_name.t;
+    left: Analyze.t Prover.Map_name.t;
+    right: Analyze.t Prover.Map_name.t;
   }
 
   val compare : t -> t -> comparison_result
@@ -149,7 +149,7 @@ end
 module Summary : sig
   type individual_diff = {
     wrt: Top_result.t;
-    raw_comparison: ResultsComparison.t Prover.Map.t; (* not empty *)
+    raw_comparison: ResultsComparison.t Prover.Map_name.t; (* not empty *)
   }
 
   type regression_by_prover = {
