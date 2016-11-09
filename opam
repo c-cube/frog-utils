@@ -20,7 +20,8 @@ install: [
   make "install"
 ]
 remove: [
-  make "uninstall"
+  ["ocamlfind" "remove" "frog"]
+  [make "uninstall"]
 ]
 depends: [
     "ocamlfind" {build}
