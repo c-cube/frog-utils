@@ -349,6 +349,7 @@ end
 
 type top_result = {
   uuid: Uuidm.t lazy_t; (* unique ID *)
+  timestamp: float; (* timestamp *)
   events: Event.t list;
   analyze: Analyze.t Prover.Map_name.t lazy_t;
 }
@@ -362,10 +363,13 @@ module Top_result = struct
   let same_uuid (a:t)(b:t): bool =
     Uuidm.equal (Lazy.force a.uuid) (Lazy.force b.uuid)
 
-  let make ?uuid l =
+  let make ?uuid ?timestamp l =
     let uuid = match uuid with
       | Some u -> Lazy.from_val u
       | None -> lazy (Uuidm.create `V4)
+    and timestamp = match timestamp with
+      | None -> Unix.gettimeofday()
+      | Some t -> t
     in
     let analyze = lazy (
       l
@@ -382,9 +386,10 @@ module Top_result = struct
         Prover.Map_name.empty
       |> Prover.Map_name.map Analyze.make
     ) in
-    { uuid; events=l; analyze; }
+    { uuid; timestamp; events=l; analyze; }
 
-  let of_snapshot s = make ~uuid:s.Event.uuid s.Event.events
+  let of_snapshot s =
+    make ~uuid:s.Event.uuid ~timestamp:s.Event.timestamp s.Event.events
 
   let merge a b = make (List.rev_append a.events b.events)
 
@@ -400,13 +405,15 @@ module Top_result = struct
     let open Misc.LwtErr in
     Event.Snapshot.of_file ~file >|= of_snapshot
 
-  let pp_uuid out t =
-    Format.fprintf out "(uuid %s)" (Uuidm.to_string (Lazy.force t.uuid))
+  let pp_header out t =
+    Format.fprintf out "(@[(uuid %s)@ (date %a)@])"
+      (Uuidm.to_string (Lazy.force t.uuid))
+      ISO8601.Permissive.pp_datetime t.timestamp
 
   let pp out (r:t) =
     let pp_tup out (p,res) =
-      Format.fprintf out "@[<2>%s:@ @[%a@]@]"
-        (Prover.name p) Analyze.print res
+      Format.fprintf out "@[<2>%a:@ @[%a@]@]"
+        pp_header r Analyze.print res
     in
     let {analyze=lazy a; uuid=lazy u; _} = r in
     Format.fprintf out "(@[<2>%s@ @[<v>%a@]@])"
@@ -528,7 +535,7 @@ module Summary = struct
         (Prover.name p) ResultsComparison.print_short cmp
     in
     Format.fprintf out "(@[<2>compare_to %a@ (@[<v>%a@])@])"
-      Top_result.pp_uuid i.wrt
+      Top_result.pp_header i.wrt
       (pp_list pp_tup) (Prover.Map_name.to_list i.raw_comparison)
 
   let pp_reg_by_prover out (r:regression_by_prover) =
@@ -538,11 +545,11 @@ module Summary = struct
 
   let pp_reg out (r:regression) =
     Format.fprintf out "(@[<hv2>%a@ (@[<v>%a@])@])"
-      Top_result.pp_uuid r.reg_wrt (pp_list pp_reg_by_prover) r.reg_by_prover
+      Top_result.pp_header r.reg_wrt (pp_list pp_reg_by_prover) r.reg_by_prover
 
   let print out (t:t) =
     Format.fprintf out "(@[summary %a@ (@[<hv>%a@])@ (@[<hv2>regressions@ %a@])@])"
-      Top_result.pp_uuid t.main
+      Top_result.pp_header t.main
       (pp_list pp_diff) t.others
       (pp_list pp_reg) t.regressions
 end

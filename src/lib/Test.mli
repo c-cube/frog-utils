@@ -109,6 +109,7 @@ end
 
 type top_result = private {
   uuid: Uuidm.t lazy_t; (* unique ID *)
+  timestamp: float; (* timestamp *)
   events: Event.t list;
   analyze: Analyze.t Prover.Map_name.t lazy_t;
 }
@@ -117,14 +118,16 @@ module Top_result : sig
   type t = top_result
 
   val pp : t printer
+  (** Full printer, including results *)
 
-  val pp_uuid : t printer
+  val pp_header : t printer
+  (** Print only meta-information: UUID and timestamp *)
 
   val merge : t -> t -> t
 
   val merge_l : t list -> t
 
-  val make : ?uuid:Uuidm.t -> Event.t list -> t
+  val make : ?uuid:Uuidm.t -> ?timestamp:float -> Event.t list -> t
 
   val snapshot : ?meta:string -> t -> Event.Snapshot.t
 
