@@ -124,3 +124,19 @@ let all_results storage =
   Event_storage.list_snapshots storage >>= fun l ->
   E.map_s (fun snap -> T.Top_result.of_snapshot snap |> E.return) l
 
+let last_result storage =
+  let open E in
+  all_results storage >>= function
+  | [] -> E.fail "last_result failed: no result found in storage"
+  | x :: l ->
+    let best =
+      List.fold_left
+        (fun best t -> if best.T.timestamp < t.T.timestamp then t else best)
+        x l
+    in
+    E.return best
+
+let find_or_last ?storage str_opt = match str_opt, storage with
+  | Some f, _ -> find_results ?storage f
+  | None, Some storage -> last_result storage
+  | None, None -> E.fail "cannot find last result"

@@ -115,10 +115,10 @@ end
 
 (** {2 Display Run} *)
 module Display = struct
-  let main ~file () =
+  let main (file:string option) =
     let open E in
     let storage = Storage.make [] in
-    Test_run.find_results ~storage file >>= fun res ->
+    Test_run.find_or_last ~storage file >>= fun res ->
     Format.printf "%a@." T.Top_result.pp res;
     E.return ()
 end
@@ -163,10 +163,10 @@ end
     Summary of a snapshot compared to other ones with similar provers and
     files *)
 module Summary_run = struct
-  let main name : _ E.t =
+  let main (name:string option) : _ E.t =
     let open E in
     let storage = Storage.make [] in
-    Test_run.find_results ~storage name >>= fun main_res ->
+    Test_run.find_or_last ~storage name >>= fun main_res ->
     Test_run.all_results storage >>= fun l ->
     let summary = Test.Summary.make main_res l in
     Format.printf "@[<v>%a@]@." Test.Summary.print summary;
@@ -222,9 +222,9 @@ let term_run =
 (* sub-command to display a file *)
 let term_display =
   let open Cmdliner in
-  let aux file = Lwt_main.run (Display.main ~file ()) in
+  let aux file = Lwt_main.run (Display.main file) in
   let file =
-    Arg.(required & pos 0 (some string) None & info [] ~docv:"FILE" ~doc:"file containing results")
+    Arg.(value & pos 0 (some string) None & info [] ~docv:"FILE" ~doc:"file containing results (default: last)")
   and doc = "display test results from a file" in
   Term.(pure aux $ file), Term.info ~doc "display"
 
@@ -248,8 +248,8 @@ let term_summary =
   let open Cmdliner in
   let aux name = Lwt_main.run (Summary_run.main name) in
   let file_name =
-    Arg.(required & pos 0 (some string) None
-         & info [] ~docv:"FILE" ~doc:"file/name containing results")
+    Arg.(value & pos 0 (some string) None
+         & info [] ~docv:"FILE" ~doc:"file/name containing results (default: last)")
   and doc = "summar of results from a file, compared to the other snapshots" in
   Term.(pure aux $ file_name), Term.info ~doc "summary"
 
