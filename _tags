@@ -235,4 +235,4 @@ true: annot, bin_annot
 <src/js/*.ml{,i,y}>: use_frog
 # OASIS_STOP
 
-true: warn(+a-4-44-29-31-48@8)
+true: warn(+a-4-44-29-31-48@8), color(always)
