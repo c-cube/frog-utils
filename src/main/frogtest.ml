@@ -173,6 +173,14 @@ module Summary_run = struct
     E.return ()
 end
 
+(** {2 Deletion of snapshots} *)
+module Delete_run = struct
+  let main (names:string list) : unit E.t =
+    let open E in
+    let storage = Storage.make [] in
+    E.map_s (fun file -> Storage.delete storage file) names >|= fun _ -> ()
+end
+
 (** {2 Main: Parse CLI} *)
 
 (* sub-command for running tests *)
@@ -250,8 +258,17 @@ let term_summary =
   let file_name =
     Arg.(value & pos 0 (some string) None
          & info [] ~docv:"FILE" ~doc:"file/name containing results (default: last)")
-  and doc = "summar of results from a file, compared to the other snapshots" in
+  and doc = "summary of results from a file, compared to the other snapshots" in
   Term.(pure aux $ file_name), Term.info ~doc "summary"
+
+let term_delete =
+  let open Cmdliner in
+  let aux name = Lwt_main.run (Delete_run.main name) in
+  let file_name =
+    Arg.(value & pos_all string []
+         & info [] ~docv:"FILE" ~doc:"files/names containing results")
+  and doc = "delete some snapshots" in
+  Term.(pure aux $ file_name), Term.info ~doc "delete result(s)"
 
 let parse_opt () =
   let open Cmdliner in
@@ -269,7 +286,8 @@ let parse_opt () =
     Term.info ~version:"dev" ~man ~doc "frogtest"
   in
   Cmdliner.Term.eval_choice
-    help [ term_run; term_compare; term_display; term_list; term_summary; ]
+    help [ term_run; term_compare; term_display; term_list;
+           term_summary; term_delete; ]
 
 let () =
   match parse_opt () with

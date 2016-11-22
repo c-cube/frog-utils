@@ -60,7 +60,7 @@ let save storage k v : unit Lwt.t = match storage.dirs with
 let save_json storage k v =
   save storage k (Yojson.Safe.to_string v)
 
-let find storage (k:key) : string or_error Lwt.t =
+let find_file storage (k:key): key or_error Lwt.t =
   let rec aux dirs = match dirs with
     | [] ->
       Lwt_log.ign_debug_f "storage: could not find key `%s` in directories %s"
@@ -70,11 +70,21 @@ let find storage (k:key) : string or_error Lwt.t =
     | d :: dirs' ->
       let file = Filename.concat d k in
       if Sys.file_exists file
-      then
-        Misc_unix.File.with_in ~file Misc_unix.File.read_all >|= Misc.Err.return
+      then Misc.LwtErr.return file
       else aux dirs'
   in
   aux storage.dirs
+
+let find storage (k:key) : string or_error Lwt.t =
+  let open Misc.LwtErr in
+  find_file storage k >>= fun filename ->
+  (Misc_unix.File.with_in ~file:filename Misc_unix.File.read_all) |> ok
+
+let delete storage (k:key): unit or_error Lwt.t =
+  let open Misc.LwtErr in
+  find_file storage k >>= fun filename ->
+  (try Sys.remove filename; return ()
+   with e -> fail (Printexc.to_string e))
 
 let find_json storage k : json or_error Lwt.t =
   let open Misc.LwtErr in
