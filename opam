@@ -38,7 +38,6 @@ depends: [
     "cmdliner"
     "result"
     "olinq" { >= "0.2" }
-    "cow"
     "junit"
     "uuidm"
     "maki"
