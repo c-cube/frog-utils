@@ -12,7 +12,7 @@ build: [
   ["./configure"
     "--bindir" "%{bin}%"
     "--sharedstatedir" "%{share}%"
-    w"--%{opium+js_of_ocaml+react+reactiveData+ISO8601:enable}%-web"
+    "--%{opium+js_of_ocaml+react+reactiveData+ISO8601:enable}%-web"
     "--mandir" "%{man}%"]
   [make]
 ]
@@ -41,13 +41,13 @@ depends: [
     "junit"
     "uuidm"
     "maki"
-    "js_of_ocaml"
+    "opium"
+    "ISO8601"
 ]
 depopts: [
-    "opium"
     "react"
     "reactiveData"
-    "ISO8601"
+    "js_of_ocaml"
 ]
 available: [
   "ocaml-version" >= "4.02.1"

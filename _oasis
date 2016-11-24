@@ -37,7 +37,7 @@ Library "frog_server"
                     Event_storage, ProblemSet, ProverSet
   BuildDepends:     frog, unix, lwt.unix, lwt.preemptive, cmdliner,
                     archimedes.cairo, opium.unix, junit, maki,
-                    maki.yojson, threads
+                    maki.yojson, ISO8601, threads
 
 Executable frogweb
   Path:             src/main
