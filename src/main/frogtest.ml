@@ -286,7 +286,8 @@ let term_csv =
   let file =
     Arg.(value & pos 0 (some string) None & info [] ~docv:"FILE" ~doc:"file containing results (default: last)")
   and out =
-    Arg.(value & pos 1 (some string) None & info [] ~docv:"OUT" ~doc:"file into which to print (default: stdout)")
+    Arg.(value & opt (some string) None & info ["o"; "output"]
+           ~docv:"OUT" ~doc:"file into which to print (default: stdout)")
   and doc = "dump results as CSV" in
   (* TODO: out should be "-o" option *)
   Term.(pure aux $ file $ out), Term.info ~doc "csv"
