@@ -55,19 +55,19 @@ type axis_config = {
   grid : bool;
   legend : string;
   label_marks : int;
-  label_dist : float;
-  label_start : float;
+  label_range : (float * float) option;
 }
 
 let mk_axis_config show grid legend
-    label_marks label_dist label_start =
-  { show; grid; legend; label_marks; label_dist; label_start; }
+    label_marks label_range =
+  { show; grid; legend; label_marks; label_range; }
 
 let mk_tics axis =
-  A.Tics.Equidistants (
-    A.Tics.Number 10,
-    axis.label_start, axis.label_dist, axis.label_marks
-  )
+  match axis.label_range with
+  | None ->
+    A.Tics.Auto (A.Tics.Number 10)
+  | Some (start, dist) ->
+    A.Tics.Equidistants (A.Tics.Number 10, start, dist, axis.label_marks)
 
 type graph_config = {
   style : [ `Lines | `Linesmarkers of string | `Markers of string ];
@@ -170,7 +170,7 @@ let style =
 
 let graph_section = "GRAPH OPTIONS"
 
-let axis_args axis_name dist label =
+let axis_args axis_name label =
   let open Cmdliner in
   let docs = graph_section in
   let oname s = axis_name ^ "." ^ s in
@@ -190,22 +190,19 @@ let axis_args axis_name dist label =
     let doc = "Number of marks between two axis labels" in
     Arg.(value & opt int 1 & info [oname "lmarks"] ~docs ~doc)
   in
-  let label_dist =
-    let doc = "Distance between two axis labels" in
-    Arg.(value & opt float dist & info [oname "ldist"] ~docs ~doc)
-  in
-  let label_start =
-    let doc = "Start of axis labels" in
-    Arg.(value & opt float 0. & info [oname "lstart"] ~docs ~doc)
+  let label_range =
+    let doc = "Two floats representing respectively the start
+               of axis labels and the distance between two axis labels" in
+    Arg.(value & opt (some (pair float float)) None & info [oname "lrange"] ~docs ~doc)
   in
   Term.(pure mk_axis_config $ show $ grid $ legend $
-        label_marks $ label_dist $ label_start)
+        label_marks $ label_range)
 
 let graph_args =
   let open Cmdliner in
   let docs = graph_section in
-  let x_axis = axis_args "x" 100. "Number of Solved Problems" in
-  let y_axis = axis_args "y" 200. "Cumulative Time (in Seconds)" in
+  let x_axis = axis_args "x" "Number of Solved Problems" in
+  let y_axis = axis_args "y" "Cumulative Time (in Seconds)" in
   let mark =
     let doc = "Style to use for plotting" in
     Arg.(value & opt style (`Markers "+") & info ["s"; "style"] ~doc ~docs)
