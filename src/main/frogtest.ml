@@ -211,18 +211,18 @@ end
 let config_term =
   let open Cmdliner in
   let aux config debug =
-    let config = Config.interpolate_home config in
     if debug then (
       Maki_log.set_level 5;
       Lwt_log.add_rule "*" Lwt_log.Debug;
     );
+    let config = Config.interpolate_home config in
     try
       `Ok (Config.parse_files [config] Config.empty)
     with Config.Error msg ->
       `Error (false, msg)
   in
   let arg =
-    Arg.(value & opt string "$home/.frogtptp.toml" &
+    Arg.(value & opt string "$home/.frogutils.toml" &
          info ["c"; "config"] ~doc:"configuration file (in target directory)")
   and debug =
     let doc = "Enable debug (verbose) output" in
@@ -288,6 +288,7 @@ let term_csv =
   and out =
     Arg.(value & pos 1 (some string) None & info [] ~docv:"OUT" ~doc:"file into which to print (default: stdout)")
   and doc = "dump results as CSV" in
+  (* TODO: out should be "-o" option *)
   Term.(pure aux $ file $ out), Term.info ~doc "csv"
 
 (* sub-command to compare two files *)

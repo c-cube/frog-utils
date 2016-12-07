@@ -13,9 +13,9 @@ module C = Test.Config
 module T = Test
 module E = Misc.LwtErr
 
-let config_of_config c =
+let config_of_config config =
   try
-    let c = Config.get_table c "test" in
+    let c = Config.get_table config "test" in
     let j = Config.get_int ~default:1 c "parallelism" in
     let timeout = Config.get_int ~default:5 c "timeout" in
     let memory = Config.get_int ~default:1000 c "memory" in
@@ -31,7 +31,7 @@ let config_of_config c =
     in
     let problem_pat = Config.get_string c "problems" in
     let provers = Config.get_string_list c "provers" in
-    let provers = List.map (ProverSet.find_config c) provers in
+    let provers = List.map (ProverSet.find_config config) provers in
     Misc.Err.return { C.j; timeout; memory; provers; default_expect;
                default_dirs; problem_pat; }
   with
