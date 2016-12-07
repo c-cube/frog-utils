@@ -146,6 +146,30 @@ module Top_result : sig
   val compare : t -> t -> comparison_result
 
   val pp_comparison : comparison_result printer
+
+  type table_row = {
+    tr_problem: string;
+    tr_res: (string * Res.t * float) list; (* prover, result, time *)
+  }
+
+  type table = {
+    t_meta: string;
+    t_rows: table_row list;
+    t_provers: string list;
+  }
+
+  val to_table : t -> table
+
+  val table_to_csv : table -> Csv.t
+
+  val to_csv : t -> Csv.t
+
+  val to_csv_chan : out_channel -> t -> unit
+
+  val to_csv_string : t -> string
+
+  val to_csv_file : string -> t -> unit
+  (** Write as CSV into given file *)
 end
 
 (** {2 Compare a {!Top_result.t} with others} *)

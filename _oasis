@@ -23,7 +23,7 @@ Library "frog"
   Path:             src/lib
   Pack:             true
   Modules:          Event, Html, Misc, Problem, Prover, Res, Test
-  BuildDepends:     ppx_deriving_yojson, lwt, tyxml, lwt.ppx, toml,
+  BuildDepends:     ppx_deriving_yojson, lwt, tyxml, lwt.ppx, toml, csv,
                     ppx_deriving.std, re.posix, result, olinq, uri, uuidm
 
 Library "frog_server"

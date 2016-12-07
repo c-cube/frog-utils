@@ -123,6 +123,21 @@ module Display = struct
     E.return ()
 end
 
+(** {2 CSV Run} *)
+module CSV = struct
+  let main (file:string option) (out:string option) =
+    let open E in
+    let storage = Storage.make [] in
+    Test_run.find_or_last ~storage file >>= fun res ->
+    begin match out with
+      | None ->
+        print_endline (T.Top_result.to_csv_string res)
+      | Some file ->
+        T.Top_result.to_csv_file file res
+    end;
+    E.return ()
+end
+
 (** {2 Compare Run} *)
 module Compare = struct
   let main ~file1 ~file2 () =
@@ -236,6 +251,17 @@ let term_display =
   and doc = "display test results from a file" in
   Term.(pure aux $ file), Term.info ~doc "display"
 
+(* sub-command to display a file *)
+let term_csv =
+  let open Cmdliner in
+  let aux file out = Lwt_main.run (CSV.main file out) in
+  let file =
+    Arg.(value & pos 0 (some string) None & info [] ~docv:"FILE" ~doc:"file containing results (default: last)")
+  and out =
+    Arg.(value & pos 1 (some string) None & info [] ~docv:"OUT" ~doc:"file into which to print (default: stdout)")
+  and doc = "dump results as CSV" in
+  Term.(pure aux $ file $ out), Term.info ~doc "csv"
+
 (* sub-command to compare two files *)
 let term_compare =
   let open Cmdliner in
@@ -286,7 +312,7 @@ let parse_opt () =
     Term.info ~version:"dev" ~man ~doc "frogtest"
   in
   Cmdliner.Term.eval_choice
-    help [ term_run; term_compare; term_display; term_list;
+    help [ term_run; term_compare; term_display; term_csv; term_list;
            term_summary; term_delete; ]
 
 let () =

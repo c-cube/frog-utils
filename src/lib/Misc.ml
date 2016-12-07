@@ -173,5 +173,11 @@ module Map_(O:Map.OrderedType) = struct
   let to_list m = fold (fun prover res acc -> (prover,res)::acc) m []
   let of_list l = List.fold_left (fun acc (p,r) -> add p r acc) empty l
 end
+module Set_(O:Map.OrderedType) = struct
+  include Set.Make(O)
+  let to_list = elements
+  let of_list l = List.fold_left (fun acc x -> add x acc) empty l
+end
 
 module StrMap = Map_(String)
+module StrSet = Set_(String)

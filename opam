@@ -43,6 +43,7 @@ depends: [
     "maki"
     "opium"
     "ISO8601"
+    "csv"
 ]
 depopts: [
     "react"

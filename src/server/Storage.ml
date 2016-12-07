@@ -28,7 +28,7 @@ let make ?(conf=Config.empty) dirs : t =
   let dirs = List.map f dirs @ List.map f by_conf @ default in
   { dirs }
 
-module StrSet = Set.Make(String)
+module StrSet = Misc.StrSet
 
 let find_files ?(filter=fun _ -> true) storage : string list Lwt.t =
   let aux acc d =

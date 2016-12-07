@@ -150,7 +150,7 @@ let map_args ?timeout ~lock ~port ~priority ~progress ~j cmd yield_res args =
 
 (** {2 Main Commands} *)
 
-module StrSet = Set.Make(String)
+module StrSet = Misc.StrSet
 
 (* resume job from the given file *)
 let resume ?timeout ~lock ~port ~priority ~progress ~j file =

@@ -9,10 +9,7 @@ module E = Misc.Err
 module R = Html.Record
 module H = Html
 
-module Res = Res
-module Problem = Problem
-
-module MStr = Map.Make(String)
+module MStr = Misc.StrMap
 
 type result = Event.prover Event.result
   [@@deriving yojson]
@@ -463,6 +460,95 @@ module Top_result = struct
       (Misc.Fmt.pp_list pp_tup) (Prover.Map_name.to_list r.both)
       (Misc.Fmt.pp_list (pp_one "left")) (Prover.Map_name.to_list r.left)
       (Misc.Fmt.pp_list (pp_one "right")) (Prover.Map_name.to_list r.right)
+
+  module StrSet = Misc.StrSet
+
+  type table_row = {
+    tr_problem: string;
+    tr_res: (string * Res.t * float) list; (* prover, result, time *)
+  }
+
+  type table = {
+    t_meta: string;
+    t_rows: table_row list;
+    t_provers: string list;
+  }
+
+  let to_table (t:t): table =
+    let lazy map = t.analyze in
+    let find_cell (t:t) p pb : result option =
+      try Some (MStr.find pb (Prover.Map_name.find p map).Analyze.raw)
+      with Not_found -> None
+    in
+    let line0 =
+      Printf.sprintf "snapshot %s at %s"
+        (Uuidm.to_string (Lazy.force t.uuid))
+        (ISO8601.Permissive.string_of_datetime t.timestamp)
+    in
+    let provers = Prover.Map_name.to_list map |> List.map fst in
+    let all_problems : StrSet.t =
+      Prover.Map_name.fold
+        (fun _ analyze acc ->
+           MStr.fold (fun pb _ acc -> StrSet.add pb acc) analyze.Analyze.raw acc)
+        map
+        StrSet.empty
+    in
+    let t_rows =
+      StrSet.fold
+        (fun file acc ->
+           let tr_res =
+             List.map
+               (fun prover -> match find_cell t prover file with
+                  | None ->
+                    Prover.name prover, Res.Unknown, 0.
+                  | Some res ->
+                    let time = res.Event.raw.Event.rtime in
+                    let res = Event.analyze_p res in
+                    Prover.name prover, res, time)
+               provers
+           in
+           {tr_problem=file; tr_res} :: acc)
+        all_problems []
+    in
+    {t_meta=line0; t_provers=List.map Prover.name provers; t_rows}
+
+  let table_to_csv (t:table): Csv.t =
+    let res_to_csv (r:Res.t) = match r with
+      | Res.Error -> "error"
+      | Res.Timeout
+      | Res.Unknown -> "-"
+      | Res.Sat -> "sat"
+      | Res.Unsat -> "unsat"
+    in
+    let line0 = [t.t_meta] in
+    let header_line = "problem" :: t.t_provers @ t.t_provers in
+    let lines =
+      List.map
+        (fun r ->
+           r.tr_problem
+           :: List.map (fun (_,res,_) ->  res_to_csv res) r.tr_res
+           @ List.map (fun (_,_,t) -> Printf.sprintf "%.2f" t) r.tr_res)
+        t.t_rows
+    in
+    line0 :: header_line :: lines
+
+  let to_csv t : Csv.t =
+    table_to_csv (to_table t)
+
+  let to_csv_chan oc t =
+    let chan = Csv.to_channel oc in
+    Csv.output_all chan (to_csv t)
+
+  let to_csv_file file t =
+    let oc = open_out file in
+    to_csv_chan oc t;
+    close_out oc
+
+  let to_csv_string t =
+    let buf = Buffer.create 256 in
+    let ch = Csv.to_buffer buf in
+    Csv.output_all ch (to_csv t);
+    Buffer.contents buf
 end
 
 (** {2 Compare a {!Top_result.t} with others} *)
