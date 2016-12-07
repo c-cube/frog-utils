@@ -26,18 +26,23 @@ let assoc_or def x l =
   try List.assoc x l
   with Not_found -> def
 
-module Analyze = struct
-  type raw = result MStr.t
+let time_of_res e = e.Event.raw.Event.rtime
 
-  let empty_raw = MStr.empty
+module Raw = struct
+  type t = result MStr.t
+  let empty = MStr.empty
 
-  let add_raw r raw =
+  let add r raw =
     let pb = r.Event.problem.Problem.name in
     MStr.add pb r raw
 
-  let raw_of_list l = List.fold_left (fun acc r -> add_raw r acc) empty_raw l
+  let merge =
+    MStr.merge
+      (fun _ a b -> if a=None then b else a)
 
-  let raw_to_yojson r : Yojson.Safe.json =
+  let of_list l = List.fold_left (fun acc r -> add r acc) empty l
+
+  let to_yojson r : Yojson.Safe.json =
     let l =
       MStr.fold
         (fun _ r acc ->
@@ -47,7 +52,7 @@ module Analyze = struct
     in
     `List l
 
-  let raw_of_yojson (j:Yojson.Safe.json) =
+  let of_yojson (j:Yojson.Safe.json) =
     let open E in
     let get_list_ = function
       | `List l -> return l
@@ -56,7 +61,7 @@ module Analyze = struct
     get_list_ j
     >|= List.map result_of_yojson
     >>= seq_list
-    >|= raw_of_list
+    >|= of_list
 
   type stat = {
     unsat: int;
@@ -64,12 +69,13 @@ module Analyze = struct
     errors: int;
     unknown: int;
     timeout: (int [@default 0]);
+    total_time: float; (* for sat+unsat *)
   } [@@deriving yojson]
 
-  let stat_empty = {unsat=0; sat=0; errors=0; unknown=0; timeout=0; }
+  let stat_empty = {unsat=0; sat=0; errors=0; unknown=0; timeout=0; total_time=0.; }
 
-  let add_sat_ s = {s with sat=s.sat+1}
-  let add_unsat_ s = {s with unsat=s.unsat+1}
+  let add_sat_ t s = {s with sat=s.sat+1; total_time=s.total_time+. t; }
+  let add_unsat_ t s = {s with unsat=s.unsat+1; total_time=s.total_time+. t; }
   let add_unknown_ s = {s with unknown=s.unknown+1}
   let add_error_ s = {s with errors=s.errors+1}
   let add_timeout_ s = {s with timeout=s.timeout+1}
@@ -77,22 +83,60 @@ module Analyze = struct
   let pp_stat out s =
     fpf out
       "{@[<hv>unsat: %d,@ sat: %d,@ errors: %d,@ unknown: %d,@ \
-       timeout: %d,@ total: %d@]}"
+       timeout: %d,@ total: %d,@ total_time: %.2f@]}"
       s.unsat s.sat s.errors s.unknown s.timeout
       (s.unsat + s.sat + s.errors + s.unknown + s.timeout)
+      s.total_time
 
+  let stat r =
+    (* stats *)
+    let stat = ref stat_empty in
+    let add_res time res =
+      stat := (match res with
+          | Res.Unsat -> add_unsat_ time | Res.Sat -> add_sat_ time
+          | Res.Unknown -> add_unknown_ | Res.Error -> add_error_
+          | Res.Timeout -> add_timeout_
+        ) !stat
+    in
+    MStr.iter (fun _ r -> add_res (time_of_res r) (Event.analyze_p r)) r;
+    !stat
+
+  let to_html_stats s =
+    R.start
+    |> R.add_int "unsat" s.unsat
+    |> R.add_int "sat" s.sat
+    |> R.add_int "errors" s.errors
+    |> R.add_int "unknown" s.unknown
+    |> R.close
+
+  let to_html_raw_result_l uri_of_problem uri_of_raw_res r =
+    [ H.div [H.a
+        ~a:[H.a_href (uri_of_problem r.Event.problem)]
+        [H.div [Problem.to_html_name r.Event.problem]]]
+    ; H.div [H.a ~a:[H.a_href (uri_of_raw_res r)]
+               [H.div[Res.to_html @@ Event.analyze_p r]]]
+    ]
+
+  let to_html_raw_tbl uri_of_problem uri_of_raw_res l =
+    H.table
+      (H.tr [H.th [H.pcdata "problem"]; H.th [H.pcdata "result"]]
+       ::
+         (List.rev_map
+            (fun r ->
+               H.tr (List.map (fun d->H.td [d])
+                   (to_html_raw_result_l uri_of_problem uri_of_raw_res r)))
+            l))
+end
+
+module Analyze = struct
   type t = {
-    raw: raw;
-    stat: stat;
+    raw: Raw.t;
+    stat: Raw.stat;
     improved: result list;
     ok: result list;
     disappoint: result list;
     bad: result list;
   } [@@deriving yojson]
-
-  let merge_raw =
-    MStr.merge
-      (fun _ a b -> if a=None then b else a)
 
   let analyse_ raw =
     let module M = OLinq.AdaptMap(MStr) in
@@ -109,32 +153,21 @@ module Analyze = struct
     let bad = assoc_or [] `Mismatch l in
     let disappoint = assoc_or [] `Disappoint l in
     (* stats *)
-    let stat = ref stat_empty in
-    let add_res res =
-      stat := (match res with
-          | Res.Unsat -> add_unsat_ | Res.Sat -> add_sat_
-          | Res.Unknown -> add_unknown_ | Res.Error -> add_error_
-          | Res.Timeout -> add_timeout_
-        ) !stat
-    in
-    MStr.iter (fun _ r -> add_res (Event.analyze_p r)) raw;
-    improved, ok, bad, disappoint, !stat
-
-  let add_raw r raw =
-    MStr.add r.Event.problem.Problem.name r raw
+    let stat = Raw.stat raw in
+    improved, ok, bad, disappoint, stat
 
   let make raw =
     let improved, ok, bad, disappoint, stat = analyse_ raw in
     { raw; stat; improved; ok; disappoint; bad; }
 
-  let of_yojson j = match raw_of_yojson j with
+  let of_yojson j = match Raw.of_yojson j with
     | Result.Ok x -> Result.Ok (make x)
     | Result.Error s -> Result.Error s
 
-  let to_yojson t = raw_to_yojson t.raw
+  let to_yojson t = Raw.to_yojson t.raw
 
   let of_list l =
-    let raw = raw_of_list l in
+    let raw = Raw.of_list l in
     make raw
 
   let of_file ~file =
@@ -162,37 +195,11 @@ module Analyze = struct
     let pp_l out = fpf out "[@[<hv>%a@]]" (pp_list_ pp_raw_res_) in
     fpf out
       "@[<hv2>results: {@,stat:%a,@ %-15s: %a,@ %-15s: %a,@ %-15s: %a,@ %-15s: %a@]@,}"
-      pp_stat stat
+      Raw.pp_stat stat
       "ok" pp_l ok
       "improved" pp_l improved
       "disappoint" pp_l disappoint
       "bad" pp_l bad
-
-  let to_html_stats s =
-    R.start
-    |> R.add_int "unsat" s.unsat
-    |> R.add_int "sat" s.sat
-    |> R.add_int "errors" s.errors
-    |> R.add_int "unknown" s.unknown
-    |> R.close
-
-  let to_html_raw_result_l uri_of_problem uri_of_raw_res r =
-    [ H.div [H.a
-        ~a:[H.a_href (uri_of_problem r.Event.problem)]
-        [H.div [Problem.to_html_name r.Event.problem]]]
-    ; H.div [H.a ~a:[H.a_href (uri_of_raw_res r)]
-               [H.div[Res.to_html @@ Event.analyze_p r]]]
-    ]
-
-  let to_html_raw_tbl uri_of_problem uri_of_raw_res l =
-    H.table
-      (H.tr [H.th [H.pcdata "problem"]; H.th [H.pcdata "result"]]
-       ::
-         (List.rev_map
-            (fun r ->
-               H.tr (List.map (fun d->H.td [d])
-                   (to_html_raw_result_l uri_of_problem uri_of_raw_res r)))
-            l))
 
   let to_html_summary t =
     H.table
@@ -210,12 +217,12 @@ module Analyze = struct
   let to_html_raw uri_of_problem uri_of_raw_res r =
     let l = MStr.fold (fun _ r acc -> r::acc) r [] in
     if l = [] then H.pcdata "ø"
-    else to_html_raw_tbl uri_of_problem uri_of_raw_res l
+    else Raw.to_html_raw_tbl uri_of_problem uri_of_raw_res l
 
   let to_html uri_of_problem uri_of_raw_res t =
     let lst_raw_res ?cls l =
       if l=[] then H.pcdata "ø"
-      else to_html_raw_tbl uri_of_problem uri_of_raw_res l
+      else Raw.to_html_raw_tbl uri_of_problem uri_of_raw_res l
     in
     R.start
     |> R.add "summary" (to_html_summary t)
@@ -223,7 +230,7 @@ module Analyze = struct
     |> R.add "ok" (lst_raw_res t.ok)
     |> R.add "disappoint" (lst_raw_res t.disappoint)
     |> R.add "bad" (lst_raw_res t.bad)
-    |> R.add "stats" (to_html_stats t.stat)
+    |> R.add "stats" (Raw.to_html_stats t.stat)
     |> R.add "raw" (to_html_raw uri_of_problem uri_of_raw_res t.raw)
     |> R.close
 end
@@ -278,10 +285,8 @@ module ResultsComparison = struct
     same: (Problem.t * Res.t * float * float) list; (* same result *)
   }
 
-  let get_time e = e.Event.raw.Event.rtime
-
   (* TODO: use outer_join? to also find the disappeared/appeared *)
-  let compare (a: Analyze.raw) b : t =
+  let compare (a: Raw.t) b : t =
     let open Event in
     let module M = OLinq.AdaptMap(MStr) in
     let a = M.of_map a |> OLinq.map snd in
@@ -291,7 +296,7 @@ module ResultsComparison = struct
         (fun r -> r.problem) (fun r -> r.problem) a b
         ~merge:(fun pb r1 r2 ->
             assert (r1.problem.Problem.name = r2.problem.Problem.name);
-            Some (pb, analyze_p r1, analyze_p r2, get_time r1, get_time r2))
+            Some (pb, analyze_p r1, analyze_p r2, time_of_res r1, time_of_res r2))
       |> OLinq.group_by (fun (_,res1,res2,_,_) -> Res.compare res1 res2)
       |> OLinq.run_list
     in
@@ -353,6 +358,7 @@ type top_result = {
   uuid: Uuidm.t lazy_t; (* unique ID *)
   timestamp: float; (* timestamp *)
   events: Event.t list;
+  raw: Raw.t Prover.Map_name.t lazy_t;
   analyze: Analyze.t Prover.Map_name.t lazy_t;
 }
 
@@ -373,22 +379,24 @@ module Top_result = struct
       | None -> Unix.gettimeofday()
       | Some t -> t
     in
-    let analyze = lazy (
+    let raw = lazy (
       l
       |> List.fold_left
         (fun map e -> match e with
            | Event.Prover_run r ->
              let p = r.Event.program in
              let raw =
-               try Prover.Map_name.find p map with Not_found -> Analyze.empty_raw
+               try Prover.Map_name.find p map with Not_found -> Raw.empty
              in
-             let analyze_raw = Analyze.add_raw r raw in
+             let analyze_raw = Raw.add r raw in
              Prover.Map_name.add p analyze_raw map
            | Event.Checker_run _ -> map)
         Prover.Map_name.empty
-      |> Prover.Map_name.map Analyze.make
     ) in
-    { uuid; timestamp; events=l; analyze; }
+    let analyze = lazy (
+      Prover.Map_name.map Analyze.make (Lazy.force raw)
+    ) in
+    { uuid; timestamp; events=l; raw; analyze; }
 
   let of_snapshot s =
     make ~uuid:s.Event.uuid ~timestamp:s.Event.timestamp s.Event.events
@@ -413,15 +421,6 @@ module Top_result = struct
       ISO8601.Permissive.pp_datetime t.timestamp
 
   let pp out (r:t) =
-    let pp_tup out (p,res) =
-      Format.fprintf out "@[<2>%a:@ @[%a@]@]"
-        pp_header r Analyze.print res
-    in
-    let {analyze=lazy a; uuid=lazy u; _} = r in
-    Format.fprintf out "(@[<2>%s@ @[<v>%a@]@])"
-      (Uuidm.to_string u) (Misc.Fmt.pp_list pp_tup) (Prover.Map_name.to_list a)
-
-  let pp_bench out (r:t) =
     let pp_tup out (p,res) =
       Format.fprintf out "@[<2>%a:@ @[%a@]@]"
         pp_header r Analyze.print res
@@ -516,7 +515,7 @@ module Top_result = struct
                   | None ->
                     Prover.name prover, Res.Unknown, 0.
                   | Some res ->
-                    let time = res.Event.raw.Event.rtime in
+                    let time = time_of_res res in
                     let res = Event.analyze_p res in
                     Prover.name prover, res, time)
                provers
@@ -566,6 +565,56 @@ module Top_result = struct
     let ch = Csv.to_buffer buf in
     Csv.output_all ch (to_csv t);
     Buffer.contents buf
+end
+
+(** {2 Benchmark, within one Top Result} *)
+module Bench = struct
+  type per_prover = {
+    stat: Raw.stat;
+    sat: (string * float) list;
+    unsat: (string * float) list;
+  }
+
+  type t = {
+    from: top_result;
+    per_prover: per_prover Prover.Map_name.t;
+  }
+
+  let make (r:top_result): t =
+    let per_prover =
+      Prover.Map_name.map
+        (fun raw ->
+           let stat = Raw.stat raw in
+           let sat =
+             MStr.fold
+               (fun file res acc -> match Event.analyze_p res with
+                  | Res.Sat -> (file, time_of_res res) :: acc
+                  | _ -> acc)
+               raw []
+           and unsat =
+             MStr.fold
+               (fun file res acc -> match Event.analyze_p res with
+                  | Res.Unsat -> (file, time_of_res res) :: acc
+                  | _ -> acc)
+               raw []
+           in
+           {stat; sat; unsat})
+        (Lazy.force r.raw)
+    in
+    {from=r; per_prover}
+
+  let pp out (r:t): unit =
+    let pp_stat out (p,per_prover) =
+      Format.fprintf out "@[<h2>%a:@ %a@]"
+        Prover.pp_name p Raw.pp_stat per_prover.stat
+    and pp_full out (_p,_res) =
+      () (* TODO *)
+    in
+    let l = Prover.Map_name.to_list r.per_prover in
+    Format.fprintf out "(@[<v2>%s@ @[%a@]@ @[<v>%a@]@])"
+      (Uuidm.to_string (Lazy.force r.from.uuid))
+      (Misc.Fmt.pp_list pp_stat) l
+      (Misc.Fmt.pp_list pp_full) l
 end
 
 (** {2 Compare a {!Top_result.t} with others} *)

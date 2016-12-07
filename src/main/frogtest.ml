@@ -150,6 +150,17 @@ module Compare = struct
     E.return ()
 end
 
+(** {2 Display+ Compare} *)
+module Display_bench = struct
+  let main (file:string option) =
+    let open E in
+    let storage = Storage.make [] in
+    Test_run.find_or_last ~storage file >>= fun res ->
+    let b = T.Bench.make res in
+    Format.printf "%a@." T.Bench.pp b;
+    E.return ()
+end
+
 (** {2 List} *)
 module List_run = struct
   let pp_snap_summary out (s:Event.Snapshot.t): unit =
@@ -279,6 +290,16 @@ let term_display =
   and doc = "display test results from a file" in
   Term.(pure aux $ file), Term.info ~doc "display"
 
+(* sub-command to display a file as a benchmark *)
+let term_bench =
+  let open Cmdliner in
+  let aux file = Lwt_main.run (Display_bench.main file) in
+  let file =
+    Arg.(value & pos 0 (some string) None & info [] ~docv:"FILE"
+           ~doc:"file containing results (default: last)")
+  and doc = "display test results from a file" in
+  Term.(pure aux $ file), Term.info ~doc "bench"
+
 (* sub-command to display a file *)
 let term_csv =
   let open Cmdliner in
@@ -406,7 +427,7 @@ let parse_opt () =
   in
   Cmdliner.Term.eval_choice
     help [ term_run; term_compare; term_display; term_csv; term_list;
-           term_summary; term_plot; term_delete; ]
+           term_summary; term_plot; term_bench; term_delete; ]
 
 let () =
   match parse_opt () with

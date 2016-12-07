@@ -12,10 +12,14 @@ module MStr = Misc.StrMap
 
 type result = Event.prover Event.result
 
-(** {2 Result on a single problem} *)
+module Raw : sig
+  type t = result MStr.t
 
-module Analyze : sig
-  type raw = result MStr.t
+  val empty: t
+
+  val add : result -> t -> t
+
+  val merge : t -> t -> t
 
   type stat = {
     unsat: int;
@@ -23,24 +27,27 @@ module Analyze : sig
     errors: int;
     unknown: int;
     timeout: int;
+    total_time: float; (* for sat+unsat *)
   } [@@deriving yojson]
 
+  val stat : t -> stat
+
+  val pp_stat : stat printer
+end
+
+(** {2 Result on a single problem} *)
+
+module Analyze : sig
   type t = {
-    raw: raw;
-    stat: stat;
+    raw: Raw.t;
+    stat: Raw.stat;
     improved  : result list;
     ok        : result list;
     disappoint: result list;
     bad       : result list;
   } [@@deriving yojson]
 
-  val empty_raw : raw
-
-  val add_raw : result -> raw -> raw
-
-  val make : raw -> t
-
-  val merge_raw : raw -> raw -> raw
+  val make : Raw.t -> t
 
   val is_ok : t -> bool
 
@@ -49,8 +56,6 @@ module Analyze : sig
   val of_file : file:string -> t or_error
 
   val to_file : file:string -> t -> unit
-
-  val pp_stat : stat printer
 
   val print : t printer
 end
@@ -91,7 +96,7 @@ module ResultsComparison : sig
     same: (Problem.t * Res.t * float * float) list; (* same result *)
   }
 
-  val compare : Analyze.raw -> Analyze.raw -> t
+  val compare : Raw.t -> Raw.t -> t
 
   val print : t printer
   (** Display comparison in a readable way *)
@@ -111,6 +116,7 @@ type top_result = private {
   uuid: Uuidm.t lazy_t; (* unique ID *)
   timestamp: float; (* timestamp *)
   events: Event.t list;
+  raw: Raw.t Prover.Map_name.t lazy_t;
   analyze: Analyze.t Prover.Map_name.t lazy_t;
 }
 
@@ -119,9 +125,6 @@ module Top_result : sig
 
   val pp : t printer
   (** Full printer, including results *)
-
-  val pp_bench : t printer
-  (** Full printer that compares provers against one another *)
 
   val pp_header : t printer
   (** Print only meta-information: UUID and timestamp *)
@@ -173,6 +176,25 @@ module Top_result : sig
 
   val to_csv_file : string -> t -> unit
   (** Write as CSV into given file *)
+end
+
+(** {2 Benchmark, within one Top Result} *)
+module Bench : sig
+  type per_prover = {
+    stat: Raw.stat;
+    sat: (string * float) list;
+    unsat: (string * float) list;
+  }
+
+  type t = {
+    from: top_result;
+    per_prover: per_prover Prover.Map_name.t;
+  }
+
+  val make : top_result -> t
+
+  val pp : t printer
+  (** Full printer that compares provers against one another *)
 end
 
 (** {2 Compare a {!Top_result.t} with others} *)
