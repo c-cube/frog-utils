@@ -143,7 +143,7 @@ let plot ~config params l =
 
 (* print list of known provers *)
 let list_provers ~config =
-  let provers = Prover.of_config config in
+  let provers = ProverSet.of_config config in
   Printf.printf "provers:\n";
   StrMap.iter
     (fun name p -> Printf.printf "  %s: cmd=%s\n" name p.Prover.cmd)
@@ -198,25 +198,24 @@ let args_term =
 let config_term =
   let open Cmdliner in
   let aux config debug =
-    if debug then begin
+    let config = Config.interpolate_home config in
+    if debug then (
+      Maki_log.set_level 5;
       Lwt_log.add_rule "*" Lwt_log.Debug;
-      Printexc.record_backtrace true
-    end;
+    );
     try
-      `Ok (Config.parse_files config Config.empty)
+      `Ok (Config.parse_files [config] Config.empty)
     with Config.Error msg ->
       `Error (false, msg)
   in
-  let config =
-    let doc = "Use the given config files. Defaults to '~/.frogtptp.toml'. If one or more config files is
-               given, only those files are taken into account (instead of the default one)." in
-    Arg.(value & opt_all non_dir_file [Conf.interpolate_home "$HOME/.frogtptp.toml"] & info ["c"; "config"] ~doc)
-  in
-  let debug =
+  let arg =
+    Arg.(value & opt string "$home/.frogtptp.toml" &
+         info ["c"; "config"] ~doc:"configuration file (in target directory)")
+  and debug =
     let doc = "Enable debug (verbose) output" in
     Arg.(value & flag & info ["d"; "debug"] ~doc)
   in
-  Term.(ret (pure aux $ config $ debug))
+  Term.(ret (pure aux $ arg $ debug))
 
 let limit_term =
   let open Cmdliner in
@@ -314,7 +313,7 @@ let analyze_term =
 
 let run_term =
   let open Cmdliner in
-  let aux config params cmd args =
+  let aux config params cmd file =
     let timeout =
       match params.TPTP.timeout with
       | Some res -> res
@@ -335,16 +334,16 @@ let run_term =
             failwith "A memory limit is required (either on the command line or in the config file)"
         end
     in
-    let prover = Prover.find_config config cmd in
-    Cmd.run_exec ~timeout ~memory ~prover ~file:(String.concat " " args) ()
+    let prover = ProverSet.find_config config cmd in
+    Run.TPTP.exec_prover ~config ~timeout ~memory ~prover ~file ()
   in
   let cmd =
     let doc = "Prover to be run" in
     Arg.(required & pos 0 (some string) None & info [] ~doc)
   in
-  let args =
+  let file =
     let doc = "Arguments to be passed to the prover" in
-    Arg.(value & pos_right 0 string [] & info [] ~doc)
+    Arg.(required & pos 1 (some string) None & info [] ~doc)
   in
   let doc = "Run the prover on the given arguments" in
   let man = [
@@ -353,7 +352,7 @@ let run_term =
         for time and memory limits. Provers to be run must be present in one of the
         configuration files specified with the options.";
   ] in
-  Term.(pure aux $ config_term $ limit_term $ cmd $ args),
+  Term.(pure aux $ config_term $ limit_term $ cmd $ file),
   Term.info ~man ~doc "run"
 
 let list_term =
@@ -378,7 +377,7 @@ let plot_term =
     `P "This tools takes results files from runs of '$(b,frogmap)' and plots graphs
         about the prover's statistics.";
     `S "OPTIONS";
-    `S FrogPlot.graph_section;
+    `S Plot.graph_section;
   ] in
   Term.(pure aux $ config_term $ plot_params_term $ args_term),
   Term.info ~man ~doc "plot"
@@ -410,7 +409,10 @@ let help_term =
   Term.info ~version:"dev" ~man ~doc "frogtptp"
 
 let () =
-  match Cmdliner.Term.eval_choice help_term [ run_term; list_term; analyze_term; plot_term] with
-  | `Version | `Help | `Error `Parse | `Error `Term | `Error `Exn -> exit 2
-  | `Ok () -> ()
+  match Cmdliner.Term.eval_choice
+          help_term
+          [ run_term; list_term; analyze_term; plot_term ]
+  with
+    | `Version | `Help | `Error `Parse | `Error `Term | `Error `Exn -> exit 2
+    | `Ok () -> ()
 

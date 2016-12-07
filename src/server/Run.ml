@@ -8,6 +8,8 @@ module E = Misc.Err
 
 let fpf = Format.fprintf
 
+(** {2 Maki} *)
+
 let maki_raw_res =
   let of_yojson x = E.to_exn (Event.raw_result_of_yojson x) in
   Maki_yojson.make "raw_res"
@@ -19,6 +21,8 @@ let (maki_result : Event.prover Event.result Maki.Value.ops) =
   Maki_yojson.make "result"
     ~to_yojson:(Event.result_to_yojson Event.prover_to_yojson)
     ~of_yojson
+
+(** {2 Main} *)
 
 (* Start processes *)
 type env = (string * string) array
@@ -96,3 +100,25 @@ let run_prover ?env ~timeout ~memory ~prover ~pb () =
   Lwt.return { Event.
     program = prover;
     problem = pb; raw; }
+
+let exec_prover ?(env=[||]) ~timeout ~memory ~prover ~file () =
+  let p, args = mk_cmd ~env ~timeout ~memory ~prover ~file () in
+  let env = Array.map (fun (a,b) -> a ^"="^ b) env in
+  Unix.execvpe p args env
+
+module TPTP = struct
+  let get_str_ d x =
+    try Some (Config.get_string d x)
+    with Not_found -> None
+
+  let exec_prover ?tptp ~config ~timeout ~memory ~prover ~file () =
+    let env = match tptp with
+      | Some f -> [| "TPTP", f |]
+      | None ->
+        begin match get_str_ config "TPTP" with
+          | None -> [| |]
+          | Some f -> [| "TPTP", f |]
+        end
+    in
+    exec_prover ~env ~timeout ~memory ~prover ~file ()
+end

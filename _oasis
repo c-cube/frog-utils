@@ -49,7 +49,7 @@ Executable frogweb
 
 Executable frogtptp
   Path:             src/main
-  Build:            false  # FIXME
+  Build:            true
   Install:          true
   CompiledObject:   best
   MainIs:           frogtptp.ml
