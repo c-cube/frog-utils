@@ -8,7 +8,7 @@ type 'a printer = Format.formatter -> 'a -> unit
 type html = Html.t
 type uri = Uri.t
 
-module MStr : Map.S with type key = String.t
+module MStr = Misc.StrMap
 
 type result = Event.prover Event.result
 

@@ -204,7 +204,7 @@ let axis_args axis_name dist label =
 let graph_args =
   let open Cmdliner in
   let docs = graph_section in
-  let x_axis = axis_args "x" 100. "Number of Proved Problems" in
+  let x_axis = axis_args "x" 100. "Number of Solved Problems" in
   let y_axis = axis_args "y" 200. "Cumulative Time (in Seconds)" in
   let mark =
     let doc = "Style to use for plotting" in
