@@ -275,8 +275,10 @@ module ResultsComparison = struct
     improved: (Problem.t * Res.t * Res.t) list;
     regressed: (Problem.t * Res.t * Res.t) list;
     mismatch: (Problem.t * Res.t * Res.t) list;
-    same: (Problem.t * Res.t) list; (* same result *)
+    same: (Problem.t * Res.t * float * float) list; (* same result *)
   }
+
+  let get_time e = e.Event.raw.Event.rtime
 
   (* TODO: use outer_join? to also find the disappeared/appeared *)
   let compare (a: Analyze.raw) b : t =
@@ -289,14 +291,15 @@ module ResultsComparison = struct
         (fun r -> r.problem) (fun r -> r.problem) a b
         ~merge:(fun pb r1 r2 ->
             assert (r1.problem.Problem.name = r2.problem.Problem.name);
-            Some (pb, analyze_p r1, analyze_p r2))
-      |> OLinq.group_by (fun (_,res1,res2) -> Res.compare res1 res2)
+            Some (pb, analyze_p r1, analyze_p r2, get_time r1, get_time r2))
+      |> OLinq.group_by (fun (_,res1,res2,_,_) -> Res.compare res1 res2)
       |> OLinq.run_list
     in
-    let improved = assoc_or [] `RightBetter j in
-    let regressed = assoc_or [] `LeftBetter j in
-    let mismatch = assoc_or [] `Mismatch j in
-    let same = assoc_or [] `Same j |> List.rev_map (fun (pb,r,_) -> pb,r) in
+    let tup3 = List.map (fun (a,b,c,_,_) -> a,b,c) in
+    let improved = assoc_or [] `RightBetter j |> tup3 in
+    let regressed = assoc_or [] `LeftBetter j |> tup3 in
+    let mismatch = assoc_or [] `Mismatch j |> tup3 in
+    let same = assoc_or [] `Same j |> List.rev_map (fun (pb,r,_,t1,t2) -> pb,r,t1,t2) in
     let disappeared =
       OLinq.diff ~cmp:(fun r1 r2 -> Problem.compare_name r1.problem r2.problem) a b
       |> OLinq.map (fun r -> r.problem, analyze_p r)
@@ -312,6 +315,8 @@ module ResultsComparison = struct
   let pp_list_ p = Misc.Fmt.pp_list p
   let pp_hvlist_ p out = fpf out "[@[<hv>%a@]]" (pp_list_ p)
   let pp_pb_res out (pb,res) = fpf out "@[<h>%s: %a@]" pb.Problem.name Res.print res
+  let pp_pb_same out (pb,res,t1,t2) =
+    fpf out "@[<h>%s: %a (%.2f vs %.2f)@]" pb.Problem.name Res.print res t1 t2
   let pp_pb_res2 ?(color=`Normal) ~bold out (pb,res1,res2) =
     let module F = Misc.Fmt in
     fpf out "@[<h>%s: %a@]" pb.Problem.name
@@ -325,7 +330,7 @@ module ResultsComparison = struct
              ,@ mismatch: %a,@ improved: %a,@ regressed: %a@]@,}"
       (pp_hvlist_ pp_pb_res) t.appeared
       (pp_hvlist_ pp_pb_res) t.disappeared
-      (pp_hvlist_ pp_pb_res) t.same
+      (pp_hvlist_ pp_pb_same) t.same
       (pp_hvlist_ (pp_pb_res2 ~bold:true ~color:`Red)) t.mismatch
       (pp_hvlist_ (pp_pb_res2 ~bold:false ~color:`Green)) t.improved
       (pp_hvlist_ (pp_pb_res2 ~bold:true ~color:`Yellow)) t.regressed
@@ -408,6 +413,15 @@ module Top_result = struct
       ISO8601.Permissive.pp_datetime t.timestamp
 
   let pp out (r:t) =
+    let pp_tup out (p,res) =
+      Format.fprintf out "@[<2>%a:@ @[%a@]@]"
+        pp_header r Analyze.print res
+    in
+    let {analyze=lazy a; uuid=lazy u; _} = r in
+    Format.fprintf out "(@[<2>%s@ @[<v>%a@]@])"
+      (Uuidm.to_string u) (Misc.Fmt.pp_list pp_tup) (Prover.Map_name.to_list a)
+
+  let pp_bench out (r:t) =
     let pp_tup out (p,res) =
       Format.fprintf out "@[<2>%a:@ @[%a@]@]"
         pp_header r Analyze.print res

@@ -88,7 +88,7 @@ module ResultsComparison : sig
     improved: (Problem.t * Res.t * Res.t) list;
     regressed: (Problem.t * Res.t * Res.t) list;
     mismatch: (Problem.t * Res.t * Res.t) list;
-    same: (Problem.t * Res.t) list; (* same result *)
+    same: (Problem.t * Res.t * float * float) list; (* same result *)
   }
 
   val compare : Analyze.raw -> Analyze.raw -> t
@@ -119,6 +119,9 @@ module Top_result : sig
 
   val pp : t printer
   (** Full printer, including results *)
+
+  val pp_bench : t printer
+  (** Full printer that compares provers against one another *)
 
   val pp_header : t printer
   (** Print only meta-information: UUID and timestamp *)
