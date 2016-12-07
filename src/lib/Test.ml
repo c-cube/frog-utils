@@ -513,10 +513,13 @@ module Top_result = struct
     {t_meta=line0; t_provers=List.map Prover.name provers; t_rows}
 
   let table_to_csv (t:table): Csv.t =
-    let res_to_csv (r:Res.t) = match r with
+    let time_to_csv (r:Res.t) f = match r with
+      | Res.Timeout | Res.Error | Res.Unknown -> "-"
+      | Res.Sat | Res.Unsat -> Printf.sprintf "%.2f" f
+    and res_to_csv (r:Res.t) = match r with
       | Res.Error -> "error"
-      | Res.Timeout
-      | Res.Unknown -> "-"
+      | Res.Timeout -> "timeout"
+      | Res.Unknown -> "unknown"
       | Res.Sat -> "sat"
       | Res.Unsat -> "unsat"
     in
@@ -527,7 +530,7 @@ module Top_result = struct
         (fun r ->
            r.tr_problem
            :: List.map (fun (_,res,_) ->  res_to_csv res) r.tr_res
-           @ List.map (fun (_,_,t) -> Printf.sprintf "%.2f" t) r.tr_res)
+           @ List.map (fun (_,res,t) -> time_to_csv res t) r.tr_res)
         t.t_rows
     in
     line0 :: header_line :: lines
