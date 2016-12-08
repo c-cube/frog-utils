@@ -423,11 +423,11 @@ module Top_result = struct
   let pp out (r:t) =
     let pp_tup out (p,res) =
       Format.fprintf out "@[<2>%a:@ @[%a@]@]"
-        pp_header r Analyze.print res
+        Prover.pp_name p Analyze.print res
     in
     let {analyze=lazy a; uuid=lazy u; _} = r in
-    Format.fprintf out "(@[<2>%s@ @[<v>%a@]@])"
-      (Uuidm.to_string u) (Misc.Fmt.pp_list pp_tup) (Prover.Map_name.to_list a)
+    Format.fprintf out "(@[<2>%a@ @[<v>%a@]@])"
+      pp_header r (Misc.Fmt.pp_list pp_tup) (Prover.Map_name.to_list a)
 
   type comparison_result = {
     both: ResultsComparison.t Prover.Map_name.t;
@@ -613,8 +613,8 @@ module Bench = struct
     let l = Prover.Map_name.to_list r.per_prover in
     Format.fprintf out "(@[<v2>%s@ @[%a@]@ @[<v>%a@]@])"
       (Uuidm.to_string (Lazy.force r.from.uuid))
-      (Misc.Fmt.pp_list pp_stat) l
-      (Misc.Fmt.pp_list pp_full) l
+      (Misc.Fmt.pp_list ~sep:"" pp_stat) l
+      (Misc.Fmt.pp_list ~sep:"" pp_full) l
 end
 
 (** {2 Compare a {!Top_result.t} with others} *)
