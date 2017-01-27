@@ -30,7 +30,7 @@ let problem : Problem.t Maki.Value.ops =
 let problem_set : ProblemSet.t Maki.Value.ops = Maki.Value.set problem
 
 let maki_version =
-  Maki.Value.marshal "frogprover.version"
+  Maki.Value.marshal "frogprover.version.2"
 
 let prover : Prover.t Maki.Value.ops =
   let open Prover in
@@ -38,15 +38,17 @@ let prover : Prover.t Maki.Value.ops =
     map
       (fun t -> (
            (t.name, t.version),
-           (t.binary, t.cmd),
+           (t.binary, t.binary_deps,  t.cmd),
            (t.unsat, t.sat),
            (t.unknown, t.timeout, t.memory)
          ))
-      (fun ((name, version), (binary, cmd), (unsat, sat), (unknown, timeout, memory)) ->
-         { name; version; binary; cmd; unsat; sat; unknown; timeout; memory })
+      (fun ((name, version), (binary, binary_deps, cmd),
+        (unsat, sat), (unknown, timeout, memory)) ->
+         { name; version; binary; cmd; unsat; sat;
+           binary_deps; unknown; timeout; memory })
       (quad
          (pair string maki_version)
-         (pair program string)
+         (triple program (list program) string)
          (pair string_opt string_opt)
          (triple string_opt string_opt string_opt)
       )

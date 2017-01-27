@@ -20,6 +20,7 @@ type t = {
 
   (* Pover execution *)
   binary: string;       (* name of the program itself *)
+  binary_deps: string list; (* list of binaries this depends on *)
   cmd: string;          (* the command line to run.
                            possibly contains $binary, $file, $memory and $timeout *)
 

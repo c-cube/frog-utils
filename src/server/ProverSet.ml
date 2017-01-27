@@ -72,6 +72,10 @@ let build_from_config config name =
       else
         b
   in
+  let binary_deps =
+    try Config.get_string_list d "binary_deps"
+    with Config.FieldNotFound _ -> []
+  in
   let version =
     match Config.get_string d "version" with
     | exception Config.FieldNotFound _ ->
@@ -95,7 +99,8 @@ let build_from_config config name =
   let unknown = get_str_ d "unknown" in
   let timeout = get_str_ d "timeout" in
   let memory = get_str_ d "memory" in
-  { name; version; cmd; binary; unsat; sat; unknown; timeout; memory; }
+  { name; version; cmd; binary; binary_deps; unsat; sat;
+    unknown; timeout; memory; }
 
 let find_config config name =
   (* check that the prover is listed *)
