@@ -131,11 +131,11 @@ let prover_set_of_yojson = function
   | _ -> Misc.Err.fail "invalid set of provers"
 
 type snapshot_meta = {
-  s_uuid: uuid;
-  s_timestamp: float;
-  s_meta: (string [@default ""]);
-  s_provers: prover_set;
-  s_len: int;
+  s_uuid: uuid [@key "uuid"];
+  s_timestamp: float [@key "timestamp"];
+  s_meta: (string [@default ""])[@key "meta"];
+  s_provers: prover_set [@key "provers"];
+  s_len: int [@key "length"];
 } [@@deriving yojson]
 
 module Meta = struct

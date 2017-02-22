@@ -211,12 +211,12 @@ module Server = struct
 
   let serve_snapshot t req =
     let uuid = param req "uuid" in
-    let%lwt res = Event_storage.find_snapshot t.storage uuid in
+    let%lwt res = Event_storage.find_meta t.storage uuid in
     match res with
       | Error msg ->
         return_404 ("could not find uuid " ^ uuid ^ " : " ^ msg)
       | Ok snap ->
-        let j = Event.Snapshot.to_yojson snap in
+        let j = Event.Meta.to_yojson snap in
         return_json j
 
   (* lookup problems by their path
