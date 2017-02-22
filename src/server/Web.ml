@@ -209,7 +209,7 @@ module Server = struct
     let j = [%to_yojson: string list] l in
     return_json j
 
-  let serve_snapshot t req =
+  let serve_meta t req =
     let uuid = param req "uuid" in
     let%lwt res = Event_storage.find_meta t.storage uuid in
     match res with
@@ -217,6 +217,16 @@ module Server = struct
         return_404 ("could not find uuid " ^ uuid ^ " : " ^ msg)
       | Ok snap ->
         let j = Event.Meta.to_yojson snap in
+        return_json j
+
+  let serve_snapshot t req =
+    let uuid = param req "uuid" in
+    let%lwt res = Event_storage.find_snapshot t.storage uuid in
+    match res with
+      | Error msg ->
+        return_404 ("could not find uuid " ^ uuid ^ " : " ^ msg)
+      | Ok snap ->
+        let j = Event.Snapshot.to_yojson snap in
         return_json j
 
   (* lookup problems by their path
@@ -245,6 +255,7 @@ module Server = struct
     |> App.get "/" (main t) (* main page *)
     |> App.get "/snapshots/" (list_snapshots t)
     |> App.get "/snapshot/:uuid" (serve_snapshot t)
+    |> App.get "/snapshot/meta/:uuid" (serve_meta t)
     |> App.get "/problem/" (serve_problem t)
     |> App.port t.port
     |> App.start

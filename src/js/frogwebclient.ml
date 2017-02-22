@@ -256,7 +256,10 @@ let pre_opt default = function
 (****************************************************************************)
 (* Data & fetching *)
 
-let snapshots, set_snapshots =
+let (snapshots_meta:Event.Meta.t list React.signal), set_snapshots_meta =
+  React.S.create []
+
+let (snapshots:Event.Snapshot.t list React.signal), set_snapshots =
   React.S.create []
 
 let snap_list s =
@@ -270,24 +273,24 @@ let snap_list s =
       Format.sprintf "While parsing snapshots list: %s" msg);
     []
 
-let get_snapshots () =
-  set_snapshots [];
+let get_snapshots_meta () =
+  set_snapshots_meta [];
   let%lwt frame = XmlHttpRequest.get "/snapshots/" in
   let l = snap_list frame.XmlHttpRequest.content in
   let n = List.length l in
   let%lwt () = Lwt_list.iteri_s (fun i s ->
-      set_status (Format.sprintf "Fetching snapshot %d/%d ..." (i + 1) n);
-      let%lwt frame = XmlHttpRequest.get (Format.sprintf "/snapshot/%s" s) in
+      set_status (Format.sprintf "Fetching metadata snapshot %d/%d ..." (i + 1) n);
+      let%lwt frame = XmlHttpRequest.get (Format.sprintf "/snapshot/meta/%s" s) in
       set_status (Format.sprintf "Parsing snapshot %d/%d ..." (i + 1) n);
       let json = Yojson.Safe.from_string frame.XmlHttpRequest.content in
-      match [%of_yojson: Event.Snapshot.t] json with
+      match [%of_yojson: Event.Meta.t] json with
       | Result.Ok s ->
-        set_status (Format.sprintf "Adding snapshot %d/%d ..." (i + 1) n);
-        let old = React.S.value snapshots in
-        set_snapshots (s :: old);
+        set_status (Format.sprintf "Adding snapshot metadata %d/%d ..." (i + 1) n);
+        let old = React.S.value snapshots_meta in
+        set_snapshots_meta (s :: old);
         Lwt.return_unit
       | Result.Error _ ->
-        set_status (Format.sprintf "Error while reading snapshot %d" (i + 1));
+        set_status (Format.sprintf "Error while reading snapshot metadata %d" (i + 1));
         Lwt.return_unit
     ) l in
   Lwt.return_unit
@@ -304,24 +307,9 @@ let split_events =
   in
   aux [] []
 
-let stats_of_snapshot s =
-  let open Event in
-  let l, _ = split_events s.events in
-  let provers =
-    OLinq.(of_list l
-           |> map (fun s -> s.program)
-           |> distinct ~cmp:cmp_prover ()
-           |> sort ~cmp:cmp_prover ()
-           |> run_list)
-  in
-  let n =
-    OLinq.(of_list l
-           |> map (fun s -> s.problem)
-           |> distinct ~cmp:compare ()
-           |> size
-           |> run1)
-  in
-  (s.uuid, s.timestamp, n, provers)
+let stats_of_snapshot_meta (s:Event.Meta.t) =
+  let provers = Event.Meta.provers s |> Prover.Set.elements in
+  Event.Meta.uuid s, Event.Meta.timestamp s, Event.Meta.length s, provers
 
 let date_to_string (t:float): string =
   let module T = ISO8601.Permissive in
@@ -330,9 +318,9 @@ let date_to_string (t:float): string =
 let mode_list () =
   (* list of snapshots, sorted by decreasing timestamps *)
   let slist = React.S.map (fun l ->
-      List.map stats_of_snapshot l
+      List.map stats_of_snapshot_meta l
       |> List.sort (fun (_,t1,_,_)(_,t2,_,_) -> compare t2 t1)
-    ) snapshots in
+    ) snapshots_meta in
   let table =
     let th, _ = L.create @@ [
         H.tr [
@@ -364,11 +352,12 @@ let mode_list () =
 (****************************************************************************)
 (* Interface: Full table *)
 
+(* FIXME: need to load the snapshots selected in list *)
 
 let mode_table () =
 
   (* Initialize uuidm list *)
-  let ulist = React.S.map (List.map (fun s -> s.Event.uuid)) snapshots in
+  let ulist = React.S.map (List.map Event.Meta.uuid) snapshots_meta in
 
   (* flattened list of all events *)
   let snap_list =
@@ -681,7 +670,7 @@ let () =
         on_click (
           H.li ~a:[H.a_style "float:right"] [
             H.a ~a:[] [ H.pcdata "Refresh" ]])
-          get_snapshots;
+          get_snapshots_meta;
       ]]
   in
   Lwt.async
@@ -694,6 +683,7 @@ let () =
        main##appendChild (Tyxml_js.To_dom.of_node nav) |> ignore;
        main##appendChild (Tyxml_js.To_dom.of_node st_bar) |> ignore;
        let%lwt () = update_state () in
-       get_snapshots ()
+       (* load metadata *)
+       get_snapshots_meta ()
     )
 
