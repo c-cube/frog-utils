@@ -286,6 +286,11 @@ let get_snapshots_meta () =
   set_status "ready";
   Lwt.return_unit
 
+(* clear current selection of snapshots *)
+let clear_snapshots () : unit Lwt.t =
+  set_s_filter [];
+  Lwt.return_unit
+
 let get_snapshots (l:string list): Event.Snapshot.t list Lwt.t =
   let n = List.length l in
   let%lwt res = Lwt_list.mapi_s (fun i s ->
@@ -680,6 +685,10 @@ let () =
           H.li ~a:[H.a_style "float:right"] [
             H.a ~a:[] [ H.pcdata "Refresh" ]])
           get_snapshots_meta;
+        on_click (
+          H.li ~a:[H.a_style "float:right"] [
+            H.a ~a:[] [ H.pcdata "Clear Selection" ]])
+          clear_snapshots;
       ]]
   in
   Lwt.async
