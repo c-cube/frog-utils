@@ -106,13 +106,6 @@ let cmp_prover p p' =
   let open Prover in
   compare (p.name, p.version) (p'.name, p'.version)
 
-let filter_s =
-  React.S.map ~eq:(==) (function
-      | [] -> (fun _ -> true)
-      | l -> (fun s ->
-          List.exists (Uuidm.equal s.Event.uuid) l)
-    ) s_filter
-
 let filter_pv =
   React.S.map ~eq:(==) (function { pv_name; } ->
       let r = Regexp.regexp_case_fold pv_name in
@@ -259,9 +252,6 @@ let pre_opt default = function
 let (snapshots_meta:Event.Meta.t list React.signal), set_snapshots_meta =
   React.S.create []
 
-let (snapshots:Event.Snapshot.t list React.signal), set_snapshots =
-  React.S.create []
-
 let snap_list s =
   let json = Yojson.Safe.from_string s in
   match [%of_yojson: string list] json with
@@ -293,8 +283,31 @@ let get_snapshots_meta () =
         set_status (Format.sprintf "Error while reading snapshot metadata %d" (i + 1));
         Lwt.return_unit
     ) l in
+  set_status "ready";
   Lwt.return_unit
 
+let get_snapshots (l:string list): Event.Snapshot.t list Lwt.t =
+  let n = List.length l in
+  let%lwt res = Lwt_list.mapi_s (fun i s ->
+      set_status (Format.sprintf "Fetching snapshot %d/%d ..." (i + 1) n);
+      let%lwt frame = XmlHttpRequest.get (Format.sprintf "/snapshot/%s" s) in
+      set_status (Format.sprintf "Parsing snapshot %d/%d ..." (i + 1) n);
+      let json = Yojson.Safe.from_string frame.XmlHttpRequest.content in
+      match [%of_yojson: Event.Snapshot.t] json with
+      | Result.Ok s ->
+        set_status (Format.sprintf "Adding snapshot %d/%d ..." (i + 1) n);
+        Lwt.return s
+      | Result.Error _ ->
+        set_status (Format.sprintf "Error while reading snapshot metadata %d" (i + 1));
+        Lwt.fail Not_found
+    ) l
+  in
+  set_status "done";
+  Lwt.return res
+
+let cur_snapshots : Event.Snapshot.t list Lwt_react.signal Lwt.t =
+  React.S.map ~eq:(=) (List.map Uuidm.to_string) s_filter
+  |> Lwt_react.S.map_s get_snapshots
 
 (****************************************************************************)
 (* Interface: snapshot list *)
@@ -352,17 +365,11 @@ let mode_list () =
 (****************************************************************************)
 (* Interface: Full table *)
 
-(* FIXME: need to load the snapshots selected in list *)
-
 let mode_table () =
-
   (* Initialize uuidm list *)
   let ulist = React.S.map (List.map Event.Meta.uuid) snapshots_meta in
 
-  (* flattened list of all events *)
-  let snap_list =
-    React.S.l2 List.filter filter_s snapshots
-  in
+  let%lwt snap_list = cur_snapshots in
 
   let results =
     let aux pred l =
@@ -505,7 +512,7 @@ let mode_table () =
     search_snap;
     filter;
     table;
-  ]
+  ] |> Lwt.return
 
 (****************************************************************************)
 (* Interface: Result printing *)
@@ -617,22 +624,24 @@ let main =
   Dom_html.getElementById "main"
 
 let current =
-  React.S.map (function m ->
-      List.map Tyxml_js.To_dom.of_node @@
+  Lwt_react.S.map_s (function m ->
+      Lwt.map (List.map Tyxml_js.To_dom.of_node) @@
       match m with
-      | Empty -> []
-      | List -> mode_list ()
+      | Empty -> Lwt.return []
+      | List -> mode_list () |> Lwt.return
       | Table -> mode_table ()
-      | Event -> mode_event ()
-      | Prover -> mode_prover ()
-      | Problem -> mode_problem ()
+      | Event -> mode_event () |> Lwt.return
+      | Prover -> mode_prover () |> Lwt.return
+      | Problem -> mode_problem () |> Lwt.return
     ) mode
 
-let _s =
+let update() =
+  let%lwt c = current in
   React.S.diff (fun l old ->
       List.iter (fun c -> main##removeChild c |> ignore) old;
       List.iter (fun c -> main##appendChild c |> ignore) l
-    ) current
+    ) c
+  |> Lwt.return
 
 (****************************************************************************)
 (* Get state from url *)
@@ -685,5 +694,6 @@ let () =
        let%lwt () = update_state () in
        (* load metadata *)
        get_snapshots_meta ()
-    )
+    );
+  Lwt.async update;
 

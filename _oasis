@@ -75,7 +75,7 @@ Executable frogwebclient
   CompiledObject:   byte
   MainIs:           frogwebclient.ml
   Build$:           flag(web)
-  BuildDepends:     frog, react, reactiveData,
+  BuildDepends:     frog, react, lwt.react, reactiveData,
                     js_of_ocaml, js_of_ocaml.tyxml,
                     js_of_ocaml.ppx, js_of_ocaml.weak, ISO8601
 
