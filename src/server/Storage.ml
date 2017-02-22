@@ -12,7 +12,7 @@ type 'a or_error = 'a Misc.Err.t
 
 type t = {
   dirs: string list; (* absolute paths to directories *)
-}
+} [@@deriving yojson]
 
 let make ?(conf=Config.empty) dirs : t =
   let f = Config.interpolate_home in
@@ -30,7 +30,7 @@ let make ?(conf=Config.empty) dirs : t =
 
 module StrSet = Misc.StrSet
 
-let find_files ?(filter=fun _ -> true) storage : string list Lwt.t =
+let find_files ?(filter=fun _ -> true) storage : key list Lwt.t =
   let aux acc d =
     let%lwt dir = Lwt_unix.opendir d in
     let acc = ref acc in

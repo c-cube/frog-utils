@@ -75,6 +75,11 @@ module LwtErr = struct
   let lift : 'a Err.t -> 'a t = Lwt.return
   let ok : 'a Lwt.t -> 'a t = fun x -> Lwt.map (fun y -> Ok y) x
 
+  let to_exn : 'a t -> 'a Lwt.t =
+    fun x->
+      Lwt.bind x
+        (function Error e -> Lwt.fail (Failure e) | Ok x -> Lwt.return x)
+
   let (>>=) : 'a t -> ('a -> 'b t) -> 'b t
   = fun e f ->
     Lwt.bind e (function

@@ -13,3 +13,7 @@ val find_snapshot : Storage.t -> string -> Event.Snapshot.t or_error Lwt.t
 
 val list_snapshots : Storage.t -> Event.Snapshot.t list or_error Lwt.t
 (** List and parse all snapshots from storage *)
+
+val find_meta: Storage.t -> string -> Event.snapshot_meta or_error Lwt.t
+
+val list_meta : Storage.t -> Event.snapshot_meta list or_error Lwt.t

@@ -163,21 +163,21 @@ end
 
 (** {2 List} *)
 module List_run = struct
-  let pp_snap_summary out (s:Event.Snapshot.t): unit =
-    let provers = Event.Snapshot.provers s |> Prover.Set.elements in
-    let len = List.length s.Event.events in
+  let pp_snap_summary out (s:Event.Meta.t): unit =
+    let provers = Event.Meta.provers s |> Prover.Set.elements in
+    let len = Event.Meta.length s in
     Format.fprintf out "@[<h>uuid: %s time: %a num: %d provers: [@[<h>%a@]]@]"
-      (Uuidm.to_string s.Event.uuid)
-      ISO8601.Permissive.pp_datetime s.Event.timestamp len
+      (Uuidm.to_string (Event.Meta.uuid s))
+      ISO8601.Permissive.pp_datetime (Event.Meta.timestamp s) len
       (Misc.Fmt.pp_list ~start:"" ~stop:"" ~sep:"," Prover.pp_name) provers
 
   let main () =
     let open E in
     let storage = Storage.make [] in
-    Event_storage.list_snapshots storage >>= fun l ->
+    Event_storage.list_meta storage >>= fun l ->
     (* sort: most recent first *)
     let l =
-      List.sort (fun s1 s2 -> compare s2.Event.timestamp s1.Event.timestamp) l
+      List.sort (fun s1 s2 -> compare s2.Event.s_timestamp s1.Event.s_timestamp) l
     in
     Format.printf "@[<v>%a@]@."
       (Misc.Fmt.pp_list ~start:"" ~stop:"" ~sep:"" pp_snap_summary) l;

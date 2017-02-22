@@ -120,3 +120,41 @@ module Snapshot = struct
       Prover.Set.empty
       t.events
 end
+
+type prover_set = Prover.Set.t
+let prover_set_to_yojson s = `List (List.map Prover.to_yojson (Prover.Set.elements s))
+let prover_set_of_yojson = function
+  | `List l ->
+    let open Misc.Err in
+    let l = List.map Prover.of_yojson l in
+    seq_list l >|= Prover.Set.of_list
+  | _ -> Misc.Err.fail "invalid set of provers"
+
+type snapshot_meta = {
+  s_uuid: uuid;
+  s_timestamp: float;
+  s_meta: (string [@default ""]);
+  s_provers: prover_set;
+  s_len: int;
+} [@@deriving yojson]
+
+module Meta = struct
+  type t = snapshot_meta [@@deriving yojson]
+  let uuid s = s.s_uuid
+  let timestamp s = s.s_timestamp
+  let provers s = s.s_provers
+  let length s = s.s_len
+
+  let pp out r: unit =
+    Format.fprintf out
+      "{@[<hv>timestamp:%.2f;@ uuid: %s;@ len %d@]}"
+      r.s_timestamp (Uuidm.to_string r.s_uuid) r.s_len
+end
+
+let meta s = {
+  s_uuid=s.uuid;
+  s_timestamp=s.timestamp;
+  s_meta=s.meta;
+  s_provers=Snapshot.provers s;
+  s_len=List.length s.events;
+}

@@ -65,3 +65,25 @@ module Snapshot : sig
 
   val pp : t printer
 end
+
+type snapshot_meta = private {
+  s_uuid: Uuidm.t;
+  s_timestamp: float;
+  s_meta: string;
+  s_provers: Prover.Set.t;
+  s_len: int;
+}
+
+module Meta : sig
+  type t = snapshot_meta [@@deriving yojson]
+
+  val provers : t -> Prover.Set.t
+  val timestamp : t -> float
+  val uuid : t -> Uuidm.t
+  val length : t -> int
+
+  val pp : t printer
+end
+
+val meta : snapshot -> snapshot_meta
+
