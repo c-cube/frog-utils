@@ -268,7 +268,11 @@ let get_snapshots_meta () =
   let%lwt frame = XmlHttpRequest.get "/snapshots/" in
   let l = snap_list frame.XmlHttpRequest.content in
   let n = List.length l in
-  let%lwt () = Lwt_list.iteri_s (fun i s ->
+  (* limit parallelism to 10 *)
+  let pool = Lwt_pool.create 10 Lwt.return in
+  let%lwt () =
+    Lwt_list.iteri_p (fun i s ->
+      Lwt_pool.use pool (fun () ->
       set_status (Format.sprintf "Fetching metadata snapshot %d/%d ..." (i + 1) n);
       let%lwt frame = XmlHttpRequest.get (Format.sprintf "/snapshot/meta/%s" s) in
       set_status (Format.sprintf "Parsing snapshot %d/%d ..." (i + 1) n);
@@ -282,7 +286,7 @@ let get_snapshots_meta () =
       | Result.Error _ ->
         set_status (Format.sprintf "Error while reading snapshot metadata %d" (i + 1));
         Lwt.return_unit
-    ) l in
+    )) l in
   set_status "ready";
   Lwt.return_unit
 
