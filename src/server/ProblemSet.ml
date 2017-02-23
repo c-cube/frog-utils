@@ -6,6 +6,8 @@ open Result
 
 type t = Problem.problem_set
 
+let size = List.length
+
 (* regex + mark *)
 let m_unsat_, unsat_ = Re.(str "unsat" |> no_case |> mark)
 let m_sat_, sat_ = Re.(str "sat" |> no_case |> mark)
@@ -22,7 +24,7 @@ let re_expect_ =
      )
 
 (* what is expected? *)
-let find_expected_ ~default_expect ~file () =
+let find_expected_ ?default file =
   let%lwt content = Misc_unix.File.with_in ~file Misc_unix.File.read_all in
   match Re.exec_opt re_expect_ content with
   | Some g ->
@@ -33,14 +35,14 @@ let find_expected_ ~default_expect ~file () =
     else if Re.marked g m_error_ then Lwt.return Res.Error
     else Lwt.fail (Failure "could not parse the content of the `expect:` field")
   | None ->
-    match default_expect with
+    match default with
       | Some r -> Lwt.return r
       | None -> Lwt.fail (Failure "could not find the `expect:` field")
 
-let make_pb ~default_expect ~file () =
+let make_pb ~find_expect ~file () =
   try%lwt
     Lwt_log.ign_debug_f "convert `%s` into problem..." file;
-    let%lwt res = find_expected_ ~default_expect ~file () in
+    let%lwt res = find_expect file in
     let pb = Problem.make file res in
     Lwt.return (Ok pb)
   with e ->
@@ -49,13 +51,13 @@ let make_pb ~default_expect ~file () =
           Format.asprintf "could not find expected res for %s: %s"
             file (Printexc.to_string e)))
 
-let make ~default_expect l =
+let make ~find_expect l =
   let pool = Lwt_pool.create 30 (fun () -> Lwt.return_unit) in
   let%lwt l =
     Lwt_list.map_p
       (fun file ->
          Lwt_pool.use pool
-           (fun () -> make_pb ~default_expect ~file ()))
+           (fun () -> make_pb ~find_expect ~file ()))
       l
   in
   let l = Misc.Err.seq_list l in
@@ -63,17 +65,25 @@ let make ~default_expect l =
   let l = Misc.Err.(l >|= List.sort Problem.compare_name) in
   Lwt.return l
 
-let size = List.length
-
-let of_dir ~default_expect ?filter:(p=fun _ -> true) d =
+let of_dir ~expect ~filter d =
+  let find_expect =
+    match expect with
+    | Test.Config.Auto -> find_expected_ ?default:None
+    | Test.Config.Res r -> find_expected_ ~default:r
+    | Test.Config.Program prover ->
+      (fun file ->
+         let pb = Problem.make file Res.Unknown in
+         let%lwt event = Run.run_prover ~timeout:1 ~memory:1_000 ~prover ~pb () in
+         Lwt.return (Event.analyze_p event))
+  in
   let l = Misc_unix.File.walk d in
   let l = Misc.List.filter_map
       (fun (kind,f) -> match kind with
-         | `File when p f -> Some f
+         | `File when filter f -> Some f
          | _ -> None
       ) l
   in
-  make ~default_expect l
+  make ~find_expect l
 
 let print out set =
   Format.fprintf out "@[<hv>%a@]" (Format.pp_print_list Problem.print) set

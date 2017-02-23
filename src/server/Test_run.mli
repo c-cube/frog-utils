@@ -9,7 +9,7 @@ type 'a or_error = 'a Misc.Err.t
 
 val config_of_file : string -> Test.Config.t Misc.Err.t
 
-val config_of_config : Config.t -> Test.Config.t Misc.Err.t
+val config_of_config : Config.t -> string list -> Test.Config.t Misc.Err.t
 
 val run :
   ?on_solve:(Test.result -> unit Lwt.t) ->

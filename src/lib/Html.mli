@@ -21,6 +21,7 @@ module Record : sig
   val add_string        : ?raw:bool -> string -> string -> t -> t
   val add_string_option : ?raw:bool -> string -> string option -> t -> t
   val add_bool          : ?raw:bool -> string -> bool -> t -> t
+  val add_record        : t -> t -> t
   val close : t -> html
 end
 

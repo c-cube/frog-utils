@@ -25,6 +25,7 @@ module Record = struct
   let add_string = add_with_ (fun x->x)
   let add_string_option = add_with_ (function None -> "" | Some s -> s)
   let add_bool = add_with_ string_of_bool
+  let add_record = (@)
   let close l =
     table
       (List.rev_map

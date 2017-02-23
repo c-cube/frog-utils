@@ -13,27 +13,44 @@ module C = Test.Config
 module T = Test
 module E = Misc.LwtErr
 
-let config_of_config config =
+let expect_of_config config = function
+  | "" -> C.Auto
+  | s ->
+    begin match Misc.Str.split ~by:':' s with
+      | "program", p ->
+        C.Program (ProverSet.find_config config p)
+      | _ ->
+        C.Res (Res.of_string s)
+    end
+
+let config_of_config config dirs =
   try
     let c = Config.get_table config "test" in
     let j = Config.get_int ~default:1 c "parallelism" in
     let timeout = Config.get_int ~default:5 c "timeout" in
     let memory = Config.get_int ~default:1000 c "memory" in
-    let default_dirs = Config.get_string_list ~default:[] c "dir" in
-    let default_expect =
-      let s = Config.get_string ~default:"" c "default_expect" in
-      if s="" then None
-      else (
-        let r = Res.of_string s in
-        Lwt_log.ign_debug_f "default_expect=%s" (Res.to_string r);
-        Some r
-      )
+    let problem_pat = Config.get_string ~default:"" c "problems" in
+    let default_expect = Config.get_string ~default:"" c "default_expect" in
+    let l =
+      match dirs with
+      | [] -> Config.get_string_list ~default:[] c "dir"
+      | _ -> dirs
     in
-    let problem_pat = Config.get_string c "problems" in
+    let problems = List.map (fun s ->
+        match Config.get_table c s with
+        | t ->
+          let dir = Config.get_string t "directory" in
+          let pat = Config.get_string ~default:problem_pat t "problems" in
+          let expect = expect_of_config config
+              (Config.get_string ~default:default_expect t "expect") in
+          { C.directory = dir; pattern = pat; expect = expect; }
+        | exception Config.FieldNotFound _ ->
+          { C.directory = s; pattern = problem_pat;
+            expect = expect_of_config config default_expect; }
+      ) l in
     let provers = Config.get_string_list c "provers" in
     let provers = List.map (ProverSet.find_config config) provers in
-    Misc.Err.return { C.j; timeout; memory; provers; default_expect;
-               default_dirs; problem_pat; }
+    Misc.Err.return { C.j; timeout; memory; provers; problems; }
   with
   | Config.Error e ->
     Misc.Err.fail e
@@ -43,7 +60,7 @@ let config_of_file file =
   Lwt_log.ign_debug_f "parse config file `%s`..." file;
   try
     let main = Config.parse_files [file] Config.empty in
-    config_of_config main
+    config_of_config main []
   with
   | Config.Error e ->
     Misc.Err.fail e

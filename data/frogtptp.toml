@@ -63,8 +63,6 @@ unsat = "VALID"
 sat = "INVALID"
 
 [read-status]
-
-# "prover" that just reads the status from a file
 binary = "awk"
 cmd = "awk '/^% Status/ {{ print $4 }}' $file"
 unsat = "(Theorem|Unsatisfiable)"

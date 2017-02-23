@@ -61,13 +61,24 @@ module Analyze : sig
 end
 
 module Config : sig
+
+  type expect =
+    | Auto
+    | Res of Res.t
+    | Program of Prover.t
+  [@@deriving yojson]
+
+  type problem_set = {
+    directory : string;
+    pattern : string;
+    expect : expect;
+  } [@@deriving yojson]
+
   type t = {
     j: int; (* number of concurrent processes *)
     timeout: int; (* timeout for each problem *)
     memory: int;
-    default_dirs: string list;
-    default_expect: Res.t option; (* default status for problems *)
-    problem_pat: string; (* regex for problems *)
+    problems : problem_set list [@default []];
     provers: Prover.t list;
   } [@@deriving yojson]
 
@@ -75,9 +86,7 @@ module Config : sig
     ?j:int ->
     ?timeout:int ->
     ?memory:int ->
-    ?dir:string list ->
-    ?default_expect:Res.t ->
-    pat:string ->
+    ?dirs:problem_set list ->
     provers:Prover.t list ->
     unit -> t
 

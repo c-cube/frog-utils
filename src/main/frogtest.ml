@@ -34,13 +34,14 @@ module Run = struct
     Lwt.return_unit
 
   (* run provers on the given dir, return a list [prover, dir, results] *)
-  let test_dir ?j ?timeout ?memory ?caching ?provers ~config ~problem_pat dir
+  let test_dir ?j ?timeout ?memory ?caching ?provers ~config d
     : T.Top_result.t E.t =
     let open E in
+    let dir = d.T.Config.directory in
     Format.printf "testing dir `%s`...@." dir;
     ProblemSet.of_dir
-      ~default_expect:config.T.Config.default_expect
-      ~filter:(Re.execp problem_pat)
+      ~expect:d.T.Config.expect
+      ~filter:(Re.execp (Re_posix.compile_pat d.T.Config.pattern))
       dir
     >>= fun pbs ->
     Format.printf "run %d tests in %s@." (ProblemSet.size pbs) dir;
@@ -72,19 +73,13 @@ module Run = struct
   let main ?j ?timeout ?memory ?caching ?junit ?provers ?meta ~save ~config dirs () =
     let open E in
     (* parse config *)
-    Lwt.return (Test_run.config_of_config config)
+    Lwt.return (Test_run.config_of_config config dirs)
     >>= fun config ->
     (* pick default directory if needed *)
-    let dirs = match dirs with
-      | _::_ -> dirs
-      | [] -> config.T.Config.default_dirs
-    in
+    let problems = config.T.Config.problems in
     let storage = Storage.make [] in
     (* build problem set (exclude config file!) *)
-    let problem_pat = Re_posix.compile_pat config.T.Config.problem_pat in
-    E.map_s
-      (test_dir ?j ?timeout ?memory ?caching ?provers ~config ~problem_pat)
-      dirs
+    E.map_s (test_dir ?j ?timeout ?memory ?caching ?provers ~config) problems
     >|= T.Top_result.merge_l
     >>= fun (results:T.Top_result.t) ->
     begin match save with

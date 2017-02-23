@@ -129,6 +129,7 @@ module Raw = struct
 end
 
 module Analyze = struct
+  [@@@warning "-39"]
   type t = {
     raw: Raw.t;
     stat: Raw.stat;
@@ -137,6 +138,7 @@ module Analyze = struct
     disappoint: result list;
     bad: result list;
   } [@@deriving yojson]
+  [@@@warning "+39"]
 
   let analyse_ raw =
     let module M = OLinq.AdaptMap(MStr) in
@@ -237,19 +239,29 @@ end
 
 module Config = struct
   [@@@warning "-39"]
+  type expect =
+    | Auto
+    | Res of Res.t
+    | Program of Prover.t
+  [@@deriving yojson]
+
+  type problem_set = {
+    directory : string;
+    pattern : string;
+    expect : expect;
+  } [@@deriving yojson]
+
   type t = {
     j: int; (* number of concurrent processes *)
     timeout: int; (* timeout for each problem *)
     memory: int;
-    default_dirs : (string list [@default []]);
-    default_expect: (Res.t option [@default None]); (* default status for problems *)
-    problem_pat: string; (* regex for problems *)
+    problems : problem_set list [@default []];
     provers: Prover.t list;
   } [@@deriving yojson]
   [@@@warning "+39"]
 
-  let make ?(j=1) ?(timeout=5) ?(memory=1000) ?(dir=[]) ?default_expect ~pat ~provers () =
-    { j; timeout; memory; provers; default_dirs=dir; default_expect; problem_pat=pat; }
+  let make ?(j=1) ?(timeout=5) ?(memory=1000) ?(dirs=[]) ~provers () =
+    { j; timeout; memory; provers; problems=dirs; }
 
   let update ?j ?timeout ?memory c =
     let module O = Misc.Opt in
@@ -258,13 +270,35 @@ module Config = struct
     let memory = O.get c.memory memory in
     { c with j; timeout; memory; }
 
+  let to_html_expect uri_of_prover = function
+    | Auto -> H.pcdata "auto"
+    | Res r -> Res.to_html r
+    | Program p ->
+      H.a
+        ~a:[H.a_href (uri_of_prover p |> Uri.to_string)]
+        [H.div [Prover.to_html_name p]]
+
+  let to_html_pb_dir uri_of_prover d : html =
+    R.start
+    |> R.add_string "directory" d.directory
+    |> R.add_string ~raw:true "pattern" d.pattern
+    |> R.add "expect" (to_html_expect uri_of_prover d.expect)
+    |> R.close
+
+  let to_record_pb_dirs uri_of_prover l : R.t =
+    let aux acc = function
+      | [] -> acc
+      | d :: r ->
+        R.add "problem set" (to_html_pb_dir uri_of_prover d) acc
+    in
+    aux R.start l
+
   let to_html uri_of_prover c : html =
     R.start
     |> R.add_int "j" c.j
     |> R.add_int "timeout" c.timeout
     |> R.add_int "memory" c.memory
-    |> R.add_string ~raw:true "problems pattern" c.problem_pat
-    |> R.add "dir" (H.ul (List.map (fun s->H.li [H.pcdata s]) c.default_dirs))
+    |> R.add_record (to_record_pb_dirs uri_of_prover c.problems)
     |> R.add "provers"
       (H.ul @@
        List.map
