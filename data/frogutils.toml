@@ -2,9 +2,24 @@
 
 timeout = 60  # in s
 memory = 1000  # in MB
-
 provers = [ "spass", "eprover", "zip", "zip-arith", "zenon",
             "iprover", "read-status", "beagle", "princess" ]
+
+[test]
+timeout = 5
+dir = [ "tptp", "smtlib" ]
+provers = [ "sleep", "zenon" ]
+
+[test.tptp]
+directory = "$TPTP/Problems/SYN/"
+problems = "SYN000.*\\.p"
+expect = "program:read-tptp"
+
+[test.smtlib]
+directory = "$SMTLIB/QF_UF/eq_diamond/"
+problems = "eq_diamond.\\.smt2"
+expect = "program:read-smtlib"
+
 
 [spass]
 
@@ -62,9 +77,15 @@ cmd = "princess $file"
 unsat = "VALID"
 sat = "INVALID"
 
-[read-status]
-binary = "awk"
-cmd = "awk '/^% Status/ {{ print $4 }}' $file"
+[read-tptp]
+binary = "grep"
+cmd = "grep Status $file"
 unsat = "(Theorem|Unsatisfiable)"
 sat = "(CounterSatisfiable|Satisfiable)"
+
+[read-smtlib]
+binary = "grep"
+cmd = "grep status $file"
+unsat = "status *unsat"
+sat = "status *sat"
 
