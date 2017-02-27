@@ -4,9 +4,8 @@
 open Frog
 open Result
 
-type t = Problem.problem_set
-
-let size = List.length
+type t = Problem.t
+type path = string
 
 (* regex + mark *)
 let m_unsat_, unsat_ = Re.(str "unsat" |> no_case |> mark)
@@ -39,7 +38,17 @@ let find_expected_ ?default file =
       | Some r -> Lwt.return r
       | None -> Lwt.fail (Failure "could not find the `expect:` field")
 
-let make_pb ~find_expect ~file () =
+let find_expect ~expect file : Res.t Lwt.t =
+  begin match expect with
+    | Test.Config.Auto -> find_expected_ ?default:None file
+    | Test.Config.Res r -> find_expected_ ~default:r file
+    | Test.Config.Program prover ->
+      let pb = Problem.make file Res.Unknown in
+      let%lwt event = Run.run_prover ~timeout:1 ~memory:1_000 ~prover ~pb () in
+      Lwt.return (Event.analyze_p event)
+  end
+
+let make ~find_expect file =
   try%lwt
     Lwt_log.ign_debug_f "convert `%s` into problem..." file;
     let%lwt res = find_expect file in
@@ -51,40 +60,37 @@ let make_pb ~find_expect ~file () =
           Format.asprintf "could not find expected res for %s: %s"
             file (Printexc.to_string e)))
 
-let make ~find_expect l =
-  let pool = Lwt_pool.create 30 (fun () -> Lwt.return_unit) in
-  let%lwt l =
-    Lwt_list.map_p
-      (fun file ->
-         Lwt_pool.use pool
-           (fun () -> make_pb ~find_expect ~file ()))
-      l
-  in
-  let l = Misc.Err.seq_list l in
-  (* sort by alphabetic order *)
-  let l = Misc.Err.(l >|= List.sort Problem.compare_name) in
-  Lwt.return l
+let of_dir ~filter d =
+  Misc_unix.File.walk d
+  |> Misc.List.filter_map
+    (fun (kind,f) -> match kind with
+       | `File when filter f -> Some f
+       | _ -> None)
+  |> Lwt.return
 
-let of_dir ~expect ~filter d =
-  let find_expect =
-    match expect with
-    | Test.Config.Auto -> find_expected_ ?default:None
-    | Test.Config.Res r -> find_expected_ ~default:r
-    | Test.Config.Program prover ->
-      (fun file ->
-         let pb = Problem.make file Res.Unknown in
-         let%lwt event = Run.run_prover ~timeout:1 ~memory:1_000 ~prover ~pb () in
-         Lwt.return (Event.analyze_p event))
-  in
-  let l = Misc_unix.File.walk d in
-  let l = Misc.List.filter_map
-      (fun (kind,f) -> match kind with
-         | `File when filter f -> Some f
-         | _ -> None
-      ) l
-  in
-  make ~find_expect l
+module Set = struct
+  type t = Problem.problem_set
 
-let print out set =
-  Format.fprintf out "@[<hv>%a@]" (Format.pp_print_list Problem.print) set
+  let size = List.length
 
+  let make ~find_expect l =
+    let pool = Lwt_pool.create 30 (fun () -> Lwt.return_unit) in
+    let%lwt l =
+      Lwt_list.map_p
+        (fun file ->
+           Lwt_pool.use pool
+             (fun () -> make ~find_expect file))
+        l
+    in
+    let l = Misc.Err.seq_list l in
+    (* sort by alphabetic order *)
+    let l = Misc.Err.(l >|= List.sort Problem.compare_name) in
+    Lwt.return l
+
+  let of_dir ~expect ~filter d =
+    let%lwt l = of_dir ~filter d in
+    make ~find_expect:(find_expect ~expect) l
+
+  let print out set =
+    Format.fprintf out "@[<hv>%a@]" (Format.pp_print_list Problem.print) set
+end

@@ -39,16 +39,14 @@ module Run = struct
     let open E in
     let dir = d.T.Config.directory in
     Format.printf "testing dir `%s`...@." dir;
-    ProblemSet.of_dir
-      ~expect:d.T.Config.expect
-      ~filter:(Re.execp (Re_posix.compile_pat d.T.Config.pattern))
-      dir
+    Problem_run.of_dir dir
+      ~filter:(Re.execp (Re_posix.compile_pat d.T.Config.pattern)) |> E.ok
     >>= fun pbs ->
-    Format.printf "run %d tests in %s@." (ProblemSet.size pbs) dir;
+    Format.printf "run %d tests in %s@." (List.length pbs) dir;
     (* solve *)
     let main =
       E.ok (Test_run.run ?j ?timeout ?memory ?caching ?provers
-          ~on_solve ~config pbs)
+          ~expect:d.T.Config.expect ~on_solve ~config pbs)
     in
     main
     >>= fun results ->

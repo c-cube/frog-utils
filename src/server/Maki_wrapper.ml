@@ -27,7 +27,7 @@ let problem : Problem.t Maki.Value.ops =
     (fun (name, expected) -> {name;expected})
     (V.pair V.file res)
 
-let problem_set : ProblemSet.t Maki.Value.ops = Maki.Value.set problem
+let problem_set : Problem.problem_set Maki.Value.ops = Maki.Value.set problem
 
 let maki_version =
   Maki.Value.marshal "frogprover.version.2"

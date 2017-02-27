@@ -6,6 +6,7 @@
 open Frog
 
 type 'a or_error = 'a Misc.Err.t
+type path = string
 
 val config_of_file : string -> Test.Config.t Misc.Err.t
 
@@ -19,8 +20,9 @@ val run :
   ?timeout:int ->
   ?memory:int ->
   ?provers:string list ->
+  expect:Test.Config.expect ->
   config:Test.Config.t ->
-  ProblemSet.t ->
+  path list ->
   Test.top_result Lwt.t
 (** Run the given prover(s) on the given problem set, obtaining results
     after all the problems have been dealt with.

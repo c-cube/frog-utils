@@ -8,6 +8,7 @@ open Frog
 open Lwt.Infix
 
 type 'a or_error = 'a Misc.Err.t
+type path = string
 
 module C = Test.Config
 module T = Test
@@ -100,7 +101,8 @@ let run_pb ?(caching=true) ?limit ~config prover pb =
 let nop_ _ = Lwt.return_unit
 
 let run ?(on_solve = nop_) ?(on_done = nop_)
-    ?(caching=true) ?j ?timeout ?memory ?provers ~config set
+    ?(caching=true) ?j ?timeout ?memory ?provers ~expect ~config (set:path list)
+    : Test.top_result Lwt.t
   =
   let config = C.update ?j ?timeout ?memory config in
   let limit = Maki.Limit.create config.C.j in
@@ -113,17 +115,23 @@ let run ?(on_solve = nop_) ?(on_done = nop_)
   in
   let%lwt res =
     Lwt_list.map_p
-      (fun prover ->
-         let%lwt l =
-           Lwt_list.map_p
-             (fun pb ->
-                let%lwt result = run_pb ~caching ~limit ~config prover pb in
-                let%lwt () = on_solve result in (* callback *)
-                Lwt.return result)
-             set
+      (fun pb_path ->
+         (* transform into problem *)
+         let%lwt pb =
+           Maki.Limit.acquire limit
+             (fun () ->
+                let find_expect = Problem_run.find_expect ~expect in
+                Problem_run.make ~find_expect pb_path)
+           |> Misc.LwtErr.to_exn
          in
-         Lwt.return l)
-      provers
+         (* run provers *)
+         Lwt_list.map_p
+           (fun prover ->
+              let%lwt result = run_pb ~caching ~limit ~config prover pb in
+              let%lwt () = on_solve result in (* callback *)
+              Lwt.return result)
+           provers)
+      set
     >|= List.flatten
   in
   let r = T.Top_result.make (List.map Event.mk_prover res) in
