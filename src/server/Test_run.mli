@@ -23,7 +23,7 @@ val run :
   expect:Test.Config.expect ->
   config:Test.Config.t ->
   path list ->
-  Test.top_result Lwt.t
+  Test.top_result or_error Lwt.t
 (** Run the given prover(s) on the given problem set, obtaining results
     after all the problems have been dealt with.
     @param caching if true, use Maki for caching results (default true)

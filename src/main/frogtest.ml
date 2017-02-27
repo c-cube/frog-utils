@@ -36,17 +36,19 @@ module Run = struct
   (* run provers on the given dir, return a list [prover, dir, results] *)
   let test_dir ?j ?timeout ?memory ?caching ?provers ~config d
     : T.Top_result.t E.t =
-    let open E in
+    let open E.Infix in
     let dir = d.T.Config.directory in
     Format.printf "testing dir `%s`...@." dir;
     Problem_run.of_dir dir
       ~filter:(Re.execp (Re_posix.compile_pat d.T.Config.pattern)) |> E.ok
     >>= fun pbs ->
-    Format.printf "run %d tests in %s@." (List.length pbs) dir;
+    let len = List.length pbs in
+    Format.printf "run %d tests in %s@." len dir;
     (* solve *)
     let main =
-      E.ok (Test_run.run ?j ?timeout ?memory ?caching ?provers
-          ~expect:d.T.Config.expect ~on_solve ~config pbs)
+      Test_run.run ?j ?timeout ?memory ?caching ?provers
+          ~expect:d.T.Config.expect ~on_solve ~config pbs
+      |> E.add_ctxf "running %d tests" len
     in
     main
     >>= fun results ->
@@ -62,10 +64,9 @@ module Run = struct
     if Prover.Map_name.for_all (fun _ r -> T.Analyze.is_ok r) map
     then E.return ()
     else
-      E.fail (Format.asprintf "%d failure(s)" (
-          Prover.Map_name.fold
-            (fun _ r n -> n + T.Analyze.num_failed r)
-            map 0))
+      E.failf "%d failure(s)"
+        (Prover.Map_name.fold (fun _ r n -> n + T.Analyze.num_failed r) map
+            0)
 
   (* lwt main *)
   let main ?j ?timeout ?memory ?caching ?junit ?provers ?meta ~save ~config dirs () =

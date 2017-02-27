@@ -9,11 +9,11 @@ type path = string
 val find_expect :
   expect:Test.Config.expect ->
   path ->
-  Res.t Lwt.t
+  Res.t Misc.Err.t Lwt.t
 (** FInd the expected result for this given problem *)
 
 val make :
-  find_expect:(path -> Res.t Lwt.t) ->
+  find_expect:(path -> Res.t Misc.Err.t Lwt.t) ->
   path ->
   Problem.t Misc.Err.t Lwt.t
 (** [make ~find_expect file] tries to find the expected result of [file], and
@@ -32,7 +32,7 @@ module Set : sig
   val size : t -> int
 
   val make:
-    find_expect:(path -> Res.t Lwt.t) ->
+    find_expect:(path -> Res.t Misc.Err.t Lwt.t) ->
     string list ->
     t Misc.Err.t Lwt.t
     (** Build a set of problems out of file names *)

@@ -84,9 +84,9 @@ let run_pb_ ~config prover pb =
     result.Event.raw.Event.errcode;
   Lwt.return result
 
-let run_pb ?(caching=true) ?limit ~config prover pb =
+let run_pb ?(caching=true) ?limit ~config prover pb : _ E.t =
   let module V = Maki.Value in
-  Maki.call_exn
+  Maki.call
     ?limit
     ~bypass:(not caching)
     ~lifetime:(`KeepFor Maki.Time.(days 2))
@@ -97,13 +97,14 @@ let run_pb ?(caching=true) ?limit ~config prover pb =
     ~op:Run.maki_result
     ~name:"frogtest.run_pb"
     (fun () -> run_pb_ ~config prover pb)
+  |> E.of_exn
 
 let nop_ _ = Lwt.return_unit
 
 let run ?(on_solve = nop_) ?(on_done = nop_)
     ?(caching=true) ?j ?timeout ?memory ?provers ~expect ~config (set:path list)
-    : Test.top_result Lwt.t
-  =
+    : Test.top_result E.t =
+  let open E.Infix in
   let config = C.update ?j ?timeout ?memory config in
   let limit = Maki.Limit.create config.C.j in
   let provers = match provers with
@@ -113,30 +114,31 @@ let run ?(on_solve = nop_) ?(on_done = nop_)
         (fun p -> List.mem (Prover.name p) l)
         config.C.provers
   in
-  let%lwt res =
-    Lwt_list.map_p
-      (fun pb_path ->
-         (* transform into problem *)
-         let%lwt pb =
-           Maki.Limit.acquire limit
-             (fun () ->
-                let find_expect = Problem_run.find_expect ~expect in
-                Problem_run.make ~find_expect pb_path)
-           |> Misc.LwtErr.to_exn
-         in
-         (* run provers *)
-         Lwt_list.map_p
-           (fun prover ->
-              let%lwt result = run_pb ~caching ~limit ~config prover pb in
-              let%lwt () = on_solve result in (* callback *)
-              Lwt.return result)
-           provers)
-      set
-    >|= List.flatten
-  in
+  E.map_p
+    (fun pb_path ->
+       (* transform into problem *)
+       let%lwt pb =
+         Maki.Limit.acquire limit
+           (fun () ->
+              let find_expect = Problem_run.find_expect ~expect in
+              Problem_run.make ~find_expect pb_path)
+         |> Misc.LwtErr.to_exn
+       in
+       (* run provers *)
+       E.map_p
+         (fun prover ->
+            run_pb ~caching ~limit ~config prover pb >>= fun result ->
+            let%lwt () = on_solve result in (* callback *)
+            E.return result
+            |> E.add_ctxf "running `%a` on %a"
+              Prover.pp_name prover Problem.print pb)
+         provers)
+    set
+  >>= fun res ->
+  let res = List.flatten res in
   let r = T.Top_result.make (List.map Event.mk_prover res) in
   let%lwt () = on_done r in
-  Lwt.return r
+  E.return r
 
 let find_results ?storage str =
   match storage with

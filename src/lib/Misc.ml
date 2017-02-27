@@ -71,41 +71,60 @@ module LwtErr = struct
 
   let return x = Lwt.return (Ok x)
   let fail e = Lwt.return (Error e)
+  let failf e = Format.kasprintf fail e
 
   let lift : 'a Err.t -> 'a t = Lwt.return
   let ok : 'a Lwt.t -> 'a t = fun x -> Lwt.map (fun y -> Ok y) x
+
+  let add_ctx : string -> 'a t -> 'a t = fun msg x ->
+    Lwt.map
+      (function Error e -> Error (e ^ "\ncontext:" ^ msg) | Ok x -> Ok x)
+      x
+
+  let add_ctxf msg =
+    Format.kasprintf (fun msg -> add_ctx msg) msg
 
   let to_exn : 'a t -> 'a Lwt.t =
     fun x->
       Lwt.bind x
         (function Error e -> Lwt.fail (Failure e) | Ok x -> Lwt.return x)
 
-  let (>>=) : 'a t -> ('a -> 'b t) -> 'b t
-  = fun e f ->
-    Lwt.bind e (function
-      | Error e -> Lwt.return (Error e)
-      | Ok x -> f x
-    )
+  module Infix = struct
+    let (>>=) : 'a t -> ('a -> 'b t) -> 'b t
+      = fun e f ->
+        Lwt.bind e (function
+          | Error e -> Lwt.return (Error e)
+          | Ok x -> f x
+        )
 
-  let (>>?=) : 'a t -> ('a -> 'b Err.t) -> 'b t
-  = fun e f ->
-    Lwt.bind e (function
-      | Error e -> Lwt.return (Error e)
-      | Ok x -> f x |> Lwt.return
-    )
+    let (>>?=) : 'a t -> ('a -> 'b Err.t) -> 'b t
+      = fun e f ->
+        Lwt.bind e (function
+          | Error e -> Lwt.return (Error e)
+          | Ok x -> f x |> Lwt.return
+        )
 
-  let (>|=) : 'a t -> ('a -> 'b) -> 'b t
-  = fun e f ->
-    Lwt.map (function
-      | Error e -> Error e
-      | Ok x -> Ok (f x)
-    ) e
+    let (>|=) : 'a t -> ('a -> 'b) -> 'b t
+      = fun e f ->
+        Lwt.map (function
+          | Error e -> Error e
+          | Ok x -> Ok (f x)
+        ) e
+  end
+  include Infix
+
+  let of_exn : ('a, exn) result Lwt.t -> 'a t = fun x -> Lwt.map Err.of_exn x
 
   let rec map_s : ('a -> 'b t) -> 'a list -> 'b list t
     = fun f l -> match l with
     | [] -> return []
     | x :: tail ->
       f x >>= fun x' -> map_s f tail >|= fun tail' -> x' :: tail'
+
+  let map_p : ('a -> 'b t) -> 'a list -> 'b list t
+    = fun f l ->
+      let%lwt l = Lwt_list.map_p f l in
+      Lwt.return (Err.seq_list l)
 end
 
 module List = struct

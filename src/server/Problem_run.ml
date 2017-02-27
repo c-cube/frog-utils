@@ -7,6 +7,8 @@ open Result
 type t = Problem.t
 type path = string
 
+module E = Misc.LwtErr
+
 (* regex + mark *)
 let m_unsat_, unsat_ = Re.(str "unsat" |> no_case |> mark)
 let m_sat_, sat_ = Re.(str "sat" |> no_case |> mark)
@@ -27,38 +29,34 @@ let find_expected_ ?default file =
   let%lwt content = Misc_unix.File.with_in ~file Misc_unix.File.read_all in
   match Re.exec_opt re_expect_ content with
   | Some g ->
-    if Re.marked g m_unsat_ then Lwt.return Res.Unsat
-    else if Re.marked g m_sat_ then Lwt.return Res.Sat
-    else if Re.marked g m_unknown_ then Lwt.return Res.Unknown
-    else if Re.marked g m_timeout_ then Lwt.return Res.Timeout
-    else if Re.marked g m_error_ then Lwt.return Res.Error
-    else Lwt.fail (Failure "could not parse the content of the `expect:` field")
+    if Re.marked g m_unsat_ then E.return Res.Unsat
+    else if Re.marked g m_sat_ then E.return Res.Sat
+    else if Re.marked g m_unknown_ then E.return Res.Unknown
+    else if Re.marked g m_timeout_ then E.return Res.Timeout
+    else if Re.marked g m_error_ then E.return Res.Error
+    else E.fail "could not parse the content of the `expect:` field"
   | None ->
     match default with
-      | Some r -> Lwt.return r
-      | None -> Lwt.fail (Failure "could not find the `expect:` field")
+      | Some r -> E.return r
+      | None -> E.fail "could not find the `expect:` field"
 
-let find_expect ~expect file : Res.t Lwt.t =
+let find_expect ~expect file : Res.t E.t =
   begin match expect with
     | Test.Config.Auto -> find_expected_ ?default:None file
     | Test.Config.Res r -> find_expected_ ~default:r file
     | Test.Config.Program prover ->
       let pb = Problem.make file Res.Unknown in
       let%lwt event = Run.run_prover ~timeout:1 ~memory:1_000 ~prover ~pb () in
-      Lwt.return (Event.analyze_p event)
+      E.return (Event.analyze_p event)
   end
 
 let make ~find_expect file =
-  try%lwt
-    Lwt_log.ign_debug_f "convert `%s` into problem..." file;
-    let%lwt res = find_expect file in
-    let pb = Problem.make file res in
-    Lwt.return (Ok pb)
-  with e ->
-    Lwt.return
-      (Error (
-          Format.asprintf "could not find expected res for %s: %s"
-            file (Printexc.to_string e)))
+  let open E.Infix in
+  Lwt_log.ign_debug_f "convert `%s` into problem..." file;
+  find_expect file |> E.add_ctxf "parsing expected result of `%s`" file
+  >>= fun res ->
+  let pb = Problem.make file res in
+  E.return pb
 
 let of_dir ~filter d =
   Misc_unix.File.walk d
