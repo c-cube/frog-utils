@@ -29,6 +29,62 @@ module Str = struct
     String.sub s 0 i, String.sub s (i+1) (String.length s -i-1)
 end
 
+(** Yay formatting! *)
+module Fmt = struct
+  let fpf = Format.fprintf
+  let to_string f x = Format.asprintf "%a%!" f x
+
+  let ksprintf ~f fmt =
+    let buf = Buffer.create 32 in
+    let out = Format.formatter_of_buffer buf in
+    Format.kfprintf
+      (fun _ -> Format.pp_print_flush out (); f (Buffer.contents buf))
+      out fmt
+
+  type color =
+    [ `Red
+    | `Yellow
+    | `Green
+    | `Blue
+    | `Normal
+    ]
+
+  let int_of_color_ = function
+    | `Normal -> 0
+    | `Red -> 1
+    | `Green -> 2
+    | `Yellow -> 3
+    | `Blue -> 4
+
+  let pp_list ?(start="") ?(stop="") ?(sep=",") pp fmt l =
+    let rec pp_list l = match l with
+      | x::((_::_) as l) ->
+        pp fmt x;
+        Format.pp_print_string fmt sep;
+        Format.pp_print_cut fmt ();
+        pp_list l
+      | x::[] -> pp fmt x
+      | [] -> ()
+    in
+    Format.pp_print_string fmt start;
+    pp_list l;
+    Format.pp_print_string fmt stop
+
+  (* same as [pp], but in color [c] *)
+  let in_color c pp out x =
+    let n = int_of_color_ c in
+    fpf out "\x1b[3%dm" n;
+    pp out x;
+    fpf out "\x1b[0m"
+
+  (* same as [pp], but in bold color [c] *)
+  let in_bold_color c pp out x =
+    let n = int_of_color_ c in
+    fpf out "\x1b[3%d;1m" n;
+    pp out x;
+    fpf out "\x1b[0m"
+end
+
 module Err = struct
   type 'a t = ('a, string) result
 
@@ -71,7 +127,7 @@ module LwtErr = struct
 
   let return x = Lwt.return (Ok x)
   let fail e = Lwt.return (Error e)
-  let failf e = Format.kasprintf fail e
+  let failf e = Fmt.ksprintf ~f:fail e
 
   let lift : 'a Err.t -> 'a t = Lwt.return
   let ok : 'a Lwt.t -> 'a t = fun x -> Lwt.map (fun y -> Ok y) x
@@ -82,7 +138,7 @@ module LwtErr = struct
       x
 
   let add_ctxf msg =
-    Format.kasprintf (fun msg -> add_ctx msg) msg
+    Fmt.ksprintf ~f:(fun msg -> add_ctx msg) msg
 
   let to_exn : 'a t -> 'a Lwt.t =
     fun x->
@@ -141,55 +197,6 @@ module List = struct
   let cons_opt o l = match o with
     | None -> l
     | Some x -> x :: l
-end
-
-(** Yay formatting! *)
-module Fmt = struct
-  let fpf = Format.fprintf
-  let to_string f x = Format.asprintf "%a%!" f x
-
-  type color =
-    [ `Red
-    | `Yellow
-    | `Green
-    | `Blue
-    | `Normal
-    ]
-
-  let int_of_color_ = function
-    | `Normal -> 0
-    | `Red -> 1
-    | `Green -> 2
-    | `Yellow -> 3
-    | `Blue -> 4
-
-  let pp_list ?(start="") ?(stop="") ?(sep=",") pp fmt l =
-    let rec pp_list l = match l with
-      | x::((_::_) as l) ->
-        pp fmt x;
-        Format.pp_print_string fmt sep;
-        Format.pp_print_cut fmt ();
-        pp_list l
-      | x::[] -> pp fmt x
-      | [] -> ()
-    in
-    Format.pp_print_string fmt start;
-    pp_list l;
-    Format.pp_print_string fmt stop
-
-  (* same as [pp], but in color [c] *)
-  let in_color c pp out x =
-    let n = int_of_color_ c in
-    fpf out "\x1b[3%dm" n;
-    pp out x;
-    fpf out "\x1b[0m"
-
-  (* same as [pp], but in bold color [c] *)
-  let in_bold_color c pp out x =
-    let n = int_of_color_ c in
-    fpf out "\x1b[3%d;1m" n;
-    pp out x;
-    fpf out "\x1b[0m"
 end
 
 module Map_(O:Map.OrderedType) = struct
