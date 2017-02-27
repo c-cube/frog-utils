@@ -38,26 +38,28 @@ module Run = struct
     : T.Top_result.t E.t =
     let open E.Infix in
     let dir = d.T.Config.directory in
-    Format.printf "testing dir `%s`...@." dir;
-    Problem_run.of_dir dir
-      ~filter:(Re.execp (Re_posix.compile_pat d.T.Config.pattern)) |> E.ok
-    >>= fun pbs ->
-    let len = List.length pbs in
-    Format.printf "run %d tests in %s@." len dir;
-    (* solve *)
-    let main =
-      Test_run.run ?j ?timeout ?memory ?caching ?provers
+    begin
+      Format.printf "testing dir `%s`...@." dir;
+      Problem_run.of_dir dir
+        ~filter:(Re.execp (Re_posix.compile_pat d.T.Config.pattern)) |> E.ok
+      >>= fun pbs ->
+      let len = List.length pbs in
+      Format.printf "run %d tests in %s@." len dir;
+      (* solve *)
+      let main =
+        Test_run.run ?j ?timeout ?memory ?caching ?provers
           ~expect:d.T.Config.expect ~on_solve ~config pbs
-      |> E.add_ctxf "running %d tests" len
-    in
-    main
-    >>= fun results ->
-    Prover.Map_name.iter
-      (fun p r ->
-         Format.printf "@[<2>%s on `%s`:@ @[<hv>%a@]@]@."
-           (Prover.name p) dir T.Analyze.print r)
-      (Lazy.force results.T.analyze);
-    E.return results
+        |> E.add_ctxf "running %d tests" len
+      in
+      main
+      >>= fun results ->
+      Prover.Map_name.iter
+        (fun p r ->
+           Format.printf "@[<2>%s on `%s`:@ @[<hv>%a@]@]@."
+             (Prover.name p) dir T.Analyze.print r)
+        (Lazy.force results.T.analyze);
+      E.return results
+    end |> E.add_ctxf "running tests in dir `%s`" dir
 
   let check_res (results:T.top_result) : unit E.t =
     let lazy map = results.T.analyze in
@@ -70,9 +72,12 @@ module Run = struct
 
   (* lwt main *)
   let main ?j ?timeout ?memory ?caching ?junit ?provers ?meta ~save ~config dirs () =
-    let open E in
+    let open E.Infix in
     (* parse config *)
-    Lwt.return (Test_run.config_of_config config dirs)
+    begin
+      Lwt.return (Test_run.config_of_config config dirs)
+      |> E.add_ctxf "parsing config from [@[%a@]]" (Misc.Fmt.pp_list Format.pp_print_string) dirs
+    end
     >>= fun config ->
     (* pick default directory if needed *)
     let problems = config.T.Config.problems in
