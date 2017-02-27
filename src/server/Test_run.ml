@@ -20,8 +20,8 @@ let expect_of_config config = function
     begin match Misc.Str.split ~by:':' s with
       | "program", p ->
         C.Program (ProverSet.find_config config p)
-      | _ ->
-        C.Res (Res.of_string s)
+      | _ -> C.Res (Res.of_string s)
+      | exception Not_found -> C.Res (Res.of_string s)
     end
 
 let config_of_config config dirs =
