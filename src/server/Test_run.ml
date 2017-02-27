@@ -45,7 +45,7 @@ let config_of_config config dirs =
           let expect = expect_of_config config
               (Config.get_string ~default:default_expect t "expect") in
           { C.directory = dir; pattern = pat; expect = expect; }
-        | exception Config.FieldNotFound _ ->
+        | exception (Config.FieldNotFound _ | TomlTypes.Table.Key.Bad_key _) ->
           { C.directory = s; pattern = problem_pat;
             expect = expect_of_config config default_expect; }
       ) l in
