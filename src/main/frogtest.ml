@@ -28,9 +28,10 @@ module Run = struct
     let prover = res.Event.program in
     let prover_name = Filename.basename prover.Prover.name in
     let pb_name = res.Event.problem.Problem.name in
-    Lwt_log.ign_debug_f "result for `%s` with %s: %s"
-       prover_name pb_name (Res.to_string p_res);
-    Format.printf "%-20s%-50s %a@." prover_name (pb_name ^ " :") pp_res ();
+    Lwt_log.ign_debug_f "result for `%s` with %s: %s (%.1f)"
+       prover_name pb_name (Res.to_string p_res) res.Event.raw.Event.rtime;
+    Format.printf "%-20s%-50s %a (%.1f)@." prover_name (pb_name ^ " :")
+      pp_res () res.Event.raw.Event.rtime;
     Lwt.return_unit
 
   (* run provers on the given dir, return a list [prover, dir, results] *)
