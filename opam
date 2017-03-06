@@ -1,6 +1,6 @@
 opam-version: "1.2"
 name: "frogutils"
-version: "0.1"
+version: "dev"
 maintainer: "Simon Cruanes <simon.cruanes.2007@m4x.org>"
 authors: [ "Simon Cruanes <simon.cruanes.2007@m4x.org>"
            "Guillaume Bury <guillaume.bury@gmail.com>" ]
