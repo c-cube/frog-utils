@@ -19,7 +19,7 @@ val run :
   ?j:int ->
   ?timeout:int ->
   ?memory:int ->
-  ?provers:string list ->
+  provers:Prover.t list ->
   expect:Test.Config.expect ->
   config:Test.Config.t ->
   path list ->

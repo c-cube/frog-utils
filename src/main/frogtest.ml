@@ -80,11 +80,17 @@ module Run = struct
       >>= fun pbs ->
       let len = List.length pbs in
       Format.printf "run %d tests in %s@." len dir;
-      let on_solve = progress ?dyn
-          (match provers with None -> 0 | Some l -> len * List.length l) in
+      let provers = match provers with
+        | None -> config.T.Config.provers
+        | Some l ->
+          List.filter
+            (fun p -> List.mem (Prover.name p) l)
+            config.T.Config.provers
+      in
+      let on_solve = progress ?dyn (len * List.length provers) in
       (* solve *)
       let main =
-        Test_run.run ?j ?timeout ?memory ?caching ?provers
+        Test_run.run ?j ?timeout ?memory ?caching ~provers
           ~expect:d.T.Config.expect ~on_solve ~config pbs
         |> E.add_ctxf "running %d tests" len
       in

@@ -102,18 +102,11 @@ let run_pb ?(caching=true) ?limit ~config prover pb : _ E.t =
 let nop_ _ = Lwt.return_unit
 
 let run ?(on_solve = nop_) ?(on_done = nop_)
-    ?(caching=true) ?j ?timeout ?memory ?provers ~expect ~config (set:path list)
+    ?(caching=true) ?j ?timeout ?memory ~provers ~expect ~config (set:path list)
     : Test.top_result E.t =
   let open E.Infix in
   let config = C.update ?j ?timeout ?memory config in
   let limit = Maki.Limit.create config.C.j in
-  let provers = match provers with
-    | None -> config.C.provers
-    | Some l ->
-      List.filter
-        (fun p -> List.mem (Prover.name p) l)
-        config.C.provers
-  in
   E.map_p
     (fun pb_path ->
        (* transform into problem *)
