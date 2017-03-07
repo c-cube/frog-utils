@@ -80,7 +80,8 @@ module Run = struct
       >>= fun pbs ->
       let len = List.length pbs in
       Format.printf "run %d tests in %s@." len dir;
-      let on_solve = progress ?dyn len in
+      let on_solve = progress ?dyn
+          (match provers with None -> 0 | Some l -> len * List.length l) in
       (* solve *)
       let main =
         Test_run.run ?j ?timeout ?memory ?caching ?provers
