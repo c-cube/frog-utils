@@ -13,7 +13,38 @@ module W = Web
 (** {2 Run} *)
 module Run = struct
   (* callback that prints a result *)
-  let on_solve res =
+  let nb_sec_minute = 60
+  let nb_sec_hour = 60 * nb_sec_minute
+  let nb_sec_day = 24 * nb_sec_hour
+
+  let time_string f =
+    let n = int_of_float f in
+    let aux n div = n / div, n mod div in
+    let n_day, n = aux n nb_sec_day in
+    let n_hour, n = aux n nb_sec_hour in
+    let n_min, n = aux n nb_sec_minute in
+    let print_aux s n = if n <> 0 then (string_of_int n) ^ s else "" in
+    (print_aux "d" n_day) ^
+    (print_aux "h" n_hour) ^
+    (print_aux "m" n_min) ^
+    (string_of_int n) ^ "s"
+
+  let progress_dynamic len =
+    let start = Unix.gettimeofday () in
+    let count = ref 0 in
+    function res ->
+      let time_elapsed = Unix.gettimeofday () -. start in
+      incr count;
+      let len_bar = 50 in
+      let bar = String.init len_bar
+          (fun i -> if i * len <= len_bar * !count then '#' else '-') in
+      let percent = if len=0 then 100 else (!count * 100) / len in
+      Format.printf "\r... %5d/%d | %3d%% [%6s: %s]@?"
+        !count len percent (time_string time_elapsed) bar;
+      if !count = len then Format.printf "@.";
+      Lwt.return_unit
+
+  let progress_static res =
     let module F = Misc.Fmt in
     let p_res = Event.analyze_p res in
     let pp_res out () =
@@ -34,8 +65,11 @@ module Run = struct
       pp_res () res.Event.raw.Event.rtime;
     Lwt.return_unit
 
+  let progress ?(dyn=false) n =
+    if dyn then progress_dynamic n else progress_static
+
   (* run provers on the given dir, return a list [prover, dir, results] *)
-  let test_dir ?j ?timeout ?memory ?caching ?provers ~config d
+  let test_dir ?dyn ?j ?timeout ?memory ?caching ?provers ~config d
     : T.Top_result.t E.t =
     let open E.Infix in
     let dir = d.T.Config.directory in
@@ -46,6 +80,7 @@ module Run = struct
       >>= fun pbs ->
       let len = List.length pbs in
       Format.printf "run %d tests in %s@." len dir;
+      let on_solve = progress ?dyn len in
       (* solve *)
       let main =
         Test_run.run ?j ?timeout ?memory ?caching ?provers
@@ -72,7 +107,7 @@ module Run = struct
             0)
 
   (* lwt main *)
-  let main ?j ?timeout ?memory ?caching ?junit ?provers ?meta ~save ~config dirs () =
+  let main ?dyn ?j ?timeout ?memory ?caching ?junit ?provers ?meta ~save ~config dirs () =
     let open E.Infix in
     (* parse config *)
     begin
@@ -84,7 +119,7 @@ module Run = struct
     let problems = config.T.Config.problems in
     let storage = Storage.make [] in
     (* build problem set (exclude config file!) *)
-    E.map_s (test_dir ?j ?timeout ?memory ?caching ?provers ~config) problems
+    E.map_s (test_dir ?dyn ?j ?timeout ?memory ?caching ?provers ~config) problems
     >|= T.Top_result.merge_l
     >>= fun (results:T.Top_result.t) ->
     begin match save with
@@ -244,12 +279,14 @@ let config_term =
 (* sub-command for running tests *)
 let term_run =
   let open Cmdliner in
-  let aux dirs config j timeout memory nocaching meta save provers junit =
+  let aux dyn dirs config j timeout memory nocaching meta save provers junit =
     let caching = not nocaching in
     Lwt_main.run
-      (Run.main ?j ?timeout ?memory ?junit ?provers ~caching ~meta ~save ~config dirs ())
+      (Run.main ~dyn ?j ?timeout ?memory ?junit ?provers ~caching ~meta ~save ~config dirs ())
   in
   let config = config_term
+  and dyn =
+    Arg.(value & flag & info ["p"; "progress"] ~doc:"print progress bar")
   and j =
     Arg.(value & opt (some int) None & info ["j"] ~doc:"parallelism level")
   and timeout =
@@ -272,7 +309,7 @@ let term_run =
   and provers =
     Arg.(value & opt (some (list string)) None & info ["p"; "provers"] ~doc:"select provers")
   in
-  Term.(pure aux $ dir $ config $ j $ timeout $ memory
+  Term.(pure aux $ dyn $ dir $ config $ j $ timeout $ memory
     $ nocaching $ meta $ save $ provers $ junit),
   Term.info ~doc "run"
 
