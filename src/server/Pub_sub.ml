@@ -56,12 +56,12 @@ let with_ ?path f =
 
 let send (t:t) (m:msg): unit Lwt.t =
   let str = msg_to_yojson m |> Yojson.Safe.to_string in
-  Lwt_log.ign_debug_f "@[<2>pub_sub.send@ %s@]" str;
+  Lwt_log.ign_debug_f "(pub_sub.send %s)" str;
   Lwt_zmq.Socket.send t.pub str
 
 let next (t:t): msg E.t Lwt.t =
   let%lwt str = Lwt_zmq.Socket.recv t.sub in
-  Lwt_log.ign_debug_f "@[<2>pub_sub.receive@ %s@]" str;
+  Lwt_log.ign_debug_f "(pub_sub.receive %s)" str;
   try
     let j = Yojson.Safe.from_string str in
     let msg = msg_of_yojson j in
