@@ -6,10 +6,12 @@
 open Frog
 open Frog_server
 
+module M = Lock_messages
+
 let section = Lwt_log.Section.make "Lock"
 
 let () =
-  LockMessages.register_exn_printers();
+  Lock_messages.register_exn_printers();
   Lwt.async_exception_hook :=
     (fun e ->
       Lwt_log.ign_error_f "async error: %s" (Printexc.to_string e);
@@ -46,9 +48,9 @@ let run_command params =
   let info = show_cmd params.cmd in
   let user = try Some(Sys.getenv "USER") with _ -> None in
   let cwd = Sys.getcwd () in
-  LockClient.connect_or_spawn params.port
+  Lock_client.connect_or_spawn params.port
     (fun daemon ->
-      LockClient.acquire ~cwd ?user ~info ~cores:params.cores ~priority:params.priority ~tags:params.tags daemon
+      Lock_client.acquire ~cwd ?user ~info ~cores:params.cores ~priority:params.priority ~tags:params.tags daemon
         (function
         | true ->
           let cmd, cmd_string = match params.cmd with
@@ -78,8 +80,6 @@ let run_command params =
       )
     )
 
-module M = LockMessages
-
 let maybe_str = function
   | None -> "<none>"
   | Some s -> s
@@ -93,7 +93,7 @@ let print_status params =
   in
   let now = Unix.gettimeofday() in
   try%lwt
-    let%lwt res = LockClient.get_status params.port in
+    let%lwt res = Lock_client.get_status params.port in
     match res with
     | None ->
       Lwt_log.info_f ~section "daemon not running"
@@ -139,7 +139,7 @@ let main params =
         then Lwt_log.add_rule "*" Lwt_log.Debug;
       match params.cmd with
       | PrintStatus -> print_status params
-      | StopAccepting -> LockClient.stop_accepting params.port
+      | StopAccepting -> Lock_client.stop_accepting params.port
       | Exec _
       | Shell _ ->
           let%lwt res = run_command params in

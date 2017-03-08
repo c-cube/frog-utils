@@ -9,7 +9,8 @@ open Frog
 type remote_daemon
 
 val connect : int -> (remote_daemon -> 'a Lwt.t) -> 'a Lwt.t
-(** Connect the the remote daemon *)
+(** Connect the the remote daemon
+    @param port on which the daemon should be listening *)
 
 val acquire : ?cwd:string -> ?user:string -> ?info:string ->
               ?cores:int -> ?priority: int -> ?tags:string list ->
@@ -23,9 +24,10 @@ val acquire : ?cwd:string -> ?user:string -> ?info:string ->
 
 val connect_or_spawn : ?retry:float -> int -> (remote_daemon -> 'a Lwt.t) -> 'a Lwt.t
 (** Similar to {!connect}, but if it couldn't connect it launches the daemon
-    and waits {!retry} seconds before retrying. *)
+    and waits {!retry} seconds before retrying.
+    @param port the port to connect to *)
 
-val get_status : int -> LockMessages.status_answer option Lwt.t
+val get_status : int -> Lock_messages.status_answer option Lwt.t
 (** [get_status port] connects to the daemon on the given port (if any)
     and returns its status. It returns [None] if the daemon
     couldn't be contacted *)

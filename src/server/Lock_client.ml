@@ -3,7 +3,7 @@
 
 (** {1 Client-Side} *)
 
-module M = LockMessages
+module M = Lock_messages
 
 open Frog
 
@@ -63,7 +63,7 @@ let connect_or_spawn ?(retry=1.) port f =
   with _ ->
     (* launch daemon and re-connect *)
     Lwt_log.ign_info ~section "could not connect; launch daemon...";
-    match%lwt LockDaemon.fork_and_spawn port with
+    match%lwt Lock_daemon.fork_and_spawn port with
     | `child thread ->
         let%lwt () = thread in
         Lwt.fail Exit

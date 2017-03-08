@@ -32,8 +32,8 @@ Library "frog_server"
   Pack:             true
   FindlibParent:    frog
   FindlibName:      server
-  Modules:          Config, JUnit_wrapper, LockClient, LockDaemon,
-                    LockMessages, Maki_wrapper, MapState, Plot,
+  Modules:          Config, JUnit_wrapper, Lock_client, Lock_daemon,
+                    Lock_messages, Maki_wrapper, MapState, Plot,
                     Run, Storage, TPTP, Web, Test_run, Misc_unix,
                     Event_storage, Problem_run, ProverSet
   BuildDepends:     frog, unix, lwt.unix, lwt.preemptive, cmdliner,

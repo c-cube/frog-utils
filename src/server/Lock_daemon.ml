@@ -5,7 +5,7 @@
 
 open Frog
 
-module M = LockMessages
+module M = Lock_messages
 
 let main_config_file = "/etc/froglock.conf"
 let section = Lwt_log.Section.make "LockDaemon"
