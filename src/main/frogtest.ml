@@ -293,7 +293,7 @@ let term_run =
   in
   let config = config_term
   and dyn =
-    Arg.(value & flag & info ["p"; "progress"] ~doc:"print progress bar")
+    Arg.(value & flag & info ["progress"] ~doc:"print progress bar")
   and j =
     Arg.(value & opt (some int) None & info ["j"] ~doc:"parallelism level")
   and timeout =
