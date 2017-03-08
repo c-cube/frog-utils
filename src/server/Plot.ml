@@ -4,14 +4,13 @@
 open Frog
 
 module A = Archimedes
-module St = MapState
 module Conf = Config
 
 (* Colors *)
 exception Unknown_color
 
 let to_color s =
-  match String.lowercase s with
+  match CCString.lowercase_ascii s with
   | "black" -> A.Color.black
   | "red" -> A.Color.red
   | "green" -> A.Color.green
