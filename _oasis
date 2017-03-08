@@ -52,6 +52,14 @@ Executable frogweb
   MainIs:           frogweb.ml
   BuildDepends:     frog, frog.server, opium.unix, threads
 
+Executable frogmonitor
+  Path:             src/main
+  Build:            true
+  Install:          true
+  CompiledObject:   best
+  MainIs:           frogmonitor.ml
+  BuildDepends:     frog, frog.server, threads
+
 Executable frogtptp
   Path:             src/main
   Build:            true

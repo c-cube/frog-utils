@@ -15,7 +15,7 @@ type msg =
   | M_start_bench of int [@name "start_bench"] (* number of files *)
   | M_finish_bench [@name "finish_bench"] (* *)
   | M_event of Event.t [@name "event"]
-  [@@deriving yojson]
+  [@@deriving yojson, show]
 
 val create : ?path:string -> unit -> t E.t Lwt.t
 
