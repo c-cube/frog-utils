@@ -114,7 +114,7 @@ module Run = struct
             0)
 
   (* lwt main *)
-  let main ?dyn ?j ?timeout ?memory ?caching ?junit ?provers ?meta ~save ~config dirs () =
+  let main ?dyn ~port ?j ?timeout ?memory ?caching ?junit ?provers ?meta ~save ~config dirs () =
     let open E.Infix in
     (* parse config *)
     begin
@@ -126,7 +126,10 @@ module Run = struct
     let problems = config.T.Config.problems in
     let storage = Storage.make [] in
     (* build problem set (exclude config file!) *)
-    E.map_s (test_dir ?dyn ?j ?timeout ?memory ?caching ?provers ~config) problems
+    Lock_client.connect_and_acquire port
+      (fun _ ->
+         E.map_s
+           (test_dir ?dyn ?j ?timeout ?memory ?caching ?provers ~config) problems)
     >|= T.Top_result.merge_l
     >>= fun (results:T.Top_result.t) ->
     begin match save with
@@ -286,10 +289,11 @@ let config_term =
 (* sub-command for running tests *)
 let term_run =
   let open Cmdliner in
-  let aux dyn dirs config j timeout memory nocaching meta save provers junit =
+  let aux dyn port dirs config j timeout memory nocaching meta save provers junit =
     let caching = not nocaching in
     Lwt_main.run
-      (Run.main ~dyn ?j ?timeout ?memory ?junit ?provers ~caching ~meta ~save ~config dirs ())
+      (Run.main ~dyn ~port ?j ?timeout ?memory ?junit ?provers
+         ~caching ~meta ~save ~config dirs ())
   in
   let config = config_term
   and dyn =
@@ -313,10 +317,13 @@ let term_run =
   and dir =
     Arg.(value & pos_all string [] &
          info [] ~docv:"DIR" ~doc:"target directories (containing tests)")
+  and port =
+    let doc = "Local port for the lock daemon" in
+    Arg.(value & opt int 12000 & info ["port"] ~docv:"PORT" ~doc)
   and provers =
     Arg.(value & opt (some (list string)) None & info ["p"; "provers"] ~doc:"select provers")
   in
-  Term.(pure aux $ dyn $ dir $ config $ j $ timeout $ memory
+  Term.(pure aux $ dyn $ port $ dir $ config $ j $ timeout $ memory
     $ nocaching $ meta $ save $ provers $ junit),
   Term.info ~doc "run"
 
