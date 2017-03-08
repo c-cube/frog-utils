@@ -1,0 +1,14 @@
+[Unit]
+Description=Irc bot for frogutils
+
+[Service]
+ExecStart = frogirc
+
+# if persistent storage is needed, put a more permanent directory here
+WorkingDirectory=/tmp
+
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
