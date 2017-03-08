@@ -26,7 +26,7 @@ let create ?(path=default_) () : t E.t Lwt.t =
     let sock_pub = ZMQ.Socket.create ctx ZMQ.Socket.pub in
     let sock_sub = ZMQ.Socket.create ctx ZMQ.Socket.sub in
     ZMQ.Socket.bind sock_pub path;
-    ZMQ.Socket.connect sock_sub path;
+    ZMQ.Socket.bind sock_sub path;
     ZMQ.Socket.subscribe sock_sub "";
     let t = {
       ctx;
