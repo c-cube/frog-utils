@@ -8,7 +8,6 @@ open Frog
 open Frog_server
 module T = Test
 module E = Misc.LwtErr
-module W = Web
 
 (** {2 Run} *)
 module Run = struct
@@ -80,6 +79,8 @@ module Run = struct
       >>= fun pbs ->
       let len = List.length pbs in
       Format.printf "run %d tests in %s@." len dir;
+      Pub_sub.create () >>= fun pubsub ->
+      let%lwt () = Pub_sub.send pubsub (Pub_sub.M_start_bench len) in
       let provers = match provers with
         | None -> config.T.Config.provers
         | Some l ->
@@ -87,7 +88,10 @@ module Run = struct
             (fun p -> List.mem (Prover.name p) l)
             config.T.Config.provers
       in
-      let on_solve = progress ?dyn (len * List.length provers) in
+      let on_solve r =
+        let%lwt () = progress ?dyn (len * List.length provers) r in
+        Pub_sub.send pubsub (Pub_sub.M_event (Event.Prover_run r))
+      in
       (* solve *)
       let main =
         Test_run.run ?j ?timeout ?memory ?caching ~provers
@@ -96,6 +100,7 @@ module Run = struct
       in
       main
       >>= fun results ->
+      let%lwt () = Pub_sub.send pubsub Pub_sub.M_finish_bench in
       Prover.Map_name.iter
         (fun p r ->
            Format.printf "@[<2>%s on `%s`:@ @[<hv>%a@]@]@."

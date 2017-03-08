@@ -10,6 +10,8 @@ module M = Lock_messages
 let main_config_file = "/etc/froglock.conf"
 let section = Lwt_log.Section.make "LockDaemon"
 
+let default_port = 12_000 
+
 type acquire_task = {
   id : int;
   query : M.job;

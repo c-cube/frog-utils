@@ -5,6 +5,7 @@
 
 open Result
 open Frog
+open Frog_server
 
 module E = Misc.Err
 

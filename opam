@@ -12,7 +12,8 @@ build: [
   ["./configure"
     "--bindir" "%{bin}%"
     "--sharedstatedir" "%{share}%"
-    "--%{opium+js_of_ocaml+react+reactiveData+ISO8601:enable}%-web"
+    "--%{opium+js_of_ocaml+react+reactiveData:enable}%-web"
+    "--%{lwt-zmq+zmq+calculon:enable}%-irc"
     "--mandir" "%{man}%"]
   [make]
 ]
@@ -41,16 +42,19 @@ depends: [
     "junit"
     "uuidm"
     "maki"
-    "opium"
     "ISO8601"
     "csv"
     "containers"
     "printbox"
+    "zmq"
 ]
 depopts: [
     "react"
     "reactiveData"
     "js_of_ocaml"
+    "opium"
+    "calculon"
+    "lwt-zmq"
 ]
 available: [
   "ocaml-version" >= "4.02.1"

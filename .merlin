@@ -8,6 +8,10 @@ S src/main
 B _build/src/main
 S src/server
 B _build/src/server
+S src/web_server
+B _build/src/web_server
+S src/irc
+B _build/src/irc
 S src/js
 B _build/src/js
 S test/
@@ -45,5 +49,6 @@ PKG ISO8601
 PKG csv
 PKG containers
 PKG printbox
-
+PKG ZMQ
+PKG lwt-zmq
 #FLG -w +a-4-44-29-48

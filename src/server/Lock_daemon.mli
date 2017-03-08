@@ -5,6 +5,8 @@
 
 open Frog
 
+val default_port : int
+
 val spawn : int -> unit Lwt.t
 (** Spawn on the given port. Can fail. *)
 

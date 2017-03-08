@@ -19,6 +19,10 @@ Flag "web"
   Description:      build and install the web UI for frogutils
   Default:          true
 
+Flag "irc"
+  Description:      build and install the IRC daemon for frogutils
+  Default:          true
+
 Library "frog"
   Path:             src/lib
   Pack:             true
@@ -34,19 +38,19 @@ Library "frog_server"
   FindlibName:      server
   Modules:          Config, JUnit_wrapper, Lock_client, Lock_daemon,
                     Lock_messages, Maki_wrapper, Plot,
-                    Run, Storage, TPTP, Web, Test_run, Misc_unix,
-                    Event_storage, Problem_run, ProverSet
+                    Run, TPTP, Test_run, Misc_unix, Pub_sub,
+                    Storage, Event_storage, Problem_run, ProverSet
   BuildDepends:     frog, unix, lwt.unix, lwt.preemptive, cmdliner,
-                    archimedes.cairo, opium.unix, junit, maki, printbox,
-                    maki.yojson, ISO8601, threads
+                    archimedes.cairo, junit, maki, printbox,
+                    ZMQ, lwt-zmq, maki.yojson, ISO8601, threads
 
 Executable frogweb
-  Path:             src/main
-  Install:          true
+  Path:             src/web_server/
+  Build$:           flag(web)
+  Install$:         flag(web)
   CompiledObject:   best
   MainIs:           frogweb.ml
-  BuildDepends:     frog, frog.server, threads
-  Build$:           flag(web)
+  BuildDepends:     frog, frog.server, opium.unix, threads
 
 Executable frogtptp
   Path:             src/main
@@ -55,6 +59,14 @@ Executable frogtptp
   CompiledObject:   best
   MainIs:           frogtptp.ml
   BuildDepends:     frog, frog.server, threads
+
+Executable frogirc
+  Path:             src/irc
+  CompiledObject:   best
+  Build$:           flag(irc)
+  Install$:         flag(irc)
+  MainIs:           frogirc.ml
+  BuildDepends:     frog, frog.server, threads, calculon
 
 Executable frogtest
   Path:             src/main

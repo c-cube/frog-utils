@@ -162,7 +162,7 @@ let common_opts =
   let aux port debug tags priority cores cmd = { port; debug; tags; priority; cores; cmd }  in
   let port =
     let doc = "Local port for the daemon" in
-    Arg.(value & opt int 12000 & info ["p"; "port"] ~docv:"PORT" ~doc)
+    Arg.(value & opt int Lock_daemon.default_port & info ["p"; "port"] ~docv:"PORT" ~doc)
   in
   let debug =
     let doc = "Enable debug" in
