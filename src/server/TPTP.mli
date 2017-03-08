@@ -64,7 +64,7 @@ val analyse_multiple :
   (StrMap.key * string * Prover.t * MapState.job * MapState.result StrMap.t) list ->
   analysis_result list
 
-val box_of_ar : analysis_result list -> PrintBox.Box.t
+val box_of_ar : analysis_result list -> PrintBox.t
 
 val print_ar_exclusive : out_channel -> analysis_result -> unit
 

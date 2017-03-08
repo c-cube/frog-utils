@@ -3,25 +3,7 @@
 
 open Result
 
-module Opt = struct
-  let return x = Some x
-  let none = None
-  let (>>=) o f = match o with
-    | None -> None
-    | Some x -> f x
-
-  let (>|=) o f = match o with
-    | None -> None
-    | Some x -> Some (f x)
-
-  let iter ~f = function
-    | None -> ()
-    | Some x -> f x
-
-  let get default x = match x with
-    | None -> default
-    | Some y -> y
-end
+module Opt = CCOpt
 
 module Str = struct
   let split ~by s =
@@ -185,30 +167,8 @@ end
 
 module List = struct
   include List
-  let return x = [x]
-  let filter_map f l =
-    let rec recurse acc l = match l with
-    | [] -> List.rev acc
-    | x::l' ->
-      let acc' = match f x with | None -> acc | Some y -> y::acc in
-      recurse acc' l'
-    in recurse [] l
-  let flat_map f l = flatten (map f l)
-  let cons_opt o l = match o with
-    | None -> l
-    | Some x -> x :: l
+  include CCList
 end
 
-module Map_(O:Map.OrderedType) = struct
-  include Map.Make(O)
-  let to_list m = fold (fun prover res acc -> (prover,res)::acc) m []
-  let of_list l = List.fold_left (fun acc (p,r) -> add p r acc) empty l
-end
-module Set_(O:Map.OrderedType) = struct
-  include Set.Make(O)
-  let to_list = elements
-  let of_list l = List.fold_left (fun acc x -> add x acc) empty l
-end
-
-module StrMap = Map_(String)
-module StrSet = Set_(String)
+module StrMap = CCMap.Make(String)
+module StrSet = CCSet.Make(String)

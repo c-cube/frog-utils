@@ -24,19 +24,20 @@ Library "frog"
   Pack:             true
   Modules:          Event, Html, Misc, Problem, Prover, Res, Test
   BuildDepends:     ppx_deriving_yojson, lwt, tyxml, lwt.ppx, toml, csv,
-                    ppx_deriving.std, re.posix, result, olinq, uri, uuidm
+                    ppx_deriving.std, re.posix, containers,
+                    result, olinq, uri, uuidm
 
 Library "frog_server"
   Path:             src/server
   Pack:             true
   FindlibParent:    frog
   FindlibName:      server
-  Modules:          Config, Heap, JUnit_wrapper, LockClient, LockDaemon,
-                    LockMessages, Maki_wrapper, MapState, Plot, PrintBox,
+  Modules:          Config, JUnit_wrapper, LockClient, LockDaemon,
+                    LockMessages, Maki_wrapper, MapState, Plot,
                     Run, Storage, TPTP, Web, Test_run, Misc_unix,
                     Event_storage, Problem_run, ProverSet
   BuildDepends:     frog, unix, lwt.unix, lwt.preemptive, cmdliner,
-                    archimedes.cairo, opium.unix, junit, maki,
+                    archimedes.cairo, opium.unix, junit, maki, printbox,
                     maki.yojson, ISO8601, threads
 
 Executable frogweb

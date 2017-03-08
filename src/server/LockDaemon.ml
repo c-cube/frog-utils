@@ -17,7 +17,7 @@ type acquire_task = {
   oc : Lwt_io.output_channel;
 }
 
-module Q = Heap.Make(struct
+module Q = CCHeap.Make(struct
     type t = acquire_task
     let leq t t' =
       M.(t.query.priority > t'.query.priority) ||

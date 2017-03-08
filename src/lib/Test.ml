@@ -264,10 +264,9 @@ module Config = struct
     { j; timeout; memory; provers; problems=dirs; }
 
   let update ?j ?timeout ?memory c =
-    let module O = Misc.Opt in
-    let j = O.get c.j j in
-    let timeout = O.get c.timeout timeout in
-    let memory = O.get c.memory memory in
+    let j = CCOpt.get_or ~default:c.j j in
+    let timeout = CCOpt.get_or ~default:c.timeout timeout in
+    let memory = CCOpt.get_or ~default:c.memory memory in
     { c with j; timeout; memory; }
 
   let to_html_expect uri_of_prover = function
@@ -706,8 +705,8 @@ module Summary = struct
       List.fold_left
         (fun (others,regressions) wrt ->
            let o, r = compare_to_ res wrt in
-           let others = Misc.List.cons_opt o others in
-           let regressions = Misc.List.cons_opt r regressions in
+           let others = CCList.cons_maybe o others in
+           let regressions = CCList.cons_maybe r regressions in
            others, regressions)
         ([], []) l
     in

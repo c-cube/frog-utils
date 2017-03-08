@@ -78,7 +78,7 @@ let make_command ?env prover ~timeout ~memory ~file =
     failwith (Printf.sprintf
         "cannot make command for prover %s: cannot find field %s" prover.name s)
 
-module Map_name = Misc.Map_(struct
+module Map_name = CCMap.Make(struct
     type t = t_
     let compare a b = String.compare a.name b.name
   end)
@@ -91,8 +91,8 @@ module As_key = struct
     if c<>0 then c else Pervasives.compare p1.version p2.version
 end
 
-module Map = Misc.Map_(As_key)
-module Set = Set.Make(As_key)
+module Map = CCMap.Make(As_key)
+module Set = CCSet.Make(As_key)
 
 (* HTML server *)
 let to_html_name p =

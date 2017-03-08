@@ -9,7 +9,6 @@ open Frog_server
 module StrMap = Map.Make(String)
 module St = MapState
 module Conf = Config
-module PB = PrintBox
 module Opt = Misc.Opt
 
 (* Misc function *)
@@ -86,7 +85,7 @@ let analyse ~config params l = match l with
       debug "analyse %d files" (List.length l);
       let l = TPTP.analyse_multiple params (TPTP.parse_prover_list ~config l) in
       let box = TPTP.box_of_ar l in
-      PB.output stdout box;
+      PrintBox_text.output stdout box;
       List.iter (TPTP.print_ar_exclusive stdout) l;
       ()
 
