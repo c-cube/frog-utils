@@ -27,6 +27,13 @@ val connect_or_spawn : ?retry:float -> int -> (remote_daemon -> 'a Lwt.t) -> 'a 
     and waits {!retry} seconds before retrying.
     @param port the port to connect to *)
 
+val connect_and_acquire :
+  ?cwd:string -> ?user:string -> ?info:string ->
+  ?cores:int -> ?priority: int -> ?tags:string list ->
+  ?retry:float ->
+  int -> (bool -> 'a Lwt.t) -> 'a Lwt.t
+(** Chain of {!connect_or_spawn} and {!acquire} *)
+
 val get_status : int -> Lock_messages.status_answer option Lwt.t
 (** [get_status port] connects to the daemon on the given port (if any)
     and returns its status. It returns [None] if the daemon

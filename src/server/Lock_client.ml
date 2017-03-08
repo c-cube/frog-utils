@@ -72,6 +72,12 @@ let connect_or_spawn ?(retry=1.) port f =
         Lwt_log.ign_info ~section "retry to connect to daemon...";
         connect port f
 
+let connect_and_acquire
+    ?cwd ?user ?info ?cores ?priority ?tags ?retry port f =
+  connect_or_spawn ?retry port
+    (fun conn ->
+       acquire ?cwd ?user ?info ?cores ?priority ?tags conn f)
+
 let get_status port =
   try%lwt
     daemon_ch port
