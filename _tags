@@ -1,6 +1,6 @@
 
 # OASIS_START
-# DO NOT EDIT (digest: f9c6466bc719ba5c74b851949fc5c2bd)
+# DO NOT EDIT (digest: 6d76cd8c953568a28c1bac0fc53adc07)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -141,6 +141,35 @@ true: annot, bin_annot
 <src/web_server/*.ml{,i,y}>: package(uuidm)
 <src/web_server/*.ml{,i,y}>: use_frog
 <src/web_server/*.ml{,i,y}>: use_frog_server
+# Executable frogmonitor
+<src/main/frogmonitor.{native,byte}>: package(ISO8601)
+<src/main/frogmonitor.{native,byte}>: package(ZMQ)
+<src/main/frogmonitor.{native,byte}>: package(archimedes.cairo)
+<src/main/frogmonitor.{native,byte}>: package(cmdliner)
+<src/main/frogmonitor.{native,byte}>: package(containers)
+<src/main/frogmonitor.{native,byte}>: package(csv)
+<src/main/frogmonitor.{native,byte}>: package(junit)
+<src/main/frogmonitor.{native,byte}>: package(lwt)
+<src/main/frogmonitor.{native,byte}>: package(lwt-zmq)
+<src/main/frogmonitor.{native,byte}>: package(lwt.ppx)
+<src/main/frogmonitor.{native,byte}>: package(lwt.preemptive)
+<src/main/frogmonitor.{native,byte}>: package(lwt.unix)
+<src/main/frogmonitor.{native,byte}>: package(maki)
+<src/main/frogmonitor.{native,byte}>: package(maki.yojson)
+<src/main/frogmonitor.{native,byte}>: package(olinq)
+<src/main/frogmonitor.{native,byte}>: package(ppx_deriving.std)
+<src/main/frogmonitor.{native,byte}>: package(ppx_deriving_yojson)
+<src/main/frogmonitor.{native,byte}>: package(printbox)
+<src/main/frogmonitor.{native,byte}>: package(re.posix)
+<src/main/frogmonitor.{native,byte}>: package(result)
+<src/main/frogmonitor.{native,byte}>: package(threads)
+<src/main/frogmonitor.{native,byte}>: package(toml)
+<src/main/frogmonitor.{native,byte}>: package(tyxml)
+<src/main/frogmonitor.{native,byte}>: package(unix)
+<src/main/frogmonitor.{native,byte}>: package(uri)
+<src/main/frogmonitor.{native,byte}>: package(uuidm)
+<src/main/frogmonitor.{native,byte}>: use_frog
+<src/main/frogmonitor.{native,byte}>: use_frog_server
 # Executable frogtptp
 <src/main/frogtptp.{native,byte}>: package(ISO8601)
 <src/main/frogtptp.{native,byte}>: package(ZMQ)
