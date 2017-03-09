@@ -50,6 +50,9 @@ type t =
   | StatusAnswer  of status_answer [@name "statusanswer"]
   | StatusOk [@name "statusok"]
   | StopAccepting [@name "stopaccepting"] (* from now on, no more accepts *)
+  | Start_bench of int [@name "start_bench"] (* number of files *)
+  | Finish_bench [@name "finish_bench"] (* *)
+  | Event of Event.t [@name "event"]
   [@@deriving yojson, show]
 
 [@@@warning "+39"]

@@ -36,13 +36,13 @@ Library "frog_server"
   Pack:             true
   FindlibParent:    frog
   FindlibName:      server
-  Modules:          Config, JUnit_wrapper, Lock_client, Lock_daemon,
-                    Lock_messages, Maki_wrapper, Plot,
-                    Run, TPTP, Test_run, Misc_unix, Pub_sub,
+  Modules:          Config, JUnit_wrapper, IPC_client, IPC_daemon,
+                    IPC_message, Maki_wrapper, Plot, Signal,
+                    Run, TPTP, Test_run, Misc_unix,
                     Storage, Event_storage, Problem_run, ProverSet
   BuildDepends:     frog, unix, lwt.unix, lwt.preemptive, cmdliner,
                     archimedes.cairo, junit, maki, printbox,
-                    ZMQ, lwt-zmq, maki.yojson, ISO8601, threads
+                    maki.yojson, ISO8601, threads
 
 Executable frogweb
   Path:             src/web_server/

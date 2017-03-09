@@ -1,14 +1,14 @@
 
 (* This file is free software, part of frog-utils. See file "license" for more details. *)
 
-(** {1 Daemon} *)
+(** {1 Daemon for Coordination} *)
 
 open Frog
 
-module M = Lock_messages
+module M = IPC_message
 
 let main_config_file = "/etc/froglock.conf"
-let section = Lwt_log.Section.make "LockDaemon"
+let section = Lwt_log.Section.make "daemon"
 
 let default_port = 12_000 
 
@@ -216,6 +216,11 @@ let handle_client ~state ic oc =
     Lwt_log.ign_info ~section "stop accepting jobs...";
     state.accept <- false;
     Lwt.return_unit
+  | (M.Start_bench _
+    | M.Finish_bench
+    | M.Event _) as _msg ->
+    (* broadcast *)
+    assert false (* TODO: broadcast to all clients *)
   | ( M.StatusAnswer _
     | M.StatusOk
     | M.Go | M.Reject

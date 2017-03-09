@@ -68,7 +68,7 @@ module Run = struct
     if dyn then progress_dynamic n else progress_static
 
   (* run provers on the given dir, return a list [prover, dir, results] *)
-  let test_dir ?dyn ?j ?timeout ?memory ?caching ?provers ~config d
+  let test_dir ?dyn ~ipc ?j ?timeout ?memory ?caching ?provers ~config d
     : T.Top_result.t E.t =
     let open E.Infix in
     let dir = d.T.Config.directory in
@@ -79,8 +79,7 @@ module Run = struct
       >>= fun pbs ->
       let len = List.length pbs in
       Format.printf "run %d tests in %s@." len dir;
-      Pub_sub.create () >>= fun pubsub ->
-      let%lwt () = Pub_sub.send pubsub (Pub_sub.M_start_bench len) in
+      let%lwt () = IPC_client.send ipc (IPC_message.Start_bench len) in
       let provers = match provers with
         | None -> config.T.Config.provers
         | Some l ->
@@ -90,7 +89,7 @@ module Run = struct
       in
       let on_solve r =
         let%lwt () = progress ?dyn (len * List.length provers) r in
-        Pub_sub.send pubsub (Pub_sub.M_event (Event.Prover_run r))
+        IPC_client.send ipc (IPC_message.Event (Event.Prover_run r))
       in
       (* solve *)
       let main =
@@ -100,7 +99,7 @@ module Run = struct
       in
       main
       >>= fun results ->
-      let%lwt () = Pub_sub.send pubsub Pub_sub.M_finish_bench in
+      let%lwt () = IPC_client.send ipc IPC_message.Finish_bench in
       Prover.Map_name.iter
         (fun p r ->
            Format.printf "@[<2>%s on `%s`:@ @[<hv>%a@]@]@."
@@ -131,10 +130,10 @@ module Run = struct
     let problems = config.T.Config.problems in
     let storage = Storage.make [] in
     (* build problem set (exclude config file!) *)
-    Lock_client.connect_and_acquire port
-      (fun _ ->
+    IPC_client.connect_and_acquire port
+      (fun (c,_) ->
          E.map_s
-           (test_dir ?dyn ?j ?timeout ?memory ?caching ?provers ~config) problems)
+           (test_dir ?dyn ~ipc:c ?j ?timeout ?memory ?caching ?provers ~config) problems)
     >|= T.Top_result.merge_l
     >>= fun (results:T.Top_result.t) ->
     begin match save with

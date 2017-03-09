@@ -49,6 +49,4 @@ PKG ISO8601
 PKG csv
 PKG containers
 PKG printbox
-PKG ZMQ
-PKG lwt-zmq
 #FLG -w +a-4-44-29-48

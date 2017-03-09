@@ -12,13 +12,23 @@ module C = Calculon
 
 (* state *)
 type state = {
-  pubsub: Pub_sub.t;
+  c: IPC_client.t;
+  send_stop: unit Lwt.u; (* to disconnect *)
 }
 
-(* connect to ZMQ channel *)
-let connect () : state E.t Lwt.t =
+let port = IPC_daemon.default_port
+
+let connect (): state E.t Lwt.t =
   let open EL.Infix in
-  Pub_sub.create () >|= fun pubsub -> {pubsub}
+  let stop, send_stop = Lwt.wait () in
+  let res, send_res = Lwt.wait () in
+  Lwt.async (fun () ->
+    IPC_client.connect_or_spawn port
+      (fun c ->
+         Lwt.wakeup send_res c;
+         stop));
+  let%lwt c = res in
+  EL.return {c; send_stop}
 
 let cmd_status (st:state): C.Command.t =
   C.Command.make_simple
@@ -30,14 +40,14 @@ let maybe_str = function
   | None -> "<none>"
   | Some s -> s
 
-let cmd_froglock : C.Command.t =
-  let module M = Lock_messages in
+let cmd_froglock (st:state) : C.Command.t =
+  let module M = IPC_message in
   C.Command.make_simple_l
     ~prefix:"lock_status" ~descr:"status of froglock" ~prio:10
     (fun _ _ ->
-       let%lwt res = Lock_client.get_status Lock_daemon.default_port in
+       let%lwt res = IPC_client.get_status st.c in
        begin match res with
-         | Some {M.max_cores=_; current; waiting} ->
+         | {M.max_cores=_; current; waiting} ->
            let msg_waiting =
              if waiting=[] then []
              else [Printf.sprintf "[%d waiting jobs]" (List.length waiting)]
@@ -57,12 +67,11 @@ let cmd_froglock : C.Command.t =
                current
            in
            Lwt.return (msg_current @ msg_waiting)
-         | None -> Lwt.return []
        end)
 
 let plugin : C.Plugin.t =
   C.Plugin.stateful ~name:"frogirc"
     ~to_json:(fun _ -> None)
     ~of_json:(fun actions _ -> connect ())
-    ~commands:(fun st -> [ cmd_status st; cmd_froglock ])
+    ~commands:(fun st -> [ cmd_status st; cmd_froglock st; ])
     ()

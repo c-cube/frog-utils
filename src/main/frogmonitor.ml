@@ -10,14 +10,14 @@ module E = Misc.LwtErr
 
 let main () =
   let open E.Infix in
-  Pub_sub.create () >>= fun pubsub ->
-  Lwt_log.ign_debug_f "opened pubsub socket";
-  (* read event, print it, repeat *)
-  let rec loop () =
-    Pub_sub.next pubsub >>= fun e ->
-    Printf.printf "read: %s\n%!" (Pub_sub.show_msg e);
-    loop ()
-  in
-  loop()
+  IPC_client.connect_or_spawn IPC_daemon.default_port
+    (fun c ->
+       Lwt_log.ign_debug_f "opened connection to daemon";
+       (* print every message *)
+       IPC_client.on_msg c
+         (fun msg ->
+            Printf.printf "read: %s\n%!" (IPC_message.show msg);
+            `Continue);
+       IPC_client.wait_close c)
 
-let () = main () |> E.to_exn |> Lwt_main.run
+let () = main () |> Lwt_main.run
