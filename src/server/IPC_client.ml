@@ -14,11 +14,12 @@ type t = {
   port : int;
   ic: Lwt_io.input_channel;
   oc: Lwt_io.output_channel;
+  mutable uid: int; (* query counter *)
   on_next: msg Signal.t; (* call on incoming messages *)
   listen_thread: unit Lwt.t; (* loops on incoming messages *)
 }
 
-let section = Lwt_log.Section.make "LockClient"
+let section = Lwt_log.Section.make "ipc_client"
 
 let with_chans port f =
   Lwt_log.ign_debug_f ~section "trying to connect to daemon on port %d..." port;
@@ -33,7 +34,8 @@ let rec listen_loop (c:t): unit Lwt.t =
 let wait_close (c:t): unit Lwt.t = c.listen_thread
 
 let connect port f =
-  with_chans port (fun ic oc ->
+  with_chans port
+    (fun ic oc ->
       Lwt_log.ign_debug_f ~section "connected to daemon";
       let%lwt () = M.print oc M.Start in
       let on_next = Signal.create() in
@@ -44,9 +46,10 @@ let connect port f =
         listen_loop ()
       in
       let c = {
-        port; ic; oc; on_next; listen_thread=listen_loop ();
+        port; ic; oc; on_next; uid=0; listen_thread=listen_loop ();
       } in
       let%lwt res = f c in
+      Lwt_log.ign_debug ~section "send `end` to daemon";
       let%lwt () = M.print c.oc M.End in
       Lwt.cancel c.listen_thread;
       Lwt_log.ign_debug ~section "connection to daemon closed";
@@ -80,22 +83,30 @@ let acquire ?cwd ?user ?info ?(cores=0) ?(priority=1) ?(tags=[]) (c:t) f =
   let query_time = Unix.gettimeofday() in
   (* send "acquire" *)
   let pid = Unix.getpid() in
-  let msg = M.Acquire {M.info; user; priority; query_time; tags; cwd; pid; cores} in
+  let uid = c.uid in
+  c.uid <- uid+1;
+  let msg =
+    M.Acquire {M.info; uid; user; priority; query_time;
+               tags; cwd; pid; cores} in
   let%lwt () = M.print c.oc msg in
-  (* expect "go" *)
+  (* expect "go" or "reject" for this uid *)
   let%lwt res =
-    next_filter c (function M.Go | M.Reject -> true | _ -> false)
+    next_filter c (function (M.Go u | M.Reject u) -> u=uid | _ -> false)
   in
   begin match res with
-    | M.Reject ->
-      Lwt_log.ign_debug ~section "lock: rejected (daemon too busy?)";
+    | M.Reject u ->
+      Lwt_log.ign_debug ~section "lock: rejected (daemon too busy or stopped?)";
+      assert (u=uid);
       f false
-    | M.Go ->
+    | M.Go u ->
       Lwt_log.ign_debug ~section "acquired lock";
-      let%lwt res = f true in
-      Lwt_log.ign_debug ~section "release lock";
-      let%lwt () = M.print c.oc M.Release in
-      Lwt.return res
+      Lwt.finalize
+        (fun () ->
+           assert (u=uid);
+           f true)
+        (fun () ->
+          Lwt_log.ign_debug ~section "release lock";
+          M.print c.oc (M.Release uid))
     | _ -> assert false
   end
 
@@ -106,15 +117,10 @@ let connect_or_spawn ?(retry=1.) port f =
   with _ ->
     (* launch daemon and re-connect *)
     Lwt_log.ign_info ~section "could not connect; launch daemon...";
-    begin match%lwt IPC_daemon.fork_and_spawn port with
-    | `child thread ->
-        let%lwt () = thread in
-        Lwt.fail Exit
-    | `parent ->
-        let%lwt () = Lwt_unix.sleep retry in
-        Lwt_log.ign_info ~section "retry to connect to daemon...";
-        connect port f
-    end
+    IPC_daemon.fork_daemon port;
+    let%lwt () = Lwt_unix.sleep retry in
+    Lwt_log.ign_info ~section "retry to connect to daemon...";
+    connect port f
 
 let connect_and_acquire
     ?cwd ?user ?info ?cores ?priority ?tags ?retry port f =

@@ -8,7 +8,7 @@ type t =
   | Unknown
   | Timeout
   | Error
-  [@@deriving yojson]
+  [@@deriving yojson,eq]
 [@@@warning "+39"]
 
 let to_string = function

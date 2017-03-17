@@ -8,7 +8,7 @@ open Frog_server
 
 module M = IPC_message
 
-let section = Lwt_log.Section.make "Lock"
+let section = Lwt_log.Section.make "froglock"
 
 let () =
   M.register_exn_printers();
@@ -62,7 +62,7 @@ let run_command params =
                 let cmd = prog, Array.of_list (prog::args) in
                 cmd, (String.concat " " (prog::args))
           in
-          Lwt_log.ign_debug_f "start command %s" cmd_string;
+          Lwt_log.ign_debug_f ~section "start command %s" cmd_string;
           let start = Unix.gettimeofday () in
           (* close stdin so that interactive commands fail *)
           Lwt_process.with_process_none ~stdin:`Close ~stdout:`Keep cmd
@@ -75,7 +75,7 @@ let run_command params =
               let res = {res_cmd=cmd_string; time; status; pid=process#pid; } in
               Lwt.return (Some res)
             )
-      | false ->
+        | false ->
           Lwt_log.ign_info_f "could not acquire lock";
           Lwt.return_none
       )

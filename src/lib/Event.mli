@@ -16,7 +16,7 @@ type raw_result = {
   rtime : float;
   utime : float;
   stime : float;
-} [@@deriving yojson]
+} [@@deriving yojson,eq]
 
 type prover  = Prover.t [@@deriving yojson]
 type checker = unit [@@deriving yojson]
@@ -26,14 +26,14 @@ type +'a result = {
   problem : Problem.t;
   raw : raw_result;
 }
-[@@deriving yojson]
+[@@deriving yojson,eq]
 
 val analyze_p : prover result -> Res.t
 
 type t =
   | Prover_run of prover result
   | Checker_run of checker result
-[@@deriving yojson]
+[@@deriving yojson,eq]
 
 type event = t
 
@@ -53,7 +53,7 @@ type snapshot = private {
 
 module Snapshot : sig
   type t = snapshot
-  [@@deriving yojson]
+  [@@deriving yojson,eq]
 
   val make : ?uuid:Uuidm.t -> ?meta:string -> ?timestamp:float -> event list -> t
 
@@ -75,7 +75,7 @@ type snapshot_meta = private {
 }
 
 module Meta : sig
-  type t = snapshot_meta [@@deriving yojson]
+  type t = snapshot_meta [@@deriving yojson,eq]
 
   val provers : t -> Prover.Set.t
   val timestamp : t -> float

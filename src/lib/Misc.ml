@@ -172,3 +172,4 @@ end
 
 module StrMap = CCMap.Make(String)
 module StrSet = CCSet.Make(String)
+module Int_map = CCMap.Make(CCInt)

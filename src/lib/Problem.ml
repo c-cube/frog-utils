@@ -9,7 +9,7 @@ module StrMap = Misc.StrMap
 type t = {
   name: string;  (* filename *)
   expected: Res.t; (* result expected *)
-} [@@deriving yojson]
+} [@@deriving yojson,eq]
 [@@@warning "+39"]
 
 type problem = t

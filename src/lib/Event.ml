@@ -18,16 +18,16 @@ type raw_result = {
   rtime : float;
   utime : float;
   stime : float;
-} [@@deriving yojson]
+} [@@deriving yojson,eq]
 
-type prover  = Prover.t [@@deriving yojson]
-type checker = unit [@@deriving yojson]
+type prover  = Prover.t [@@deriving yojson,eq]
+type checker = unit [@@deriving yojson,eq]
 
 type +'a result = {
   program : 'a;
   problem : Problem.t;
   raw : raw_result;
-} [@@deriving yojson]
+} [@@deriving yojson,eq]
 
 let analyze_p t =
   let prover = t.program in
@@ -50,9 +50,9 @@ let analyze_p t =
 type t =
   | Prover_run of prover result
   | Checker_run of checker result
-[@@deriving yojson]
+[@@deriving yojson,eq]
 
-type event = t [@@deriving yojson]
+type event = t [@@deriving yojson,eq]
 
 let to_string r = to_yojson r |> Yojson.Safe.to_string
 let pp out r = Format.pp_print_string out (to_string r)
@@ -61,6 +61,7 @@ let mk_prover r = Prover_run r
 let mk_checker r = Checker_run r
 
 type uuid = Uuidm.t
+let equal_uuid = Uuidm.equal
 
 let uuid_to_yojson u = `String (Uuidm.to_string u)
 let uuid_of_yojson j = match j with
@@ -71,7 +72,7 @@ let uuid_of_yojson j = match j with
     end
   | _ -> E.fail "expected string for uuid"
 
-type timestamp = float
+type timestamp = float [@@deriving eq]
 let timestamp_to_yojson f = `String (string_of_float f)
 let timestamp_of_yojson = function
   | `String s -> (try E.return (float_of_string s) with _ -> E.fail "expected float")
@@ -82,14 +83,14 @@ type snapshot = {
   timestamp: timestamp;
   events: t list;
   meta: (string [@default ""]); (* additional metadata *)
-} [@@deriving yojson]
+} [@@deriving yojson,eq]
 
 let assoc_or def x l =
   try List.assoc x l
   with Not_found -> def
 
 module Snapshot = struct
-  type t = snapshot [@@deriving yojson]
+  type t = snapshot [@@deriving yojson,eq]
 
   let to_file ~file t =
     Yojson.Safe.to_file file (to_yojson t) |> Misc.LwtErr.return
@@ -134,12 +135,12 @@ type snapshot_meta = {
   s_uuid: uuid [@key "uuid"];
   s_timestamp: float [@key "timestamp"];
   s_meta: (string [@default ""])[@key "meta"];
-  s_provers: prover_set [@key "provers"];
+  s_provers: prover_set [@key "provers"][@equal Prover.Set.equal];
   s_len: int [@key "length"];
-} [@@deriving yojson]
+} [@@deriving yojson,eq]
 
 module Meta = struct
-  type t = snapshot_meta [@@deriving yojson]
+  type t = snapshot_meta [@@deriving yojson,eq]
   let uuid s = s.s_uuid
   let timestamp s = s.s_timestamp
   let provers s = s.s_provers

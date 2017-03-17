@@ -4,7 +4,7 @@
 type t = {
   name: string;  (* filename *)
   expected: Res.t; (* result expected *)
-} [@@deriving yojson]
+} [@@deriving yojson,eq]
 
 type problem = t
 type problem_set = t list

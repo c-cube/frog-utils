@@ -323,7 +323,7 @@ let term_run =
          info [] ~docv:"DIR" ~doc:"target directories (containing tests)")
   and port =
     let doc = "Local port for the lock daemon" in
-    Arg.(value & opt int 12000 & info ["port"] ~docv:"PORT" ~doc)
+    Arg.(value & opt int IPC_daemon.default_port & info ["port"] ~docv:"PORT" ~doc)
   and provers =
     Arg.(value & opt (some (list string)) None & info ["p"; "provers"] ~doc:"select provers")
   in
