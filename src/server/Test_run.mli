@@ -12,6 +12,8 @@ val config_of_file : string -> Test.Config.t Misc.Err.t
 
 val config_of_config : Config.t -> string list -> Test.Config.t Misc.Err.t
 
+val print_result : Test.result -> unit
+
 val run :
   ?on_solve:(Test.result -> unit Lwt.t) ->
   ?on_done:(Test.top_result -> unit Lwt.t) ->

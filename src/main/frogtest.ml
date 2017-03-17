@@ -44,24 +44,7 @@ module Run = struct
       Lwt.return_unit
 
   let progress_static res =
-    let module F = Misc.Fmt in
-    let p_res = Event.analyze_p res in
-    let pp_res out () =
-      let str, c = match Problem.compare_res res.Event.problem p_res with
-        | `Same -> "ok", `Green
-        | `Improvement -> "ok (improved)", `Blue
-        | `Disappoint -> "disappoint", `Yellow
-        | `Mismatch -> "bad", `Red
-      in
-      Format.fprintf out "%a" (F.in_bold_color c Format.pp_print_string) str
-    in
-    let prover = res.Event.program in
-    let prover_name = Filename.basename prover.Prover.name in
-    let pb_name = res.Event.problem.Problem.name in
-    Lwt_log.ign_debug_f "result for `%s` with %s: %s (%.1fs)"
-       prover_name pb_name (Res.to_string p_res) res.Event.raw.Event.rtime;
-    Format.printf "%-20s%-50s %a (%.1fs)@." prover_name (pb_name ^ " :")
-      pp_res () res.Event.raw.Event.rtime;
+    Test_run.print_result res;
     Lwt.return_unit
 
   let progress ?(dyn=false) n =
@@ -131,6 +114,7 @@ module Run = struct
     let storage = Storage.make [] in
     (* build problem set (exclude config file!) *)
     IPC_client.connect_and_acquire port
+      ~info:"frogtest" ?cores:j ~retry:5. ~tags:(CCOpt.to_list meta)
       (fun (c,_) ->
          E.map_s
            (test_dir ?dyn ~ipc:c ?j ?timeout ?memory ?caching ?provers ~config) problems)
