@@ -1,6 +1,7 @@
 # Frog-utils
 
 Scheduling and running jobs on a shared computer, then analyse their output.
+[![Build Status](https://travis-ci.org/c-cube/frog-utils.svg?branch=master)](https://travis-ci.org/c-cube/frog-utils)
 
 License: BSD.
 
