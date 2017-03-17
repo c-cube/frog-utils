@@ -1,12 +1,8 @@
 language: c
 env:
-  - RUN_TEST=false OCAML_VERSION=4.00.1
-  - RUN_TEST=false OCAML_VERSION=4.01.0
-  - RUN_TEST=true OCAML_VERSION=4.02.3
-  - RUN_TEST=true OCAML_VERSION=4.03.0
-  - RUN_TEST=true OCAML_VERSION=4.03.0+flambda
-  - RUN_TEST=true OCAML_VERSION=4.04.0
-  - RUN_TEST=true OCAML_VERSION=4.04.0+flambda
+  - OCAML_VERSION=4.02.3
+  - OCAML_VERSION=4.03.0
+  - OCAML_VERSION=4.04.0
 addons:
   apt:
     sources:
@@ -14,15 +10,18 @@ addons:
     packages:
       - opam
       - time
-before_install:
+      - libgmp-dev
+cache:
+  directories:
+    - $HOME/.opam
+install:
   - export OPAMYES=1
   - export OPAMVERBOSE=1
   - opam init
   - opam switch ${OCAML_VERSION}
   - eval `opam config env`
-  - opam install ocamlfind ocamlbuild
-  - opam pin add -k git frogutils . --yes
-install:
+  - opam update
+  - opam reinstall --yes ocamlfind ocamlbuild oasis lwt base-unix yojson toml re ppx_deriving ppx_deriving_yojson cairo2 archimedes cmdliner result olinq junit uuidm maki ISO8601 csv containers printbox react reactiveData js_of_ocaml opium calculon
+script:
   - ./configure
   - make
-script:
