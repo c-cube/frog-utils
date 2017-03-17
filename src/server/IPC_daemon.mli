@@ -13,4 +13,3 @@ val spawn : int -> unit Lwt.t
 val fork_daemon : int -> unit
 (** Fork the process and spawn a daemon in the child
     (using {!spawn} in [frogdaemon]). *)
-

@@ -436,10 +436,21 @@ let spawn (port:int): unit Lwt.t =
 
 (* TODO: change log level through connection *)
 
+(* init function: check if we are within a daemon call (i.e. the main process
+   that has called itself with DAEMON_PORT=<port> to start a daemon),
+   in which case we call {!spawn} and then exit *)
+let () = match Sys.getenv "DAEMON_PORT" |> int_of_string with
+  | p ->
+    (* Printf.printf "run as daemon on port %d\n%!" p; *)
+    Lwt_main.run (spawn p);
+    exit 0
+  | exception _ -> ()
+
 let fork_daemon port : unit =
   Lwt.async
     (fun () ->
-       let cmd = Printf.sprintf "frogdaemon --port %d" port in
-       Lwt_process.exec (Lwt_process.shell cmd));
+       let cmd = Sys.argv.(0), [| "frogdaemon" |] in
+       let env = [|"DAEMON_PORT="^string_of_int port |] in
+       Lwt_process.exec ~env cmd);
   ()
 
