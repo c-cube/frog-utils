@@ -44,13 +44,14 @@ depends: [
     "maki"
     "ISO8601"
     "csv"
+    "uri"
     "containers"
     "printbox"
+    "js_of_ocaml"
 ]
 depopts: [
     "react"
     "reactiveData"
-    "js_of_ocaml"
     "opium"
     "calculon"
 ]
