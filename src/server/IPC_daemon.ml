@@ -436,21 +436,46 @@ let spawn (port:int): unit Lwt.t =
 
 (* TODO: change log level through connection *)
 
+let setup_loggers file_name () =
+  let syslog = Lwt_log.syslog ~facility:`User () in
+  Lwt_log.default := syslog;
+  let%lwt () =
+      try%lwt
+        let%lwt log' = Lwt_log.file ~mode:`Append ~perm:0o666 ~file_name () in
+        let all_log = Lwt_log.broadcast [log'; syslog] in
+        Lwt_log.default := all_log;
+        Lwt.return_unit
+      with e ->
+        let%lwt _ = Lwt_io.eprintlf "error opening log file %s" file_name in
+        Lwt_log.ign_error_f "could not open file %s: %s"
+          file_name (Printexc.to_string e);
+        Lwt.return_unit
+  in
+  Lwt_io.close Lwt_io.stderr
+
 (* init function: check if we are within a daemon call (i.e. the main process
    that has called itself with DAEMON_PORT=<port> to start a daemon),
    in which case we call {!spawn} and then exit *)
 let () = match Sys.getenv "DAEMON_PORT" |> int_of_string with
   | p ->
     (* Printf.printf "run as daemon on port %d\n%!" p; *)
-    Lwt_main.run (spawn p);
+    Lwt_daemon.daemonize ~syslog:false ~directory:"/tmp"
+      ~stdin:`Close ~stdout:`Close ~stderr:`Keep ();
+    let log_file =
+      let config = Config.parse_or_empty main_config_file in
+      Config.get_string ~default:"/tmp/froglock.log" config "log"
+    in
+    Lwt_main.run (
+      let%lwt () = setup_loggers log_file () in
+      spawn p
+    );
     exit 0
   | exception _ -> ()
 
 let fork_daemon port : unit =
   Lwt.async
     (fun () ->
-       let cmd = Sys.argv.(0), [| "frogdaemon" |] in
-       let env = [|"DAEMON_PORT="^string_of_int port |] in
-       Lwt_process.exec ~env cmd);
+       let cmd = Lwt_process.shell (Printf.sprintf "frogdaemon -p %d" port) in
+       Lwt_process.exec cmd);
   ()
 
