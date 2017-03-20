@@ -13,7 +13,7 @@ build: [
     "--bindir" "%{bin}%"
     "--sharedstatedir" "%{share}%"
     "--%{opium+js_of_ocaml+react+reactiveData:enable}%-web"
-    "--%{lwt-zmq+zmq+calculon:enable}%-irc"
+    "--%{lwt+calculon:enable}%-irc"
     "--mandir" "%{man}%"]
   [make]
 ]
