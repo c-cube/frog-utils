@@ -127,7 +127,8 @@ let run ?(on_solve = nop_) ?(on_done = nop_)
     : Test.top_result E.t =
   let open E.Infix in
   let config = C.update ?j ?timeout ?memory config in
-  let limit = Maki.Limit.create config.C.j in
+  let j = CCOpt.get_or j ~default:config.C.j in
+  let limit = Maki.Limit.create j in
   E.map_p
     (fun pb_path ->
        (* transform into problem *)

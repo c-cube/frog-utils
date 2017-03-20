@@ -114,7 +114,7 @@ module Run = struct
     let storage = Storage.make [] in
     (* build problem set (exclude config file!) *)
     IPC_client.connect_and_acquire port
-      ~info:"frogtest" ?cores:j ~retry:5. ~tags:(CCOpt.to_list meta)
+      ~info:"frogtest" ~retry:5. ~tags:(CCOpt.to_list meta)
       (fun (c,_) ->
          E.map_s
            (test_dir ?dyn ~ipc:c ?j ?timeout ?memory ?caching ?provers ~config) problems)
