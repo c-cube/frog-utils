@@ -206,16 +206,18 @@ module Analyze = struct
       (List.length t.errors)
       (MStr.cardinal t.raw)
 
-  let print out ({ raw; stat; improved; ok; disappoint; bad } as r) =
+  let print out ({ raw; stat; improved; ok; disappoint; bad; errors } as r) =
     let pp_l out = fpf out "[@[<hv>%a@]]" (pp_list_ pp_raw_res_) in
     fpf out
-      "@[<hv2>results: {@,summary: %a@,stat:%a,@ %-15s: %a,@ %-15s: %a,@ %-15s: %a,@ %-15s: %a@]@,}"
+      "@[<hv2>results: {@,summary: %a@,stat:%a,@ %-15s: %a\
+       ,@ %-15s: %a,@ %-15s: %a,@ %-15s: %a,@ %-15s: %a@]@,}"
       pp_summary  r
       Raw.pp_stat stat
       "ok" pp_l ok
       "improved" pp_l improved
       "disappoint" pp_l disappoint
       "bad" pp_l bad
+      "errors" pp_l errors
 
   let to_html_summary t =
     H.table
