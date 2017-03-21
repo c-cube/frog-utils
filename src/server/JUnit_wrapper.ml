@@ -27,6 +27,7 @@ let test_analyze (t:Test.Analyze.t) : Junit.Testsuite.t =
          in
          let case =
            match Problem.compare_res r.Event.problem res with
+             | `Error
              | `Mismatch ->
                J.Testcase.error
                  ~typ ~classname ~time

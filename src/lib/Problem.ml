@@ -34,9 +34,9 @@ let compare_res pb res =
   | Res.Unknown, Res.Timeout
   | (Res.Sat | Res.Unsat | Res.Error), (Res.Unknown | Res.Timeout) -> `Disappoint
   | (Res.Unsat | Res.Error), Res.Sat
-  | (Res.Sat | Res.Error), Res.Unsat
+  | (Res.Sat | Res.Error), Res.Unsat -> `Mismatch
   | (Res.Sat | Res.Unknown | Res.Timeout | Res.Unsat), Res.Error ->
-    `Mismatch
+    `Error
   | (Res.Unknown | Res.Timeout), (Res.Sat | Res.Unsat) ->
     `Improvement
 

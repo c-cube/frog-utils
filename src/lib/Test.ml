@@ -72,7 +72,8 @@ module Raw = struct
     total_time: float; (* for sat+unsat *)
   } [@@deriving yojson]
 
-  let stat_empty = {unsat=0; sat=0; errors=0; unknown=0; timeout=0; total_time=0.; }
+  let stat_empty =
+    {unsat=0; sat=0; errors=0; unknown=0; timeout=0; total_time=0.; }
 
   let add_sat_ t s = {s with sat=s.sat+1; total_time=s.total_time+. t; }
   let add_unsat_ t s = {s with unsat=s.unsat+1; total_time=s.total_time+. t; }
@@ -136,7 +137,8 @@ module Analyze = struct
     improved: result list;
     ok: result list;
     disappoint: result list;
-    bad: result list;
+    errors: result list;
+    bad: result list; (* mismatch *)
   } [@@deriving yojson]
   [@@@warning "+39"]
 
@@ -154,13 +156,14 @@ module Analyze = struct
     let ok = assoc_or [] `Same l in
     let bad = assoc_or [] `Mismatch l in
     let disappoint = assoc_or [] `Disappoint l in
+    let errors = assoc_or [] `Error l in
     (* stats *)
     let stat = Raw.stat raw in
-    improved, ok, bad, disappoint, stat
+    improved, ok, bad, disappoint, errors, stat
 
   let make raw =
-    let improved, ok, bad, disappoint, stat = analyse_ raw in
-    { raw; stat; improved; ok; disappoint; bad; }
+    let improved, ok, bad, disappoint, errors, stat = analyse_ raw in
+    { raw; stat; improved; ok; disappoint; errors; bad; }
 
   let of_yojson j = match Raw.of_yojson j with
     | Result.Ok x -> Result.Ok (make x)
@@ -193,10 +196,21 @@ module Analyze = struct
       Res.print r.Event.problem.Problem.expected
       Res.print (Event.analyze_p r)
 
-  let print out { raw; stat; improved; ok; disappoint; bad } =
+  let pp_summary out t: unit =
+    Format.fprintf out
+      "(@[<hv>:ok %d@ :improved %d@ :disappoint %d@ :bad %d@ :errors %d@ :total %d@])"
+      (List.length t.ok)
+      (List.length t.improved)
+      (List.length t.disappoint)
+      (List.length t.bad)
+      (List.length t.errors)
+      (MStr.cardinal t.raw)
+
+  let print out ({ raw; stat; improved; ok; disappoint; bad } as r) =
     let pp_l out = fpf out "[@[<hv>%a@]]" (pp_list_ pp_raw_res_) in
     fpf out
-      "@[<hv2>results: {@,stat:%a,@ %-15s: %a,@ %-15s: %a,@ %-15s: %a,@ %-15s: %a@]@,}"
+      "@[<hv2>results: {@,summary: %a@,stat:%a,@ %-15s: %a,@ %-15s: %a,@ %-15s: %a,@ %-15s: %a@]@,}"
+      pp_summary  r
       Raw.pp_stat stat
       "ok" pp_l ok
       "improved" pp_l improved
@@ -213,6 +227,7 @@ module Analyze = struct
            "improved", (List.length t.improved);
            "disappoint", (List.length t.disappoint);
            "bad", (List.length t.bad);
+           "errors", (List.length t.errors);
            "total", (MStr.cardinal t.raw);
          ])
 
@@ -232,6 +247,7 @@ module Analyze = struct
     |> R.add "ok" (lst_raw_res t.ok)
     |> R.add "disappoint" (lst_raw_res t.disappoint)
     |> R.add "bad" (lst_raw_res t.bad)
+    |> R.add "errors" (lst_raw_res t.errors)
     |> R.add "stats" (Raw.to_html_stats t.stat)
     |> R.add "raw" (to_html_raw uri_of_problem uri_of_raw_res t.raw)
     |> R.close

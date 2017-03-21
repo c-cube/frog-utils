@@ -108,7 +108,8 @@ let print_result (res:Test.result): unit =
     let str, c = match Problem.compare_res res.Event.problem p_res with
       | `Same -> "ok", `Green
       | `Improvement -> "ok (improved)", `Blue
-      | `Disappoint -> "disappoint", `Yellow
+      | `Disappoint -> "disappoint", `Cyan
+      | `Error -> "error", `Yellow
       | `Mismatch -> "bad", `Red
     in
     Format.fprintf out "%a" (F.in_bold_color c Format.pp_print_string) str

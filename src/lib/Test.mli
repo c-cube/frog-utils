@@ -44,7 +44,8 @@ module Analyze : sig
     improved  : result list;
     ok        : result list;
     disappoint: result list;
-    bad       : result list;
+    errors    : result list;
+    bad       : result list; (* mismatch *)
   } [@@deriving yojson]
 
   val make : Raw.t -> t
