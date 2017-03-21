@@ -29,6 +29,7 @@ module Fmt = struct
     | `Green
     | `Blue
     | `Normal
+    | `Cyan
     ]
 
   let int_of_color_ = function
@@ -37,6 +38,7 @@ module Fmt = struct
     | `Green -> 2
     | `Yellow -> 3
     | `Blue -> 4
+    | `Cyan -> 6
 
   let pp_list ?(start="") ?(stop="") ?(sep=",") pp fmt l =
     let rec pp_list l = match l with
