@@ -155,10 +155,11 @@ end
 
 (** {2 Display Run} *)
 module Display = struct
-  let main (file:string option) =
+  let main (name:string option)(provers:string list option)(dir:string list) =
     let open E in
     let storage = Storage.make [] in
-    Test_run.find_or_last ~storage file >>= fun res ->
+    Test_run.find_or_last ~storage name >>= fun res ->
+    let res = T.Top_result.filter ~provers ~dir res in
     Format.printf "%a@." T.Top_result.pp res;
     E.return ()
 end
@@ -192,10 +193,11 @@ end
 
 (** {2 Display+ Compare} *)
 module Display_bench = struct
-  let main (file:string option) =
+  let main (name:string option)(provers:string list option)(dir:string list) =
     let open E in
     let storage = Storage.make [] in
-    Test_run.find_or_last ~storage file >>= fun res ->
+    Test_run.find_or_last ~storage name >>= fun res ->
+    let res = T.Top_result.filter ~provers ~dir res in
     let b = T.Bench.make res in
     Format.printf "%a@." T.Bench.pp b;
     E.return ()
@@ -332,21 +334,32 @@ let snapshot_name_term : string option Cmdliner.Term.t =
 (* sub-command to display a file *)
 let term_display =
   let open Cmdliner in
-  let aux file = Lwt_main.run (Display.main file) in
-  let file =
-    Arg.(value & pos 0 (some string) None & info [] ~docv:"FILE" ~doc:"file containing results (default: last)")
+  let aux name provers dir = Lwt_main.run (Display.main name provers dir) in
+  let name_ =
+    Arg.(value & pos 0 (some string) None & info []
+           ~docv:"FILE" ~doc:"file containing results (default: last)")
+  and dir =
+    Arg.(value & pos_right 0 string [] &
+         info [] ~docv:"DIR" ~doc:"target directories (containing tests)")
+  and provers =
+    Arg.(value & opt (some (list string)) None & info ["p"; "provers"] ~doc:"select provers")
   and doc = "display test results from a file" in
-  Term.(pure aux $ file), Term.info ~doc "display"
+  Term.(pure aux $ name_ $ provers $ dir), Term.info ~doc "display"
 
 (* sub-command to display a file as a benchmark *)
 let term_bench =
   let open Cmdliner in
-  let aux file = Lwt_main.run (Display_bench.main file) in
-  let file =
+  let aux name provers dir = Lwt_main.run (Display_bench.main name provers dir) in
+  let provers =
+    Arg.(value & opt (some (list string)) None & info ["p"; "provers"] ~doc:"select provers")
+  and dir =
+    Arg.(value & pos_all string [] &
+         info [] ~docv:"DIR" ~doc:"target directories (containing tests)")
+  and name_ =
     Arg.(value & pos 0 (some string) None & info [] ~docv:"FILE"
            ~doc:"file containing results (default: last)")
   and doc = "display test results from a file" in
-  Term.(pure aux $ file), Term.info ~doc "bench"
+  Term.(pure aux $ name_ $ provers $ dir), Term.info ~doc "bench"
 
 (* sub-command to display a file *)
 let term_csv =

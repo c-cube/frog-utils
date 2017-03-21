@@ -153,6 +153,12 @@ module Top_result : sig
 
   val of_file : file:string -> t or_error Lwt.t
 
+  val filter :
+    provers:string list option ->
+    dir:string list ->
+    t -> t
+  (** Filter the results by problem and by prover *)
+
   type comparison_result = {
     both: ResultsComparison.t Prover.Map_name.t;
     left: Analyze.t Prover.Map_name.t;

@@ -449,6 +449,26 @@ module Top_result = struct
     ) in
     { uuid; timestamp; events=l; raw; analyze; }
 
+  let filter ~provers ~dir (t:t): t =
+    (* predicates on events *)
+    let prover_ok r: bool = match provers with
+      | None -> true
+      | Some l -> List.mem r.Event.program.Prover.name l
+    and dir_ok r: bool = match dir with
+      | [] -> true
+      | l ->
+        let path = r.Event.problem.Problem.name in
+        List.exists (fun d -> CCString.mem ~sub:d path) l
+    in
+    let events =
+      CCList.filter
+        (function
+          | Event.Prover_run r -> prover_ok r && dir_ok r
+          | Event.Checker_run _ -> true)
+        t.events
+    in
+    make ~uuid:(Lazy.force t.uuid) ~timestamp:t.timestamp events
+
   let of_snapshot s =
     make ~uuid:s.Event.uuid ~timestamp:s.Event.timestamp s.Event.events
 
