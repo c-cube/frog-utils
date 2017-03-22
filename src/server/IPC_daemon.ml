@@ -132,7 +132,10 @@ end = struct
   let send_event (st:t) (e:event): unit Lwt.t =
     st.last_event <- Unix.gettimeofday();
     Lwt_mvar.put st.events e
-  let next_event (st:t): event Lwt.t = Lwt_mvar.take st.events
+  let next_event (st:t): event Lwt.t =
+    let%lwt res = Lwt_mvar.take st.events in
+    st.last_event <- Unix.gettimeofday();
+    Lwt.return res
   let accept t = t.accept
   let stop_accept t = t.accept <- false
   let push_task st t = st.waiting <- Q.add st.waiting t
@@ -248,7 +251,7 @@ let broadcast (st:state)(from:client_conn)(msg:M.t): unit Lwt.t =
        if c.c_id <> from.c_id then client_send c msg else Lwt.return_unit)
 
 (* after this number of seconds without clients, daemon dies *)
-let delay_before_dying = 60.
+let delay_before_dying = 300.
 
 (* in some amount of time, send "refresh" *)
 let schedule_refresh (st:state) =
