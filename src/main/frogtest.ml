@@ -62,13 +62,15 @@ module Run = struct
       >>= fun pbs ->
       let len = List.length pbs in
       Format.printf "run %d tests in %s@." len dir;
-      let%lwt () = IPC_client.send ipc (IPC_message.Start_bench len) in
       let provers = match provers with
         | None -> config.T.Config.provers
         | Some l ->
           List.filter
             (fun p -> List.mem (Prover.name p) l)
             config.T.Config.provers
+      in
+      let%lwt () =
+        IPC_client.send ipc (IPC_message.Start_bench (len * List.length provers))
       in
       let on_solve =
         let prog = progress ?dyn (len * List.length provers) in
