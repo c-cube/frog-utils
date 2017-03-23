@@ -213,6 +213,36 @@ module Display_bench = struct
     E.return ()
 end
 
+(** {2 Sample} *)
+module Sample = struct
+  open E.Infix
+
+  let run ~n dirs =
+    Lwt_list.map_p
+      (fun d -> Problem_run.of_dir ~filter:(fun _ -> true) d)
+      dirs |> E.ok
+    >|= List.flatten
+    >|= Array.of_list
+    >>= fun files ->
+    let len = Array.length files in
+    begin
+      if len < n
+      then E.failf "not enough files (need %d, got %d)" n len
+      else E.return ()
+    end
+    >>= fun () ->
+    (* sample the list *)
+    let sample_idx =
+      CCRandom.sample_without_replacement
+        ~compare:CCInt.compare n (CCRandom.int len)
+      |> CCRandom.run ?st:None
+    in
+    let sample = List.map (Array.get files) sample_idx in
+    (* print sample *)
+    List.iter (Printf.printf "%s\n%!") sample;
+    Lwt.return (Ok ())
+end
+
 (** {2 List} *)
 module List_run = struct
   let pp_snap_summary out (s:Event.Meta.t): unit =
@@ -373,6 +403,18 @@ let term_bench =
   and doc = "display test results from a file" in
   Term.(pure aux $ name_ $ provers $ dir), Term.info ~doc "bench"
 
+(* sub-command to sample a directory *)
+let term_sample =
+  let open Cmdliner in
+  let aux n dir = Lwt_main.run (Sample.run ~n dir) in
+  let dir =
+    Arg.(value & pos_all string [] &
+         info [] ~docv:"DIR" ~doc:"target directories (containing tests)")
+  and n =
+    Arg.(value & opt int 1 & info ["n"] ~docv:"N" ~doc:"number of files to sample")
+  and doc = "sample N files in the directories" in
+  Term.(pure aux $ n $ dir), Term.info ~doc "sample"
+
 (* sub-command to display a file *)
 let term_csv =
   let open Cmdliner in
@@ -500,7 +542,8 @@ let parse_opt () =
   in
   Cmdliner.Term.eval_choice
     help [ term_run; term_compare; term_display; term_csv; term_list;
-           term_summary; term_plot; term_bench; term_delete; ]
+           term_summary; term_plot; term_bench; term_delete;
+           term_sample; ]
 
 let () =
   match parse_opt () with
