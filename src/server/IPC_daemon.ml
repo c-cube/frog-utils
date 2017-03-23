@@ -363,7 +363,7 @@ let run_scheduler (st:state): unit Lwt.t =
       let%lwt () = kill_client st c in
       loop()
     | M.Pong _ ->
-      Lwt_log.ign_debug_f "got 'pong' from client %d" c.c_id;
+      (*Lwt_log.ign_debug_f "got 'pong' from client %d" c.c_id;*)
       c.c_last_pong <- Unix.gettimeofday();
       loop()
     | M.End ->
@@ -423,7 +423,7 @@ let run_ping_thread st: unit Lwt.t =
   (* n: current "ping" id *)
   let rec loop (n:int) =
     let%lwt () = Lwt_unix.sleep ping_delay in
-    Lwt_log.ign_debug_f "send ping [%d] to clients" n;
+    (*Lwt_log.ign_debug_f "send ping [%d] to clients" n;*)
     let killed_any = ref false in
     let clients = State.clients st in
     Int_map.iter
