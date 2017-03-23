@@ -77,7 +77,7 @@ type event =
 
 module State : sig
   type t
-  val make : string list -> t
+  val make : forever:bool -> string list -> t
 
   val clients : t -> client_conn Int_map.t
   val num_clients : t -> int
@@ -96,6 +96,7 @@ module State : sig
   val take_task : t -> acquire_task option
   val max_cores : t -> int
   val used_cores : t -> int
+  val forever : t -> bool
   val cores_needed : t -> int
   val new_id: t -> int
   val accept : t -> bool
@@ -113,6 +114,7 @@ end = struct
     mutable clients : client_conn Int_map.t; (* c_id -> client *)
     mutable waiting : Q.t; (* for scheduling tasks *)
     mutable last_event: float;
+    forever: bool;
     events : event Lwt_mvar.t;
   }
 
@@ -123,6 +125,7 @@ end = struct
   let num_active t = Full_id_map.cardinal t.active
   let active_l t = Full_id_map.to_list t.active |> List.rev_map snd
   let waiting t = t.waiting
+  let forever t = t.forever
   let clients t = t.clients
   let time_since_last_event t = Unix.gettimeofday() -. t.last_event
   let num_clients t = Int_map.cardinal (clients t)
@@ -172,7 +175,7 @@ end = struct
       (Full_id_map.cardinal st.active) (used_cores st) (st.max_cores)
       (Q.size st.waiting) (Int_map.cardinal st.clients)
 
-  let make config_files =
+  let make ~forever config_files =
     let config =
       if Sys.file_exists main_config_file
       then Config.parse_or_empty main_config_file else Config.empty
@@ -188,6 +191,7 @@ end = struct
       waiting=Q.empty;
       events=Lwt_mvar.create_empty ();
       last_event=Unix.gettimeofday();
+      forever;
     }
 end
 
@@ -280,7 +284,8 @@ let run_scheduler (st:state) =
       (* try to activate a waiting task *)
       begin match State.take_task st with
         | None ->
-          if State.used_cores st = 0 &&
+          if not (State.forever st) &&
+             State.used_cores st = 0 &&
              Int_map.is_empty (State.clients st) &&
              State.num_active st = 0 &&
              State.time_since_last_event st >= delay_before_dying
@@ -402,11 +407,11 @@ let run_scheduler (st:state) =
   loop ()
 
 (* spawn a daemon, to listen on the given port *)
-let spawn (port:int): unit Lwt.t =
+let spawn ?(forever=false) (port:int): unit Lwt.t =
   Lwt_log.ign_info ~section "---------------------------";
   Lwt_log.ign_info_f ~section "starting daemon on port %d" port;
   let addr = Unix.ADDR_INET (Unix.inet_addr_loopback, port) in
-  let st = State.make [] in
+  let st = State.make ~forever [] in
   (* scheduler *)
   Lwt_log.ign_info ~section "start scheduler";
   let scheduler_thread = run_scheduler st in

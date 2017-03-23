@@ -42,7 +42,7 @@ let main (port:int): unit =
   let thread =
     let%lwt () = setup_loggers log_file in
     try%lwt
-      IPC_daemon.spawn port
+      IPC_daemon.spawn ~forever:true port
     with e ->
       Lwt_log.ign_error_f ~section "daemon: error: %s" (Printexc.to_string e);
       Lwt.return_unit
