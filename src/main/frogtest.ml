@@ -101,8 +101,18 @@ module Run = struct
             0)
 
   (* lwt main *)
-  let main ?dyn ~port ?j ?timeout ?memory ?caching ?junit ?provers ?meta ~with_lock ~save ~config dirs () =
+  let main ?dyn ~port ?j ?timeout ?memory ?caching ?junit ?provers ?meta ~with_lock ~save ~config ?dir_file dirs () =
     let open E.Infix in
+    (* parse list of files, if need be *)
+    let%lwt dirs = match dir_file with
+      | None -> Lwt.return dirs
+      | Some f ->
+        let%lwt f_lines =
+          Lwt_io.with_file ~mode:Lwt_io.input f
+            (fun ic -> Lwt_io.read_lines ic |> Lwt_stream.to_list)
+        in
+        Lwt.return (List.rev_append f_lines dirs)
+    in
     (* parse config *)
     begin
       Lwt.return (Test_run.config_of_config config dirs)
@@ -286,17 +296,19 @@ let config_term =
 (* sub-command for running tests *)
 let term_run =
   let open Cmdliner in
-  let aux dyn port dirs config j timeout memory with_lock nocaching meta save provers junit =
+  let aux dyn port dirs dir_file config j timeout memory with_lock nocaching meta save provers junit =
     let caching = not nocaching in
     Lwt_main.run
       (Run.main ~dyn ~port ?j ?timeout ?memory ?junit ?provers ~with_lock
-         ~caching ~meta ~save ~config dirs ())
+         ~caching ~meta ~save ~config ?dir_file dirs ())
   in
   let config = config_term
   and dyn =
     Arg.(value & flag & info ["progress"] ~doc:"print progress bar")
   and j =
     Arg.(value & opt (some int) None & info ["j"] ~doc:"parallelism level")
+  and dir_file =
+    Arg.(value & opt (some string) None & info ["F"] ~doc:"file containing a list of files")
   and timeout =
     Arg.(value & opt (some int) None & info ["t"; "timeout"] ~doc:"timeout (in s)")
   and memory =
@@ -322,7 +334,7 @@ let term_run =
   and provers =
     Arg.(value & opt (some (list string)) None & info ["p"; "provers"] ~doc:"select provers")
   in
-  Term.(pure aux $ dyn $ port $ dir $ config $ j $ timeout $ memory $ with_loc
+  Term.(pure aux $ dyn $ port $ dir $ dir_file $ config $ j $ timeout $ memory $ with_loc
     $ nocaching $ meta $ save $ provers $ junit),
   Term.info ~doc "run"
 
