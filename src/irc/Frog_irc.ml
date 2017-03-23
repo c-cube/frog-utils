@@ -34,6 +34,8 @@ let connect port : state E.t Lwt.t =
        Lwt_log.ign_debug "disconnected from daemon");
   EL.return {c; send_stop}
 
+(* TODO: when there is a new bench, react by sending a message *)
+
 let cmd_status (st:state): C.Command.t =
   let module M = IPC_message in
   let n_tot = ref 0 in
@@ -42,7 +44,9 @@ let cmd_status (st:state): C.Command.t =
   IPC_client.on_msg st.c
     (fun msg ->
        begin match msg with
-         | M.Start_bench n -> n_cur := 0; n_tot := n
+         | M.Start_bench n ->
+           n_cur := 0;
+           n_tot := n
          | M.Finish_bench -> n_tot := 0
          | M.Event (Event.Prover_run _) -> incr n_cur
          | _ -> ()
