@@ -31,10 +31,26 @@ let connect (): state E.t Lwt.t =
   EL.return {c; send_stop}
 
 let cmd_status (st:state): C.Command.t =
+  let module M = IPC_message in
+  let n_tot = ref 0 in
+  let n_cur = ref 0 in
+  (* update registers *)
+  IPC_client.on_msg st.c
+    (fun msg ->
+       begin match msg with
+         | M.Start_bench n -> n_cur := 0; n_tot := n
+         | M.Finish_bench -> n_tot := 0
+         | M.Event (Event.Prover_run _) -> incr n_cur
+         | _ -> ()
+       end; `Continue);
+  (* the command itself *)
   C.Command.make_simple
     ~prefix:"status" ~descr:"status of query" ~prio:10
-    (fun _ _msg ->
-       Lwt.return_none) (* TODO *)
+    (fun _ _ ->
+       if !n_tot > 0 then (
+         let s = Printf.sprintf "[%d/%d]" !n_cur !n_tot in
+         Lwt.return_some s
+       ) else Lwt.return_none)
 
 let maybe_str = function
   | None -> "<none>"
