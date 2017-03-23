@@ -2,29 +2,38 @@
 open Frog_server
 module C = Calculon
 
-(* TODO: cmdliner for parsing this *)
-let config = {
-  C.Config.default with C.Config.channel = "#deducteam"; nick = "froggy"; }
-
-let main_lwt port =
+let main_lwt ~port ~server ~irc_port ~nick ~chan () =
   let plugins =
     [ Frog_irc.plugin ~port ();
       C.Plugin_factoids.plugin;
       C.Plugin_history.plugin ();
-    ] in
+    ]
+  and config =
+    { C.Config.default with
+        C.Config.channel = chan; nick; server; port = irc_port;
+    }
+  in
   C.Run_main.main config plugins
 
-let main port debug =
+let main port chan irc_port nick server debug =
   if debug then (
     Lwt_log.add_rule "*" Lwt_log.Debug;
   );
-  Lwt_main.run (main_lwt port);
+  Lwt_main.run (main_lwt ~port ~irc_port ~chan ~nick ~server ());
   ()
 
 let term =
   let open Cmdliner in
   let port =
     Arg.(value & opt int IPC_daemon.default_port & info ["p"; "port"] ~doc:"port for the daemon")
+  and irc_port =
+    Arg.(value & opt int 7000 & info ["irc-port"] ~doc:"port for IRC")
+  and server =
+    Arg.(value & opt string "irc.freenode.net" & info ["server"] ~doc:"server")
+  and chan =
+    Arg.(value & opt string "#deducteam" & info ["chan"] ~doc:"chan")
+  and nick =
+    Arg.(value & opt string "froggy" & info ["nick"] ~doc:"irc nick")
   and debug  =
     Arg.(value & flag & info ["d"; "debug"] ~doc:"activate debug")
   in
@@ -33,7 +42,7 @@ let term =
     `S "SYNOPSIS";
     `I ("$(b,frogirc [OPTIONS])", "irc client");
   ] in
-  Term.(pure main $ port $ debug),
+  Term.(pure main $ port $ chan $ irc_port $ nick $ server $ debug),
   Term.info ~man ~doc "frogclient"
 
 let () =
