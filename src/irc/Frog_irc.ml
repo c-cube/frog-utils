@@ -16,9 +16,9 @@ type state = {
   send_stop: unit Lwt.u; (* to disconnect *)
 }
 
-let port = IPC_daemon.default_port
+let default_port = IPC_daemon.default_port
 
-let connect (): state E.t Lwt.t =
+let connect port : state E.t Lwt.t =
   let open EL.Infix in
   let stop, send_stop = Lwt.wait () in
   let res, send_res = Lwt.wait () in
@@ -85,9 +85,9 @@ let cmd_froglock (st:state) : C.Command.t =
            Lwt.return (msg_current @ msg_waiting)
        end)
 
-let plugin : C.Plugin.t =
+let plugin ?(port=default_port) () : C.Plugin.t =
   C.Plugin.stateful ~name:"frogirc"
     ~to_json:(fun _ -> None)
-    ~of_json:(fun actions _ -> connect ())
+    ~of_json:(fun actions _ -> connect port)
     ~commands:(fun st -> [ cmd_status st; cmd_froglock st; ])
     ()

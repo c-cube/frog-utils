@@ -3,4 +3,4 @@
 
 (** {1 IRC bot plugin} *)
 
-val plugin : Calculon.Plugin.t
+val plugin : ?port:int -> unit -> Calculon.Plugin.t
