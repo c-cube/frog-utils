@@ -509,6 +509,10 @@ let setup_loggers file_name () =
           file_name (Printexc.to_string e);
         Lwt.return_unit
   in
+  let old_hook = !Lwt.async_exception_hook in
+  Lwt.async_exception_hook := (fun e ->
+    Printf.eprintf "async error: %s\n%!" (Printexc.to_string e);
+    old_hook e);
   Lwt_io.close Lwt_io.stderr
 
 (* init function: check if we are within a daemon call (i.e. the main process
