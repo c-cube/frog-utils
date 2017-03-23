@@ -41,6 +41,8 @@ type client_conn = {
   c_id: int; (* unique client id *)
   c_in: Lwt_io.input_channel;
   c_out: Lwt_io.output_channel;
+  mutable c_last_ping: float;
+  mutable c_last_pong: float;
   mutable c_active: active_task Full_id_map.t;
   mutable c_thread: unit Lwt.t;
 }
@@ -274,8 +276,25 @@ let close_chans c: unit Lwt.t =
       (Printexc.to_string e);
     Lwt.return_unit
 
+let kill_task (st:State.t) (at:active_task): unit =
+  State.remove_active st at;
+  let c = at.at_task.t_conn  in
+  c.c_active <- Full_id_map.remove (active_id at) c.c_active;
+  Lwt_log.ign_debug_f ~section "task %s: done" (active_id at |> Full_id.to_string);
+  ()
+
+(* end of connection for this client *)
+let kill_client (st:State.t)(c:client_conn): unit Lwt.t =
+  Lwt_log.ign_info_f "stop client %d" c.c_id;
+  Lwt.cancel c.c_thread;
+  State.remove_client st c;
+  close_chans c >>= fun () ->
+  (* also kill active tasks of this client *)
+  Full_id_map.values c.c_active (kill_task st);
+  Lwt.return_unit
+
 (* scheduler: receives requests from several clients, and pings them back *)
-let run_scheduler (st:state) =
+let run_scheduler (st:state): unit Lwt.t =
   (* find if a waiting task can be activated, otherwise
      wait for incoming messages *)
   let rec loop () =
@@ -341,11 +360,15 @@ let run_scheduler (st:state) =
     | M.Start ->
       Lwt_log.ign_error_f ~section
         "invalid duplicate `Start` message for client %d" c.c_id;
-      let%lwt () = kill_client c in
+      let%lwt () = kill_client st c in
+      loop()
+    | M.Pong _ ->
+      Lwt_log.ign_debug_f "got 'pong' from client %d" c.c_id;
+      c.c_last_pong <- Unix.gettimeofday();
       loop()
     | M.End ->
       Lwt_log.ign_info_f ~section "closed connection to client %d" c.c_id;
-      let%lwt () = kill_client c in
+      let%lwt () = kill_client st c in
       schedule_refresh st;
       loop ()
     | M.Acquire query ->
@@ -370,10 +393,10 @@ let run_scheduler (st:state) =
         | None ->
           Lwt_log.ign_error_f ~section "client %d released unknown task %d"
             c.c_id u;
-          kill_client c;
+          kill_client st c;
         | Some at ->
           Lwt_log.ign_debug_f ~section "client %d released task %d" c.c_id u;
-          kill_task at; (* task is done, we can remove it *)
+          kill_task st at; (* task is done, we can remove it *)
           Lwt.return_unit
       in
       loop ()
@@ -385,26 +408,44 @@ let run_scheduler (st:state) =
       (* broadcast, but do not wait for it to terminate *)
       Lwt.async (fun () -> broadcast st c msg);
       loop ()
-    | ( M.StatusAnswer _ | M.Go _ | M.Reject _) as msg ->
+    | ( M.Ping _ | M.StatusAnswer _ | M.Go _ | M.Reject _) as msg ->
       Lwt_log.ign_error_f "unexpected message: %s" (M.show msg);
       loop ()
-  (* end of connection for this client *)
-  and kill_client (c:client_conn): unit Lwt.t =
-    Lwt_log.ign_info_f "stop client %d" c.c_id;
-    Lwt.cancel c.c_thread;
-    State.remove_client st c;
-    close_chans c >>= fun () ->
-    (* also kill active tasks of this client *)
-    Full_id_map.values c.c_active kill_task;
-    Lwt.return_unit
   (* delete the task to make room for others *)
-  and kill_task (at:active_task): unit =
-    State.remove_active st at;
-    let c = at.at_task.t_conn  in
-    c.c_active <- Full_id_map.remove (active_id at) c.c_active;
-    Lwt_log.ign_debug_f ~section "task %s: done" (active_id at |> Full_id.to_string);
   in
   loop ()
+
+let ping_delay = 5.
+
+(* regularly ping clients, and kill these which have not answered to previous
+   ping *)
+let run_ping_thread st: unit Lwt.t =
+  (* n: current "ping" id *)
+  let rec loop (n:int) =
+    let%lwt () = Lwt_unix.sleep ping_delay in
+    Lwt_log.ign_debug_f "send ping [%d] to clients" n;
+    let killed_any = ref false in
+    let clients = State.clients st in
+    Int_map.iter
+      (fun _ c ->
+         if c.c_last_ping > c.c_last_pong +. ping_delay +. 2. 
+         then (
+           killed_any := true;
+           Lwt.async (fun () -> kill_client st c) (* dead *)
+         ) else (
+           c.c_last_ping <- Unix.gettimeofday();
+           Lwt.async (fun () ->
+             try%lwt client_send c (M.Ping n)
+             with _ -> Lwt.return_unit)
+         ))
+      clients;
+    (* might have to refresh state *)
+    if !killed_any then (
+      Lwt.async (fun () -> State.send_event st E_refresh)
+    );
+    loop (n+1)
+  in
+  loop 0
 
 (* spawn a daemon, to listen on the given port *)
 let spawn ?(forever=false) (port:int): unit Lwt.t =
@@ -416,12 +457,16 @@ let spawn ?(forever=false) (port:int): unit Lwt.t =
   Lwt_log.ign_info ~section "start scheduler";
   let scheduler_thread = run_scheduler st in
   Lwt_log.ign_info ~section "scheduler started";
+  (* ping clients regularly *)
+  let ping_thread = run_ping_thread st in
   (* server that listens for incoming clients *)
   let server = Lwt_io.establish_server addr
     (fun (ic,oc) ->
       let c = {
         c_in=ic;
         c_out=oc;
+        c_last_ping=Unix.gettimeofday();
+        c_last_pong=Unix.gettimeofday();
         c_id=State.new_id st;
         c_thread=Lwt.return_unit;
         c_active=Full_id_map.empty;
@@ -437,7 +482,11 @@ let spawn ?(forever=false) (port:int): unit Lwt.t =
   in
   (* stop *)
   Lwt_log.ign_debug ~section "daemon started";
-  let%lwt () = scheduler_thread in
+  let%lwt () =
+    Lwt.pick
+      [ scheduler_thread;
+        ping_thread;
+      ] in
   Lwt_log.ign_debug ~section "daemon's server is stopping";
   Lwt_io.shutdown_server server;
   Lwt.return_unit
@@ -447,6 +496,7 @@ let spawn ?(forever=false) (port:int): unit Lwt.t =
 let setup_loggers file_name () =
   let syslog = Lwt_log.syslog ~facility:`User () in
   Lwt_log.default := syslog;
+  Lwt_log.add_rule "*" Lwt_log.Debug;
   let%lwt () =
       try%lwt
         let%lwt log' = Lwt_log.file ~mode:`Append ~perm:0o666 ~file_name () in
@@ -467,7 +517,7 @@ let setup_loggers file_name () =
 let () = match Sys.getenv "DAEMON_PORT" |> int_of_string with
   | p ->
     (* Printf.printf "run as daemon on port %d\n%!" p; *)
-    Lwt_daemon.daemonize ~syslog:false ~directory:"/tmp"
+    Lwt_daemon.daemonize ~syslog:true ~directory:"/tmp"
       ~stdin:`Close ~stdout:`Close ~stderr:`Keep ();
     let log_file =
       let config = Config.parse_or_empty main_config_file in

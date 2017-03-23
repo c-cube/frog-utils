@@ -54,6 +54,8 @@ type t =
   | Start_bench of int [@name "start_bench"] (* number of files *)
   | Finish_bench [@name "finish_bench"] (* *)
   | Event of Event.t [@name "event"]
+  | Ping of int [@name "ping"]
+  | Pong of int [@name "pong"]
   [@@deriving yojson, show,eq]
 
 [@@@warning "+39"]

@@ -42,6 +42,11 @@ let connect port f =
       (* loop on incoming messages *)
       let rec listen_loop () =
         let%lwt m = M.parse ic in
+        (* answer to "ping" *)
+        begin match m with
+          | M.Ping n -> Lwt.async (fun () -> M.print oc (M.Pong n))
+          | _ -> ()
+        end;
         Signal.send on_next m;
         listen_loop ()
       in
