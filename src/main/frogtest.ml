@@ -40,15 +40,15 @@ module Run = struct
       let percent = if len=0 then 100 else (!count * 100) / len in
       Format.printf "\r... %5d/%d | %3d%% [%6s: %s]@?"
         !count len percent (time_string time_elapsed) bar;
-      if !count = len then Format.printf "@.";
-      Lwt.return_unit
-
-  let progress_static res =
-    Test_run.print_result res;
-    Lwt.return_unit
+      if !count = len then Format.printf "@."
 
   let progress ?(dyn=false) n =
-    if dyn then progress_dynamic n else progress_static
+    let pp_bar = progress_dynamic n in
+    (function res ->
+       if dyn then Format.printf "\r";
+       Test_run.print_result res;
+       if dyn then pp_bar res;
+       Lwt.return_unit)
 
   (* run provers on the given dir, return a list [prover, dir, results] *)
   let test_dir ?dyn ~ipc ?j ?timeout ?memory ?caching ?provers ~config d
