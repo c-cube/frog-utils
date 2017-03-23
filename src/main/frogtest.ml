@@ -38,7 +38,7 @@ module Run = struct
       let bar = String.init len_bar
           (fun i -> if i * len <= len_bar * !count then '#' else '-') in
       let percent = if len=0 then 100 else (!count * 100) / len in
-      Format.printf "\r... %5d/%d | %3d%% [%6s: %s]@?"
+      Format.printf "... %5d/%d | %3d%% [%6s: %s]@?"
         !count len percent (time_string time_elapsed) bar;
       if !count = len then Format.printf "@."
 
