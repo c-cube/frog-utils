@@ -26,8 +26,12 @@ let connect port : state E.t Lwt.t =
     IPC_client.connect_or_spawn port
       (fun c ->
          Lwt.wakeup send_res c;
+         Lwt_log.ign_debug "connected to daemon";
          stop));
   let%lwt c = res in
+  Lwt.on_termination stop
+    (fun () ->
+       Lwt_log.ign_debug "disconnected from daemon");
   EL.return {c; send_stop}
 
 let cmd_status (st:state): C.Command.t =
@@ -82,7 +86,10 @@ let cmd_froglock (st:state) : C.Command.t =
                     time (maybe_str job.M.info))
                current
            in
-           Lwt.return (msg_current @ msg_waiting)
+           let res = msg_current @ msg_waiting in
+           if res=[]
+           then Lwt.return ["no lock"]
+           else Lwt.return res
        end)
 
 let plugin ?(port=default_port) () : C.Plugin.t =
