@@ -478,7 +478,8 @@ let () = match Sys.getenv "DAEMON_PORT" |> int_of_string with
 let fork_daemon port : unit =
   Lwt.async
     (fun () ->
-       let cmd = Lwt_process.shell (Printf.sprintf "frogdaemon -p %d" port) in
-       Lwt_process.exec cmd);
+       let cmd = Sys.executable_name, [| Sys.executable_name |] in
+       let env = [| "DAEMON_PORT=" ^ string_of_int port |] in
+       Lwt_process.exec ~env cmd);
   ()
 
