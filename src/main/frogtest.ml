@@ -70,9 +70,11 @@ module Run = struct
             (fun p -> List.mem (Prover.name p) l)
             config.T.Config.provers
       in
-      let on_solve r =
-        let%lwt () = progress ?dyn (len * List.length provers) r in
-        IPC_client.send ipc (IPC_message.Event (Event.Prover_run r))
+      let on_solve =
+        let prog = progress ?dyn (len * List.length provers) in
+        fun r ->
+          let%lwt () = prog r in
+          IPC_client.send ipc (IPC_message.Event (Event.Prover_run r))
       in
       (* solve *)
       let main =
