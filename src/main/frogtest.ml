@@ -121,9 +121,9 @@ module Run = struct
     begin
       if with_lock
       then IPC_client.connect_and_acquire port
-          ~info:"frogtest" ~retry:5. ~tags:(CCOpt.to_list meta)
+          ~info:"frogtest" ~tags:(CCOpt.to_list meta)
           (fun (c,_) -> task_with_conn c)
-      else IPC_client.connect port task_with_conn
+      else IPC_client.connect_or_spawn port task_with_conn
     end
     >|= T.Top_result.merge_l
     >>= fun (results:T.Top_result.t) ->
