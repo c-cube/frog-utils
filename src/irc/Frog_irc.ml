@@ -96,9 +96,20 @@ let cmd_froglock (st:state) : C.Command.t =
            else Lwt.return res
        end)
 
+let cmd_uptime: C.Command.t =
+  C.Command.make_simple ~descr:"uptime" ~prio:10 ~prefix:"uptime"
+    (fun _ _ ->
+       let p = Lwt_process.open_process_in @@ Lwt_process.shell "uptime" in
+       let%lwt out = Lwt_io.read p#stdout in
+       Lwt.return @@ Some out)
+
 let plugin ?(port=default_port) () : C.Plugin.t =
   C.Plugin.stateful ~name:"frogirc"
     ~to_json:(fun _ -> None)
     ~of_json:(fun actions _ -> connect port)
-    ~commands:(fun st -> [ cmd_status st; cmd_froglock st; ])
+    ~commands:(fun st ->
+      [ cmd_status st;
+        cmd_froglock st;
+        cmd_uptime;
+      ])
     ()
