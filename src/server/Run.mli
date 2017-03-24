@@ -12,6 +12,7 @@ val run_proc :
   Event.raw_result Lwt.t
 
 val run_prover :
+  ?lock:IPC_client.t ->
   ?env:env ->
   timeout:int ->
   memory:int ->

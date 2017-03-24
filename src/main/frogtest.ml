@@ -51,7 +51,7 @@ module Run = struct
        Lwt.return_unit)
 
   (* run provers on the given dir, return a list [prover, dir, results] *)
-  let test_dir ?dyn ~ipc ?j ?timeout ?memory ?caching ?provers ~config d
+  let test_dir ?dyn ~with_lock ~ipc ?j ?timeout ?memory ?caching ?provers ~config d
     : T.Top_result.t E.t =
     let open E.Infix in
     let dir = d.T.Config.directory in
@@ -81,6 +81,7 @@ module Run = struct
       (* solve *)
       let main =
         Test_run.run ?j ?timeout ?memory ?caching ~provers
+          ?lock:(if with_lock then Some ipc else None)
           ~expect:d.T.Config.expect ~on_solve ~config pbs
         |> E.add_ctxf "running %d tests" len
       in
@@ -129,16 +130,10 @@ module Run = struct
     (* build problem set (exclude config file!) *)
     let task_with_conn c =
       E.map_s
-        (test_dir ?dyn ~ipc:c ?j ?timeout ?memory ?caching ?provers ~config)
+        (test_dir ?dyn ~with_lock ~ipc:c ?j ?timeout ?memory ?caching ?provers ~config)
         problems
     in
-    begin
-      if with_lock
-      then IPC_client.connect_and_acquire port
-          ~info:"frogtest" ~tags:(CCOpt.to_list meta)
-          (fun (c,_) -> task_with_conn c)
-      else IPC_client.connect_or_spawn port task_with_conn
-    end
+    IPC_client.connect_or_spawn port task_with_conn
     >|= T.Top_result.merge_l
     >>= fun (results:T.Top_result.t) ->
     begin match save with

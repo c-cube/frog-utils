@@ -17,6 +17,7 @@ val print_result : Test.result -> unit
 val run :
   ?on_solve:(Test.result -> unit Lwt.t) ->
   ?on_done:(Test.top_result -> unit Lwt.t) ->
+  ?lock:IPC_client.t ->
   ?caching:bool ->
   ?j:int ->
   ?timeout:int ->

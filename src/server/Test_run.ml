@@ -68,14 +68,14 @@ let config_of_file file =
   | e -> Misc.Err.fail (Printexc.to_string e)
 
 (* run one particular test *)
-let run_pb_ ~config prover pb =
+let run_pb_ ?lock ~config prover pb =
   Lwt_log.ign_debug_f "running %-15s/%-30s..."
     (Filename.basename prover.Prover.binary) pb.Problem.name;
   (* spawn process *)
   let%lwt result = Run.run_prover
       ~timeout:config.C.timeout
       ~memory:config.C.memory
-      ~prover ~pb ()
+      ?lock ~prover ~pb ()
   in
   Lwt_log.ign_debug_f "output for %s/%s: `%s`, `%s`, errcode %d"
     prover.Prover.binary pb.Problem.name
@@ -84,7 +84,7 @@ let run_pb_ ~config prover pb =
     result.Event.raw.Event.errcode;
   Lwt.return result
 
-let run_pb ?(caching=true) ?limit ~config prover pb : _ E.t =
+let run_pb ?(caching=true) ?limit ?lock ~config prover pb : _ E.t =
   let module V = Maki.Value in
   Maki.call
     ?limit
@@ -96,7 +96,7 @@ let run_pb ?(caching=true) ?limit ~config prover pb : _ E.t =
            V.pack Maki_wrapper.problem pb]
     ~op:Run.maki_result
     ~name:"frogtest.run_pb"
-    (fun () -> run_pb_ ~config prover pb)
+    (fun () -> run_pb_ ?lock ~config prover pb)
   |> E.of_exn
 
 let nop_ _ = Lwt.return_unit
@@ -123,7 +123,7 @@ let print_result (res:Test.result): unit =
     pp_res () res.Event.raw.Event.rtime;
   ()
 
-let run ?(on_solve = nop_) ?(on_done = nop_)
+let run ?(on_solve = nop_) ?(on_done = nop_) ?lock
     ?(caching=true) ?j ?timeout ?memory ~provers ~expect ~config (set:path list)
     : Test.top_result E.t =
   let open E.Infix in
@@ -143,7 +143,7 @@ let run ?(on_solve = nop_) ?(on_done = nop_)
        (* run provers *)
        E.map_p
          (fun prover ->
-            run_pb ~caching ~limit ~config prover pb >>= fun result ->
+            run_pb ?lock ~caching ~limit ~config prover pb >>= fun result ->
             let%lwt () = on_solve result in (* callback *)
             E.return result
             |> E.add_ctxf "running `%a` on %a"

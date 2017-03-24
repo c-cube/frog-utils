@@ -100,13 +100,25 @@ let run_proc ~timeout cmd =
        res
     )
 
-let run_prover ?env ~timeout ~memory ~prover ~pb () =
+let run_prover ?lock ?env ~timeout ~memory ~prover ~pb () =
   let file = pb.Problem.name in
   let cmd = mk_cmd ?env ~timeout ~memory ~prover ~file () in
-  let%lwt raw = run_proc ~timeout cmd in
+  let%lwt raw =
+    match lock with
+    | None -> run_proc ~timeout cmd
+    | Some c ->
+      IPC_client.acquire
+        ~cores:1
+        ~info:(fst cmd)
+        ~tags:(Array.to_list (snd cmd))
+        c (function
+            | true -> run_proc ~timeout cmd
+            | false -> Lwt.fail_with "Couldn't acquire the lock to run the prover"
+          )
+  in
   Lwt.return { Event.
-    program = prover;
-    problem = pb; raw; }
+               program = prover;
+               problem = pb; raw; }
 
 let exec_prover ?(env=[||]) ~timeout ~memory ~prover ~file () =
   let p, args = mk_cmd ~env ~timeout ~memory ~prover ~file () in
