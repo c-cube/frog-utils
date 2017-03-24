@@ -62,7 +62,7 @@ let mk_cmd
         | s -> raise (Subst_not_found s))
       s
   in
-  add_str "ulimit -t \\$(( 1 + $time)) -v \\$(( 1000 * $memory )); ";
+  add_str "ulimit -t \\$(( 1 + $time)) -v \\$(( 1200 * $memory )); ";
   Array.iter
     (fun (key,value) -> add_str (key ^ "=" ^ value ^ " "))
     env;
