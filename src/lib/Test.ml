@@ -422,6 +422,12 @@ module Top_result = struct
   let same_uuid (a:t)(b:t): bool =
     Uuidm.equal (Lazy.force a.uuid) (Lazy.force b.uuid)
 
+  let compare_uuid a b: int =
+    Uuidm.compare (Lazy.force a.uuid) (Lazy.force b.uuid)
+
+  (* more recent first *)
+  let compare_date a b: int = CCFloat.compare b.timestamp a.timestamp
+
   let make ?uuid ?timestamp l =
     let uuid = match uuid with
       | Some u -> Lazy.from_val u
@@ -695,6 +701,8 @@ module Summary = struct
     raw_comparison: ResultsComparison.t Prover.Map_name.t; (* not empty *)
   }
 
+  let cmp_ind_diff i1 i2 = Top_result.compare_date i1.wrt i2.wrt
+
   type regression_by_prover = {
     reg_prover: Prover.t;
     reg_res: (Problem.t * Res.t * Res.t) list;
@@ -705,6 +713,8 @@ module Summary = struct
     reg_wrt: Top_result.t;
     reg_by_prover: regression_by_prover list; (* not empty *)
   }
+
+  let cmp_reg r1 r2 = Top_result.compare_date r1.reg_wrt r2.reg_wrt
 
   type t = {
     main: Top_result.t;
@@ -748,7 +758,9 @@ module Summary = struct
            others, regressions)
         ([], []) l
     in
-    { main=res; others=List.rev others; regressions=List.rev regressions; }
+    let others = List.sort cmp_ind_diff others in
+    let regressions = List.sort cmp_reg regressions in
+    { main=res; others; regressions; }
 
   let pp_list p = Misc.Fmt.pp_list p
 
