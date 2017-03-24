@@ -350,7 +350,7 @@ let term_run =
   and meta =
     Arg.(value & opt string "" & info ["meta"] ~doc:"additional metadata to save")
   and with_loc =
-    Arg.(value & opt bool false & info ["lock"] ~doc:"require a lock")
+    Arg.(value & opt bool true & info ["lock"] ~doc:"require a lock")
   and nocaching =
     Arg.(value & flag & info ["no-caching"] ~doc:"toggle caching")
   and doc =
