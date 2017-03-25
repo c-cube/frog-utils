@@ -15,8 +15,8 @@ module T = Test
 module E = Misc.LwtErr
 
 let expect_of_config config = function
-  | "" -> C.Auto
-  | s ->
+  | None -> C.Auto
+  | Some s ->
     begin match Misc.Str.split ~by:':' s with
       | "program", p ->
         C.Program (ProverSet.find_config config p)
@@ -31,7 +31,6 @@ let config_of_config config dirs =
     let timeout = Config.get_int ~default:5 c "timeout" in
     let memory = Config.get_int ~default:1000 c "memory" in
     let problem_pat = Config.get_string ~default:"" c "problems" in
-    let default_expect = Config.get_string ~default:"" c "default_expect" in
     let l =
       match dirs with
       | [] -> Config.get_string_list ~default:[] c "dir"
@@ -40,14 +39,24 @@ let config_of_config config dirs =
     let problems = List.map (fun s ->
         match Config.get_table c s with
         | t ->
-          let dir = Config.get_string t "directory" in
+          let dir = Config.get_string ~default:s t "directory" in
           let pat = Config.get_string ~default:problem_pat t "problems" in
-          let expect = expect_of_config config
-              (Config.get_string ~default:default_expect t "expect") in
+          let expect =
+            let open CCOpt.Infix in
+            (Config.get_string_opt t "expect"
+             <+> Config.get_string_opt c "expect"
+             <+> Config.get_string_opt config "expect")
+            |> expect_of_config config
+          in
           { C.directory = dir; pattern = pat; expect = expect; }
         | exception (Config.FieldNotFound _ | TomlTypes.Table.Key.Bad_key _) ->
-          { C.directory = s; pattern = problem_pat;
-            expect = expect_of_config config default_expect; }
+          let expect =
+            let open CCOpt.Infix in
+             (Config.get_string_opt c "expect"
+             <+> Config.get_string_opt config "expect")
+            |> expect_of_config config
+          in
+          { C.directory = s; pattern = problem_pat; expect; }
       ) l in
     let provers = Config.get_string_list c "provers" in
     let provers = List.map (ProverSet.find_config config) provers in
