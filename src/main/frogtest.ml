@@ -142,7 +142,8 @@ module Run = struct
     >|= T.Top_result.merge_l
     >>= fun (results:T.Top_result.t) ->
     begin match save with
-      | "none" -> E.return ()
+      | "none" ->
+        Lwt_io.printlf "not saving…" |> E.ok
       | "" ->
         (* default *)
         let snapshot = Event.Snapshot.make ?meta results.T.events in
