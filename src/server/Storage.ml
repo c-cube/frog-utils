@@ -55,7 +55,9 @@ let save storage k v : unit Lwt.t = match storage.dirs with
   | dir :: _ ->
     let file = Filename.concat dir k in
     Lwt_io.with_file ~mode:Lwt_io.Output file
-      (fun oc -> Lwt_io.write oc v)
+      (fun oc ->
+         let%lwt () = Lwt_io.write oc v in
+         Lwt_io.flush oc)
 
 let save_json storage k v =
   save storage k (Yojson.Safe.to_string v)
