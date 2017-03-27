@@ -33,6 +33,15 @@ let rec listen_loop (c:t): unit Lwt.t =
 
 let wait_close (c:t): unit Lwt.t = c.listen_thread
 
+let send (c:t) msg = M.print c.oc msg
+
+let send_noerr c msg =
+  try%lwt
+    send c msg
+  with e ->
+    Lwt_log.error_f "could not send message %s:\n%s"
+      (IPC_message.show msg) (Printexc.to_string e)
+
 let connect port f =
   with_chans port
     (fun ic oc ->
@@ -44,7 +53,11 @@ let connect port f =
         let%lwt m = M.parse ic in
         (* answer to "ping" *)
         begin match m with
-          | M.Ping n -> Lwt.async (fun () -> M.print oc (M.Pong n))
+          | M.Ping n ->
+            Lwt.async
+              (fun () ->
+                 try%lwt M.print oc (M.Pong n)
+                 with _ -> Lwt.return_unit)
           | _ -> ()
         end;
         Signal.send on_next m;
@@ -55,7 +68,7 @@ let connect port f =
       } in
       let%lwt res = f c in
       Lwt_log.ign_debug ~section "send `end` to daemon";
-      let%lwt () = M.print c.oc M.End in
+      let%lwt () = send_noerr c M.End in
       Lwt.cancel c.listen_thread;
       Lwt_log.ign_debug ~section "connection to daemon closed";
       Lwt.return res
@@ -93,7 +106,7 @@ let acquire ?cwd ?user ?info ?(cores=0) ?(priority=1) ?(tags=[]) (c:t) f =
   let msg =
     M.Acquire {M.info; uid; user; priority; query_time;
                tags; cwd; pid; cores} in
-  let%lwt () = M.print c.oc msg in
+  let%lwt () = send_noerr c msg in
   (* expect "go" or "reject" for this uid *)
   let%lwt res =
     next_filter c (function (M.Go u | M.Reject u) -> u=uid | _ -> false)
@@ -111,7 +124,7 @@ let acquire ?cwd ?user ?info ?(cores=0) ?(priority=1) ?(tags=[]) (c:t) f =
            f true)
         (fun () ->
           Lwt_log.ign_debug ~section "release lock";
-          M.print c.oc (M.Release uid))
+          send_noerr c (M.Release uid))
     | _ -> assert false
   end
 
@@ -134,15 +147,6 @@ let connect_and_acquire
        acquire ?cwd ?user ?info ?cores ?priority ?tags conn
          (fun bool -> f (conn,bool)))
 
-let send (c:t) msg = M.print c.oc msg
-
-let send_noerr c msg =
-  try%lwt
-    send c msg
-  with e ->
-    Lwt_log.error_f "could not send message %s:\n%s"
-      (IPC_message.show msg) (Printexc.to_string e)
-
 let on_msg (c:t) f: unit =
   Signal.on c.on_next
     (fun msg -> match f msg with
@@ -150,7 +154,7 @@ let on_msg (c:t) f: unit =
        | `Stop -> Signal.StopListening)
 
 let get_status (c:t): IPC_message.status_answer Lwt.t =
-  let%lwt () = M.print c.oc M.Status in
+  let%lwt () = send_noerr c M.Status in
   let%lwt res =
     next_filter_map c (function M.StatusAnswer ans -> Some ans | _ -> None)
   in
