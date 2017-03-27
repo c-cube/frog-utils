@@ -76,7 +76,12 @@ module Run = struct
         let prog = progress ?dyn (len * List.length provers) in
         fun r ->
           let%lwt () = prog r in
-          IPC_client.send ipc (IPC_message.Event (Event.Prover_run r))
+          let msg = IPC_message.Event (Event.Prover_run r) in
+          try%lwt
+            IPC_client.send ipc msg
+          with e ->
+            Lwt_log.error_f "could not send message %s:\n%s"
+              (IPC_message.show msg) (Printexc.to_string e)
       in
       (* solve *)
       let main =
