@@ -63,8 +63,14 @@ let connect port f =
         Signal.send on_next m;
         listen_loop ()
       in
+      (* guard the loop, for when M.parse will fail *)
+      let listen_thread =
+        try%lwt listen_loop()
+        with e ->
+          Lwt_log.error_f "ipc_client.listen_thread: %s" (Printexc.to_string e)
+      in
       let c = {
-        port; ic; oc; on_next; uid=0; listen_thread=listen_loop ();
+        port; ic; oc; on_next; uid=0; listen_thread;
       } in
       let%lwt res = f c in
       Lwt_log.ign_debug ~section "send `end` to daemon";
