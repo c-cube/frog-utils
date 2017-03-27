@@ -77,11 +77,7 @@ module Run = struct
         fun r ->
           let%lwt () = prog r in
           let msg = IPC_message.Event (Event.Prover_run r) in
-          try%lwt
-            IPC_client.send ipc msg
-          with e ->
-            Lwt_log.error_f "could not send message %s:\n%s"
-              (IPC_message.show msg) (Printexc.to_string e)
+          IPC_client.send_noerr ipc msg
       in
       (* solve *)
       let main =
@@ -91,7 +87,7 @@ module Run = struct
       in
       main
       >>= fun results ->
-      let%lwt () = IPC_client.send ipc IPC_message.Finish_bench in
+      let%lwt () = IPC_client.send_noerr ipc IPC_message.Finish_bench in
       Prover.Map_name.iter
         (fun p r ->
            Format.printf "@[<2>%s on `%s`:@ @[<hv>%a@]@]@."

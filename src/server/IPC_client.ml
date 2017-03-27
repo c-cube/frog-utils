@@ -136,6 +136,13 @@ let connect_and_acquire
 
 let send (c:t) msg = M.print c.oc msg
 
+let send_noerr c msg =
+  try%lwt
+    send c msg
+  with e ->
+    Lwt_log.error_f "could not send message %s:\n%s"
+      (IPC_message.show msg) (Printexc.to_string e)
+
 let on_msg (c:t) f: unit =
   Signal.on c.on_next
     (fun msg -> match f msg with

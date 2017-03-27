@@ -40,6 +40,9 @@ val connect_and_acquire :
 val send : t -> msg -> unit Lwt.t
 (** Send message (broadcast) *)
 
+val send_noerr : t -> msg -> unit Lwt.t
+(** Send message (broadcast). Ignores errors *)
+
 val next_filter : t -> (msg -> bool) -> msg Lwt.t
 (** Next incoming message matching the predicate *)
 
