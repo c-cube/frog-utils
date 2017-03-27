@@ -139,8 +139,13 @@ module Run = struct
           (fun (c,_) -> task_with_conn c)
       else IPC_client.connect_or_spawn port task_with_conn
     end
-    >|= T.Top_result.merge_l
+    >|=
+    begin fun l ->
+      Lwt_log.ign_debug_f "merging %d top results…" (List.length l);
+      T.Top_result.merge_l l
+    end
     >>= fun (results:T.Top_result.t) ->
+    Lwt_log.ign_debug_f "saving top result…";
     begin match save with
       | "none" ->
         Lwt_io.printlf "not saving…" |> E.ok
