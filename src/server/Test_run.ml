@@ -31,6 +31,7 @@ let config_of_config config dirs =
     let timeout = Config.get_int ~default:5 c "timeout" in
     let memory = Config.get_int ~default:1000 c "memory" in
     let problem_pat = Config.get_string ~default:"" c "problems" in
+    let default_expect = Config.get_string ~default:"" c "default_expect" in
     let l =
       match dirs with
       | [] -> Config.get_string_list ~default:[] c "dir"
@@ -46,6 +47,7 @@ let config_of_config config dirs =
             (Config.get_string_opt t "expect"
              <+> Config.get_string_opt c "expect"
              <+> Config.get_string_opt config "expect")
+             <+> Some default_expect
             |> expect_of_config config
           in
           { C.directory = dir; pattern = pat; expect = expect; }
@@ -54,6 +56,7 @@ let config_of_config config dirs =
             let open CCOpt.Infix in
              (Config.get_string_opt c "expect"
              <+> Config.get_string_opt config "expect")
+             <+> Some default_expect
             |> expect_of_config config
           in
           { C.directory = s; pattern = problem_pat; expect; }
