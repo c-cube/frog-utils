@@ -428,7 +428,7 @@ let run_ping_thread st: unit Lwt.t =
     let clients = State.clients st in
     Int_map.iter
       (fun _ c ->
-         if c.c_last_ping > c.c_last_pong +. ping_delay +. 2. 
+         if c.c_last_ping > c.c_last_pong +. 3. *. ping_delay +. 2. 
          then (
            killed_any := true;
            Lwt.async (fun () -> kill_client st c) (* dead *)
