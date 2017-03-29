@@ -1,0 +1,4 @@
+REC
+S src/plot
+B _build/src/plot
+PKG archimedes archimedes.cairo

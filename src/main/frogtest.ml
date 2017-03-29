@@ -300,16 +300,6 @@ module Delete_run = struct
     E.map_s (fun file -> Storage.delete storage file) names >|= fun _ -> ()
 end
 
-module Plot_run = struct
-  (* Plot functions *)
-  let main ~config params (name:string option) : unit E.t =
-    let open E in
-    let storage = Storage.make [] in
-    Test_run.find_or_last ~storage name >>= fun main_res ->
-    Test_run.Plot_res.draw_file params main_res;
-    E.return ()
-end
-
 (** {2 Main: Parse CLI} *)
 
 let config_term =
@@ -454,72 +444,6 @@ let term_list =
   let doc = "compare two result files" in
   Term.(pure aux $ pure ()), Term.info ~doc "list snapshots"
 
-let drawer_term =
-  let open Cmdliner in
-  let open Test_run.Plot_res in
-  let aux cumul sort filter count =
-    if cumul then Cumul (sort, filter, count) else Simple sort
-  in
-  let cumul =
-    let doc = "Plots the cumulative sum of the data" in
-    Arg.(value & opt bool true & info ["cumul"] ~doc)
-  in
-  let sort =
-    let doc = "Should the data be sorted before being plotted" in
-    Arg.(value & opt bool true & info ["sort"] ~doc)
-  in
-  let filter =
-    let doc = "Plots one in every $(docv) data point
-              (ignored if not in cumulative plotting)" in
-    Arg.(value & opt int 3 & info ["pspace"] ~doc)
-  in
-  let count =
-    let doc = "Plots the last $(docv) data point in any case" in
-    Arg.(value & opt int 5 & info ["count"] ~doc)
-  in
-  Term.(pure aux $ cumul $ sort $ filter $ count)
-
-let plot_params_term =
-  let open Cmdliner in
-  let open Test_run.Plot_res in
-  let aux graph data legend drawer out_file out_format =
-    { graph; data; legend; drawer; out_file; out_format }
-  in
-  let to_cmd_arg l = Cmdliner.Arg.enum l, Cmdliner.Arg.doc_alts_enum l in
-  let data_conv, data_help = to_cmd_arg
-      [ "unsat_time", Unsat_time; "sat_time", Sat_time; "both_time", Both_time ] in
-  let legend_conv, legend_help = to_cmd_arg [ "prover", Prover ] in
-  let data =
-    let doc = Format.sprintf "Decides which value to plot. $(docv) must be %s" data_help in
-    Arg.(value & opt data_conv Both_time & info ["data"] ~doc)
-  and legend =
-    let doc = Format.sprintf
-        "What legend to attach to each curve. $(docv) must be %s" legend_help
-    in
-    Arg.(value & opt legend_conv Prover & info ["legend"] ~doc)
-  and out_file =
-    let doc = "Output file for the plot" in
-    Arg.(required & opt (some string) None & info ["o"; "out"] ~doc)
-  and out_format =
-    let doc = "Output format for the graph" in
-    Arg.(value & opt string "PDF" & info ["format"] ~doc)
-  in
-  Term.(pure aux $ Plot.graph_args $ data $ legend $ drawer_term $ out_file $ out_format)
-
-let term_plot =
-  let open Cmdliner in
-  let aux config params file = Lwt_main.run (Plot_run.main ~config params file) in
-  let doc = "Plot graphs of prover's statistics" in
-  let man = [
-    `S "DESCRIPTION";
-    `P "This tools takes results files from runs of '$(b,frogmap)' and plots graphs
-        about the prover's statistics.";
-    `S "OPTIONS";
-    `S Plot.graph_section;
-  ] in
-  Term.(pure aux $ config_term $ plot_params_term $ snapshot_name_term),
-  Term.info ~man ~doc "plot"
-
 (* sub-command to compare a snapshot to the others *)
 let term_summary =
   let open Cmdliner in
@@ -553,7 +477,7 @@ let parse_opt () =
   in
   Cmdliner.Term.eval_choice
     help [ term_run; term_compare; term_display; term_csv; term_list;
-           term_summary; term_plot; term_bench; term_delete;
+           term_summary; term_bench; term_delete;
            term_sample; ]
 
 let () =

@@ -2,6 +2,7 @@
 (* This file is free software, part of frog-utils. See file "license" for more details. *)
 
 open Frog
+open Frog_server
 
 module A = Archimedes
 module Conf = Config

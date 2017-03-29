@@ -14,6 +14,7 @@ build: [
     "--sharedstatedir" "%{share}%"
     "--%{opium+js_of_ocaml+react+reactiveData:enable}%-web"
     "--%{lwt+calculon:enable}%-irc"
+    "--%{cairo2+archimedes:enable}%-plot"
     "--mandir" "%{man}%"]
   [make]
 ]
@@ -34,8 +35,6 @@ depends: [
     "re"
     "ppx_deriving"
     "ppx_deriving_yojson"
-    "cairo2"
-    "archimedes"
     "cmdliner"
     "result"
     "olinq" { >= "0.2" }
@@ -50,6 +49,8 @@ depends: [
     "js_of_ocaml"
 ]
 depopts: [
+    "cairo2"
+    "archimedes"
     "react"
     "reactiveData"
     "opium"

@@ -23,6 +23,10 @@ Flag "irc"
   Description:      build and install the IRC daemon for frogutils
   Default:          true
 
+Flag "plot"
+  Description:      build and install the frogplot tool
+  Default:          true
+
 Library "frog"
   Path:             src/lib
   Pack:             true
@@ -37,11 +41,11 @@ Library "frog_server"
   FindlibParent:    frog
   FindlibName:      server
   Modules:          Config, JUnit_wrapper, IPC_client, IPC_daemon,
-                    IPC_message, Maki_wrapper, Plot, Signal,
+                    IPC_message, Maki_wrapper, Signal,
                     Run, TPTP, Test_run, Misc_unix,
                     Storage, Event_storage, Problem_run, ProverSet
   BuildDepends:     frog, unix, lwt.unix, lwt.preemptive, cmdliner,
-                    archimedes.cairo, junit, maki, printbox,
+                    junit, maki, printbox,
                     maki.yojson, ISO8601, threads
 
 Executable frogweb
@@ -90,6 +94,14 @@ Executable frogtest
   CompiledObject:   best
   MainIs:           frogtest.ml
   BuildDepends:     frog, frog.server, threads
+
+Executable frogplot
+  Path:             src/plot
+  Build$:           flag(plot)
+  Install$:         flag(plot)
+  CompiledObject:   best
+  MainIs:           frogplot.ml
+  BuildDepends:     frog, frog.server, archimedes.cairo, cairo2, threads
 
 Executable froglock
   Path:             src/main
