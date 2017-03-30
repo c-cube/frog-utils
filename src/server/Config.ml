@@ -131,6 +131,7 @@ let field_ ?default name (f:TomlTypes.value -> 'a option) : 'a getter =
        | None -> Error (Field_not_found path)
        | Some res -> Ok res
        | exception Not_found -> Error (Field_not_found path)
+       | exception (TomlTypes.Table.Key.Bad_key _) -> Error (Field_not_found path)
      end;
   }
 

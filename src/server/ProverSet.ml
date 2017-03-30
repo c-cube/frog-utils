@@ -87,7 +87,7 @@ let build_from_config config name =
       <|> pure (Tag "dev")
     end >>= fun version ->
     let get_stropt name =
-      some (prover_tbl |>> string "unsat") <|> pure None
+      some (prover_tbl |>> string name) <|> pure None
     in
     get_stropt "unsat" >>= fun unsat ->
     get_stropt "sat" >>= fun sat ->
