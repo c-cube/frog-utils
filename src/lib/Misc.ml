@@ -13,6 +13,7 @@ end
 
 (** Yay formatting! *)
 module Fmt = struct
+  type 'a printer = Format.formatter -> 'a -> unit
   let fpf = Format.fprintf
   let to_string f x = Format.asprintf "%a%!" f x
 
@@ -104,6 +105,8 @@ module Err = struct
       | Ok x :: l' -> aux (x :: acc) l'
     in
     aux [] l
+
+  let map_l f l = List.map f l |> seq_list
 end
 
 module LwtErr = struct

@@ -15,69 +15,60 @@ module T = Test
 module E = Misc.LwtErr
 
 let expect_of_config config = function
-  | None -> C.Auto
+  | None -> Ok C.Auto
   | Some s ->
+    let open Misc.Err in
     begin match Misc.Str.split ~by:':' s with
       | "program", p ->
-        C.Program (ProverSet.find_config config p)
-      | _ -> C.Res (Res.of_string s)
-      | exception Not_found -> C.Res (Res.of_string s)
+        ProverSet.find_config config p >|= fun p -> C.Program p
+      | _ -> Ok (C.Res (Res.of_string s))
+      | exception Not_found -> Ok (C.Res (Res.of_string s))
     end
 
 let config_of_config config dirs =
-  try
-    let c = Config.get_table config "test" in
-    let j = Config.get_int ~default:1 c "parallelism" in
-    let timeout = Config.get_int ~default:5 c "timeout" in
-    let memory = Config.get_int ~default:1000 c "memory" in
-    let problem_pat = Config.get_string ~default:"" c "problems" in
-    let default_expect = Config.get_string ~default:"" c "default_expect" in
-    let l =
-      match dirs with
-      | [] -> Config.get_string_list ~default:[] c "dir"
-      | _ -> dirs
+  let getter =
+    let open Config in
+    let test = table "test" in
+    (try_tables [test; top] @@ int "parallelism" <|> pure 1) >>= fun j ->
+    (try_tables [test; top] @@ int "timeout" <|> pure 5) >>= fun timeout ->
+    (try_tables [test; top] @@ int "memory" <|> pure 1000) >>= fun memory ->
+    let problem_pat =
+      try_tables [test; top] @@ string "problems" <|> pure ""
     in
-    let problems = List.map (fun s ->
-        match Config.get_table c s with
-        | t ->
-          let dir = Config.get_string ~default:s t "directory" in
-          let pat = Config.get_string ~default:problem_pat t "problems" in
-          let expect =
-            let open CCOpt.Infix in
-            (Config.get_string_opt t "expect"
-             <+> Config.get_string_opt c "expect"
-             <+> Config.get_string_opt config "expect")
-             <+> Some default_expect
-            |> expect_of_config config
-          in
-          { C.directory = dir; pattern = pat; expect = expect; }
-        | exception (Config.FieldNotFound _ | TomlTypes.Table.Key.Bad_key _) ->
-          let expect =
-            let open CCOpt.Infix in
-             (Config.get_string_opt c "expect"
-             <+> Config.get_string_opt config "expect")
-             <+> Some default_expect
-            |> expect_of_config config
-          in
-          { C.directory = s; pattern = problem_pat; expect; }
-      ) l in
-    let provers = Config.get_string_list c "provers" in
-    let provers = List.map (ProverSet.find_config config) provers in
-    Misc.Err.return { C.j; timeout; memory; provers; problems; }
-  with
-  | Config.Error e ->
-    Misc.Err.fail e
-  | e -> Misc.Err.fail (Printexc.to_string e)
+    let default_expect =
+      (try_tables [test; top] @@ string "default_expect" >|= fun x-> Some x)
+      <|> pure None
+    in
+    begin match dirs with
+      | [] -> top |>> string_list ~default:[] "dir"
+      | _ -> pure dirs
+    end >>= fun l ->
+    map_l
+      (fun dir_name ->
+         let dir_tbl = test |>> table dir_name in
+         (dir_tbl |>> string "directory" <|> pure dir_name) >>= fun dir ->
+         (dir_tbl |>> string "problems" <|> problem_pat) >>= fun pat ->
+         ( (( some @@ try_tables [dir_tbl; test; top] @@ string "expect")
+            <|> default_expect)
+           >>= fun e -> (expect_of_config config e |> pure_or_error) )
+         >|= fun expect ->
+         { C.directory = dir; pattern = pat; expect = expect; })
+      l
+    >>= fun problems ->
+    (try_tables [test; top] @@ string_list "provers") >>= fun provers ->
+    map_l
+      (fun p -> ProverSet.find_config config p |> pure_or_error)
+      provers
+    >>= fun provers ->
+    return { C.j; timeout; memory; provers; problems; }
+  in
+  Config.get config getter
 
 let config_of_file file =
   Lwt_log.ign_debug_f "parse config file `%s`..." file;
-  try
-    let main = Config.parse_files [file] Config.empty in
-    config_of_config main []
-  with
-  | Config.Error e ->
-    Misc.Err.fail e
-  | e -> Misc.Err.fail (Printexc.to_string e)
+  let open Misc.Err in
+  Config.parse_file file >>= fun c ->
+  config_of_config c []
 
 (* run one particular test *)
 let run_pb_ ~config prover pb =

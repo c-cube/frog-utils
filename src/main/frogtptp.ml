@@ -27,7 +27,10 @@ let execp_re_maybe maybe_re s = match maybe_re with
 
 (* print list of known provers *)
 let list_provers ~config =
-  let provers = ProverSet.of_config config in
+  let provers = match ProverSet.of_config config with
+    | Ok p -> p
+    | Error e -> failwith e
+  in
   Printf.printf "provers:\n";
   StrMap.iter
     (fun name p -> Printf.printf "  %s: cmd=%s\n" name p.Prover.cmd)
@@ -78,10 +81,10 @@ let config_term =
       Maki_log.set_level 5;
       Lwt_log.add_rule "*" Lwt_log.Debug;
     );
-    try
-      `Ok (Config.parse_files [config] Config.empty)
-    with Config.Error msg ->
-      `Error (false, msg)
+    begin match Config.parse_file config with
+      | Ok p -> `Ok p
+      | Error msg -> `Error (false, msg)
+    end
   in
   let arg =
     Arg.(value & opt string "$home/.frogtptp.toml" &
@@ -110,13 +113,14 @@ let limit_term =
 let run_term =
   let open Cmdliner in
   let aux config params cmd file =
+    let test_tbl = Config.table "test" in
     let timeout =
       match params.TPTP.timeout with
       | Some res -> res
       | None ->
-        begin match Config.get_int config "timeout" with
-          | x -> x
-          | exception Not_found ->
+        begin match Config.(get config @@ (try_tables [test_tbl; top] @@ int "timeout")) with
+          | Ok x -> x
+          | Error _ ->
             failwith "A timeout is required (either on the command line or in the config file)"
         end
     in
@@ -124,13 +128,16 @@ let run_term =
       match params.TPTP.memory with
       | Some res -> res
       | None ->
-        begin match Config.get_int config "memory" with
-          | x -> x
-          | exception Not_found ->
+        begin match Config.(get config @@ (try_tables [test_tbl; top] @@ int "memory")) with
+          | Ok x -> x
+          | Error _ ->
             failwith "A memory limit is required (either on the command line or in the config file)"
         end
     in
-    let prover = ProverSet.find_config config cmd in
+    let prover = match ProverSet.find_config config cmd with
+      | Error e -> failwith e
+      | Ok p -> p
+    in
     Run.TPTP.exec_prover ~config ~timeout ~memory ~prover ~file ()
   in
   let cmd =

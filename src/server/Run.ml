@@ -114,17 +114,13 @@ let exec_prover ?(env=[||]) ~timeout ~memory ~prover ~file () =
   Unix.execvpe p args env
 
 module TPTP = struct
-  let get_str_ d x =
-    try Some (Config.get_string d x)
-    with Not_found -> None
-
   let exec_prover ?tptp ~config ~timeout ~memory ~prover ~file () =
     let env = match tptp with
       | Some f -> [| "TPTP", f |]
       | None ->
-        begin match get_str_ config "TPTP" with
-          | None -> [| |]
-          | Some f -> [| "TPTP", f |]
+        begin match Config.(get config (string "TPTP")) with
+          | Error _ -> [| |]
+          | Ok f -> [| "TPTP", f |]
         end
     in
     exec_prover ~env ~timeout ~memory ~prover ~file ()

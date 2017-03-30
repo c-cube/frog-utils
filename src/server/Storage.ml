@@ -24,7 +24,7 @@ let make ?(conf=Config.empty) dirs : t =
       [s]
     )else []
   in
-  let by_conf = Config.get_string_list ~default:[] conf "storage" in
+  let by_conf = Config.(get_or ~default:[] conf @@ string_list "storage") in
   let dirs = List.map f dirs @ List.map f by_conf @ default in
   { dirs }
 

@@ -35,7 +35,7 @@ let main (port:int): unit =
       then Config.parse_or_empty main_config_file
       else Config.empty
     in
-    Config.get_string ~default:"/tmp/froglock.log" config "log"
+    Config.(get_or ~default:"/tmp/froglock.log" config @@ string "log")
   in
   Lwt_log.add_rule "*" Lwt_log.Debug;
   Lwt_log.ign_debug ~section "loggers are setup";

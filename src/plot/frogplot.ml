@@ -24,10 +24,10 @@ let config_term =
       Lwt_log.add_rule "*" Lwt_log.Debug;
     );
     let config = Config.interpolate_home config in
-    try
-      `Ok (Config.parse_files [config] Config.empty)
-    with Config.Error msg ->
-      `Error (false, msg)
+    begin match Config.parse_file config with
+      | Ok x -> `Ok x
+      | Error e -> `Error (false, e)
+    end
   in
   let arg =
     Arg.(value & opt string "$home/.frogutils.toml" &

@@ -9,6 +9,8 @@ open Lwt.Infix
 module M = IPC_message
 module Int_map = Misc.Int_map
 
+type 'a or_error = ('a, string) Result.result
+
 let main_config_file = "/etc/froglock.conf"
 let section = Lwt_log.Section.make "ipc_daemon"
 
@@ -79,7 +81,7 @@ type event =
 
 module State : sig
   type t
-  val make : forever:bool -> string list -> t
+  val make : forever:bool -> string list -> t or_error
 
   val clients : t -> client_conn Int_map.t
   val num_clients : t -> int
@@ -178,15 +180,16 @@ end = struct
       (Q.size st.waiting) (Int_map.cardinal st.clients)
 
   let make ~forever config_files =
-    let config =
+    let open Misc.Err in
+    let default_config =
       if Sys.file_exists main_config_file
       then Config.parse_or_empty main_config_file else Config.empty
     in
-    let config = Config.parse_files config_files config in
-    {
-      id_count=0;
+    Config.parse_files config_files >|= fun config ->
+    let config = Config.merge config default_config in
+    { id_count=0;
       msg_count=0;
-      max_cores=Config.get_int ~default:1 config "cores";
+      max_cores=Config.(get_or ~default:1 config @@ int "cores");
       accept=true;
       active=Full_id_map.empty;
       clients=Int_map.empty;
@@ -452,7 +455,10 @@ let spawn ?(forever=false) (port:int): unit Lwt.t =
   Lwt_log.ign_info ~section "---------------------------";
   Lwt_log.ign_info_f ~section "starting daemon on port %d" port;
   let addr = Unix.ADDR_INET (Unix.inet_addr_loopback, port) in
-  let st = State.make ~forever [] in
+  begin match State.make ~forever [] with
+    | Result.Error e -> Lwt.fail_with e
+    | Result.Ok st -> Lwt.return st
+  end >>= fun st ->
   (* scheduler *)
   Lwt_log.ign_info ~section "start scheduler";
   let scheduler_thread = run_scheduler st in
@@ -525,7 +531,7 @@ let () = match Sys.getenv "DAEMON_PORT" |> int_of_string with
       ~stdin:`Close ~stdout:`Close ~stderr:`Keep ();
     let log_file =
       let config = Config.parse_or_empty main_config_file in
-      Config.get_string ~default:"/tmp/froglock.log" config "log"
+      Config.(get_or ~default:"/tmp/froglock.log" config @@ string "log")
     in
     Lwt_main.run (
       let%lwt () = setup_loggers log_file () in
