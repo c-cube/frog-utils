@@ -33,29 +33,32 @@ let config_of_config config dirs =
     (try_tables [test; top] @@ int "timeout" <|> pure 5) >>= fun timeout ->
     (try_tables [test; top] @@ int "memory" <|> pure 1000) >>= fun memory ->
     let problem_pat =
-      try_tables [test; top] @@ string "problems" <|> pure ""
+      try_tables [test; top] @@ string "problems"
     in
     let default_expect =
       (try_tables [test; top] @@ string "default_expect" >|= fun x-> Some x)
       <|> pure None
     in
     begin match dirs with
-      | [] -> top |>> string_list ~default:[] "dir"
+      | [] -> try_tables [test; top] @@ string_list ~default:[] "dir"
       | _ -> pure dirs
     end >>= fun l ->
     map_l
       (fun dir_name ->
          let dir_tbl = test |>> table dir_name in
+         begin
          (dir_tbl |>> string "directory" <|> pure dir_name) >>= fun dir ->
          (dir_tbl |>> string "problems" <|> problem_pat) >>= fun pat ->
          ( (( some @@ try_tables [dir_tbl; test; top] @@ string "expect")
             <|> default_expect)
            >>= fun e -> (expect_of_config config e |> pure_or_error) )
          >|= fun expect ->
-         { C.directory = dir; pattern = pat; expect = expect; })
+         { C.directory = dir; pattern = pat; expect = expect; }
+         end |> add_ctxf "read config for directory `%s`" dir_name)
       l
     >>= fun problems ->
-    (try_tables [test; top] @@ string_list "provers") >>= fun provers ->
+    ((try_tables [test; top] @@ string_list "provers") |> add_ctxf "get provers")
+     >>= fun provers ->
     map_l
       (fun p -> ProverSet.find_config config p |> pure_or_error)
       provers

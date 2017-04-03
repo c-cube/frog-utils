@@ -69,6 +69,9 @@ val fail : string -> _ getter
 
 val pure_or_error : 'a or_error -> 'a getter
 
+val add_ctx : string -> 'a getter -> 'a getter
+val add_ctxf : ('a, Format.formatter, unit, 'b getter -> 'b getter) format4 -> 'a
+
 val lazy_ : 'a lazy_t getter -> 'a getter
 
 val try_ : 'a getter list -> 'a getter

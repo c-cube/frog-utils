@@ -24,6 +24,7 @@ let create () = top_tbl ?file:None TomlTypes.Table.empty
 
 let merge (c1:t)(c2:t) : t = {configs=List.append c1.configs c2.configs}
 
+
 let rec merge_l = function
   | [] -> empty
   | [c] -> c
@@ -75,7 +76,8 @@ let parse_files l: t or_error =
 
 (* Exceptions for getters *)
 
-type error =
+type error = error_msg * string list
+and error_msg =
   | Try of error list
   | Field_not_found of string list
   | Wrong_type of string list * string
@@ -86,9 +88,12 @@ module Fmt = CCFormat
 let pp_path = Fmt.(hbox @@ list ~sep:(return ".") string)
 let string_of_path = Fmt.to_string pp_path
 
-let rec pp_error out = function
+let rec pp_error out (e,l) =
+  Fmt.fprintf out "@[<hv>%a%a@]" pp_error_msg e Fmt.(list string) l
+and pp_error_msg out = function
+  | Try [e] -> pp_error out e
   | Try l ->
-    Fmt.fprintf out "(@[<hv2>choice@ %a@])"
+    Fmt.fprintf out "(@[<hv>%a@])"
       Fmt.(list ~sep:(return "@ | ") pp_error) l
   | Field_not_found path ->
     Fmt.fprintf out "field not found: %a" pp_path path
@@ -111,13 +116,25 @@ let return x : _ getter =
 let pure = return
 
 let fail e : _ getter =
-  { path=[]; call=fun ~path:_ _ -> Error (User_err e)}
+  { path=[]; call=fun ~path:_ _ -> Error (User_err e,[])}
 
 let pure_or_error x =
   begin match x with
     | Error e -> fail e
     | Ok x -> pure x
   end
+
+let add_ctx msg g = {
+  path=g.path;
+  call=fun ~path x ->
+    begin match g.call ~path x with
+      | Ok x -> Ok x
+      | Error (e,l) -> Error (e, (("context:" ^ msg) :: l))
+    end;
+}
+
+let add_ctxf msg =
+  Fmt.ksprintf ~f:(fun msg -> add_ctx msg) msg
 
 let top : table getter =
   {path=[]; call=fun ~path:_ tbl -> Ok tbl}
@@ -128,10 +145,10 @@ let field_ ?default name (f:TomlTypes.value -> 'a option) : 'a getter =
    call=fun ~path tbl ->
      let path = path @ [name] in
      begin match TomlTypes.Table.find (Toml.key name) tbl |> f with
-       | None -> Error (Field_not_found path)
+       | None -> Error (Field_not_found path,[])
        | Some res -> Ok res
-       | exception Not_found -> Error (Field_not_found path)
-       | exception (TomlTypes.Table.Key.Bad_key _) -> Error (Field_not_found path)
+       | exception Not_found -> Error (Field_not_found path,[])
+       | exception (TomlTypes.Table.Key.Bad_key _) -> Error (Field_not_found path,[])
      end;
   }
 
@@ -212,11 +229,11 @@ let rec table_l l = match l with
 
 let try_ (g_l:'a getter list) : 'a getter =
   let rec aux errors g_l ~path tbl = match g_l with
-    | [] -> Error (Try errors)
+    | [] -> Error (Try errors,[])
     | g1 :: g_tail ->
       begin match g1.call ~path tbl with
         | Ok x -> Ok x (* success *)
-        | Error (Try es) -> aux (es @ errors) g_tail ~path tbl (* flatten *)
+        | Error (Try es,_) -> aux (es @ errors) g_tail ~path tbl (* flatten *)
         | Error e -> aux (e :: errors) g_tail ~path tbl
       end
   in
@@ -242,7 +259,7 @@ let map_l f l =
 let get (c:t) (g:'a getter) : 'a or_error =
   (* try tables one by one *)
   let rec aux errors l: _ or_error = match l with
-    | [] -> Error (string_of_error (Try errors))
+    | [] -> Error (string_of_error (Try errors,[]))
     | (file,c) :: tail ->
       let path = match file with
         | "" -> []

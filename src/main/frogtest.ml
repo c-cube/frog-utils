@@ -121,7 +121,7 @@ module Run = struct
     (* parse config *)
     begin
       Lwt.return (Test_run.config_of_config config dirs)
-      |> E.add_ctxf "parsing config from [@[%a@]]" (Misc.Fmt.pp_list Format.pp_print_string) dirs
+      |> E.add_ctxf "parsing config for files [@[%a@]]" (Misc.Fmt.pp_list Format.pp_print_string) dirs
     end
     >>= fun config ->
     (* pick default directory if needed *)
