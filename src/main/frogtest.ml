@@ -396,7 +396,7 @@ let term_bench =
   let provers =
     Arg.(value & opt (some (list string)) None & info ["p"; "provers"] ~doc:"select provers")
   and dir =
-    Arg.(value & pos_all string [] &
+    Arg.(value & pos_right 0 string [] &
          info [] ~docv:"DIR" ~doc:"target directories (containing tests)")
   and name_ =
     Arg.(value & pos 0 (some string) None & info [] ~docv:"FILE"
