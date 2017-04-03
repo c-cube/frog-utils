@@ -37,7 +37,9 @@ let find_files ?(filter=fun _ -> true) storage : key list Lwt.t =
     try%lwt
       while%lwt true do
         let%lwt s = Lwt_unix.readdir dir in
-        if s<>"." && s<>".." && not (Sys.is_directory (Filename.concat d s)) && filter s then (
+        let s_full = Filename.concat d s in
+        if s<>"." && s<>".." && Sys.file_exists s_full &&
+           not (Sys.is_directory s_full) && filter s then (
           acc := StrSet.add s !acc;
         );
         Lwt.return_unit
