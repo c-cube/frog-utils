@@ -512,6 +512,16 @@ module Top_result = struct
     right: Analyze.t Prover.Map_name.t;
   }
 
+  (* any common problem? *)
+  let should_compare (a:t)(b:t): bool =
+    let {raw=lazy a; _} = a in
+    let {raw=lazy b; _} = b in
+    Prover.Map_name.exists
+      (fun p r1 -> match Prover.Map_name.get p b with
+         | Some r2 -> MStr.exists (fun k _ -> MStr.mem k r2) r1
+         | None -> false)
+      a
+
   let compare (a:t) (b:t): comparison_result =
     let {analyze=lazy a; _} = a in
     let {analyze=lazy b; _} = b in
@@ -724,6 +734,7 @@ module Summary = struct
 
   let compare_to_ (a:top_result)(other:top_result): individual_diff option * regression option =
     if Top_result.same_uuid a other then None, None
+    else if not (Top_result.should_compare other a)  then None, None
     else (
       let r = Top_result.compare other a in
       if Prover.Map_name.is_empty r.Top_result.both
