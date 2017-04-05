@@ -191,10 +191,11 @@ module Analyze = struct
   let pp_list_ p = Misc.Fmt.pp_list ~start:"" ~stop:"" p
 
   let pp_raw_res_ out r =
-    fpf out "@[<h>problem %s (expected: %a, result: %a)@]"
+    fpf out "@[<h>problem %s (expected: %a, result: %a in %.2f)@]"
       r.Event.problem.Problem.name
       Res.print r.Event.problem.Problem.expected
       Res.print (Event.analyze_p r)
+      r.Event.raw.Event.rtime
 
   let pp_summary out t: unit =
     Format.fprintf out
