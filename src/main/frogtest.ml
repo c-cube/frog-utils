@@ -342,7 +342,7 @@ let term_run =
   and dir_file =
     Arg.(value & opt (some string) None & info ["F"] ~doc:"file containing a list of files")
   and profile =
-    Arg.(value & opt (some string) None & info ["--profile"] ~doc:"pick test profile (default 'test')")
+    Arg.(value & opt (some string) None & info ["profile"] ~doc:"pick test profile (default 'test')")
   and timeout =
     Arg.(value & opt (some int) None & info ["t"; "timeout"] ~doc:"timeout (in s)")
   and memory =
