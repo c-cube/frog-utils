@@ -8,9 +8,15 @@ open Frog
 type 'a or_error = 'a Misc.Err.t
 type path = string
 
-val config_of_file : string -> Test.Config.t Misc.Err.t
+val config_of_file : ?profile:string -> string -> Test.Config.t Misc.Err.t
 
-val config_of_config : Config.t -> string list -> Test.Config.t Misc.Err.t
+val config_of_config : ?profile:string -> Config.t -> string list -> Test.Config.t Misc.Err.t
+(** [config_of_config ?profile conf dirs] makes a test config out of the
+    raw configuration.
+    It will gather all problems present in one of the [dirs] that the
+    configuration matches.
+    @param profile if present, look for the test configuration named [profile]
+    instead of "test" *)
 
 val print_result : Test.result -> unit
 

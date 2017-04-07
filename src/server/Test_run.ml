@@ -25,31 +25,31 @@ let expect_of_config config = function
       | exception Not_found -> Ok (C.Res (Res.of_string s))
     end
 
-let config_of_config config dirs =
+let config_of_config ?(profile="test") config dirs =
   let getter =
     let open Config in
-    let test = table "test" in
-    (try_tables [test; top] @@ int "parallelism" <|> pure 1) >>= fun j ->
-    (try_tables [test; top] @@ int "timeout" <|> pure 5) >>= fun timeout ->
-    (try_tables [test; top] @@ int "memory" <|> pure 1000) >>= fun memory ->
+    let tbl = table profile in
+    (try_tables [tbl; top] @@ int "parallelism" <|> pure 1) >>= fun j ->
+    (try_tables [tbl; top] @@ int "timeout" <|> pure 5) >>= fun timeout ->
+    (try_tables [tbl; top] @@ int "memory" <|> pure 1000) >>= fun memory ->
     let problem_pat =
-      try_tables [test; top] @@ string "problems"
+      try_tables [tbl; top] @@ string "problems"
     in
     let default_expect =
-      (try_tables [test; top] @@ string "default_expect" >|= fun x-> Some x)
+      (try_tables [tbl; top] @@ string "default_expect" >|= fun x-> Some x)
       <|> pure None
     in
     begin match dirs with
-      | [] -> try_tables [test; top] @@ string_list ~default:[] "dir"
+      | [] -> try_tables [tbl; top] @@ string_list ~default:[] "dir"
       | _ -> pure dirs
     end >>= fun l ->
     map_l
       (fun dir_name ->
-         let dir_tbl = test |>> table dir_name in
+         let dir_tbl = tbl |>> table dir_name in
          begin
          (dir_tbl |>> string "directory" <|> pure dir_name) >>= fun dir ->
          (dir_tbl |>> string "problems" <|> problem_pat) >>= fun pat ->
-         ( (( some @@ try_tables [dir_tbl; test; top] @@ string "expect")
+         ( (( some @@ try_tables [dir_tbl; tbl; top] @@ string "expect")
             <|> default_expect)
            >>= fun e -> (expect_of_config config e |> pure_or_error) )
          >|= fun expect ->
@@ -57,7 +57,7 @@ let config_of_config config dirs =
          end |> add_ctxf "read config for directory `%s`" dir_name)
       l
     >>= fun problems ->
-    ((try_tables [test; top] @@ string_list "provers") |> add_ctxf "get provers")
+    ((try_tables [tbl; top] @@ string_list "provers") |> add_ctxf "get provers")
      >>= fun provers ->
     map_l
       (fun p -> ProverSet.find_config config p |> pure_or_error)
@@ -67,11 +67,11 @@ let config_of_config config dirs =
   in
   Config.get config getter
 
-let config_of_file file =
+let config_of_file ?profile file =
   Lwt_log.ign_debug_f "parse config file `%s`..." file;
   let open Misc.Err in
   Config.parse_file file >>= fun c ->
-  config_of_config c []
+  config_of_config ?profile c []
 
 (* run one particular test *)
 let run_pb_ ~config prover pb =
