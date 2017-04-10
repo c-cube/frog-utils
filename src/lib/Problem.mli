@@ -16,6 +16,7 @@ val basename : t -> string
 (** Returns the basename of a problem *)
 
 val same_name : t -> t -> bool
+val hash_name : t -> int
 val compare_name : t -> t -> int
 (** Compare the names of problems. *)
 

@@ -54,6 +54,10 @@ type t =
 
 type event = t [@@deriving yojson,eq]
 
+let program e = e.program
+let problem e = e.problem
+let raw e = e.raw
+
 let to_string r = to_yojson r |> Yojson.Safe.to_string
 let pp out r = Format.pp_print_string out (to_string r)
 

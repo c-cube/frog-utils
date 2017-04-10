@@ -148,8 +148,7 @@ module Analyze = struct
       M.of_map raw
       |> OLinq.map snd
       |> OLinq.group_by
-        (fun r -> Problem.compare_res r.Event.problem
-            (Event.analyze_p r))
+        (fun r -> Problem.compare_res r.Event.problem (Event.analyze_p r))
       |> OLinq.run_list ?limit:None
     in
     let improved = assoc_or [] `Improvement l in
@@ -344,7 +343,7 @@ module ResultsComparison = struct
     let a = M.of_map a |> OLinq.map snd in
     let b = M.of_map b |> OLinq.map snd in
     let j =
-      OLinq.join ~eq:Problem.same_name
+      OLinq.join ~eq:Problem.same_name ~hash:(Problem.hash_name)
         (fun r -> r.problem) (fun r -> r.problem) a b
         ~merge:(fun pb r1 r2 ->
             assert (r1.problem.Problem.name = r2.problem.Problem.name);
@@ -358,11 +357,15 @@ module ResultsComparison = struct
     let mismatch = assoc_or [] `Mismatch j |> tup3 in
     let same = assoc_or [] `Same j |> List.rev_map (fun (pb,r,_,t1,t2) -> pb,r,t1,t2) in
     let disappeared =
-      OLinq.diff ~cmp:(fun r1 r2 -> Problem.compare_name r1.problem r2.problem) a b
+      OLinq.diff a b
+        ~eq:(CCFun.compose_binop Event.problem Problem.same_name)
+        ~hash:(CCFun.compose Event.problem Problem.hash_name)
       |> OLinq.map (fun r -> r.problem, analyze_p r)
       |> OLinq.run_list
     and appeared =
-      OLinq.diff ~cmp:(fun r1 r2 -> Problem.compare_name r1.problem r2.problem) b a
+      OLinq.diff b a
+        ~eq:(CCFun.compose_binop Event.problem Problem.same_name)
+        ~hash:(CCFun.compose Event.problem Problem.hash_name)
       |> OLinq.map (fun r -> r.problem, analyze_p r)
       |> OLinq.run_list
     in
