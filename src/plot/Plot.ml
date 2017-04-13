@@ -49,6 +49,38 @@ let next_color cl =
   cl.index <- (cl.index + 1) mod (Array.length cl.color_set);
   c
 
+(* Styles *)
+type style = [ `Lines | `Linesmarkers of string | `Markers of string ]
+
+let style_conv =
+  let parse s =
+    match Re.split (Re.compile (Re.char ',')) s with
+    | ["lines"] -> `Ok (`Lines)
+    | ["markers"; m] -> `Ok (`Markers m)
+    | _ -> `Error "Wrong style formatting"
+  in
+  let print fmt = function
+    | `Lines -> Format.fprintf fmt "Lines"
+    | `Linesmarkers s -> Format.fprintf fmt "lines markers %s" s
+    | `Markers s -> Format.fprintf fmt "markers %s" s
+  in
+  parse, print
+
+type style_list = {
+  mutable index : int;
+  style_set : style array;
+}
+
+let mk_style_list styles = {
+  index = 0;
+  style_set = Array.of_list styles;
+}
+
+let next_style st =
+  let s = st.style_set.(st.index) in
+  st.index <- (st.index + 1) mod (Array.length st.style_set);
+  s
+
 (* Options for drawing graph *)
 type axis_config = {
   show : bool;
@@ -70,14 +102,16 @@ let mk_tics axis =
     A.Tics.Equidistants (A.Tics.Number 10, start, dist, axis.label_marks)
 
 type graph_config = {
-  style : [ `Lines | `Linesmarkers of string | `Markers of string ];
   x_axis : axis_config;
   y_axis : axis_config;
   colors : color_list;
+  styles : style_list;
 }
 
-let mk_graph_config x_axis y_axis style colors =
-  { style; x_axis; y_axis; colors = mk_color_list colors }
+let mk_graph_config x_axis y_axis styles colors =
+  { x_axis; y_axis;
+    colors = mk_color_list colors;
+    styles = mk_style_list styles; }
 
 type drawer = graph_config -> A.Viewport.t -> unit
 
@@ -138,7 +172,7 @@ let draw_floats (l, name) config v =
     | [] -> 0. , 0.
   in
   A.Viewport.set_color v (next_color config.colors);
-  A.List.xy_pairs ~style:config.style v l;
+  A.List.xy_pairs ~style:(next_style config.styles) v l;
   A.Viewport.text v (n +. 5.) last ~pos:A.Backend.RT name
 
 let float_list ?(sort=false) (l, name) =
@@ -154,19 +188,6 @@ let float_sum ?(filter=3) ?(count=5) ?(sort=true) (l, name) =
   let l = List.map (fun (i, v) -> (float_of_int i, v)) l in
   draw_floats (l, name)
 
-let style =
-  let parse s =
-    match Re.split (Re.compile (Re.char ',')) s with
-    | ["lines"] -> `Ok (`Lines)
-    | ["markers"; m] -> `Ok (`Markers m)
-    | _ -> `Error "Wrong style formatting"
-  in
-  let print fmt = function
-    | `Lines -> Format.fprintf fmt "Lines"
-    | `Linesmarkers s -> Format.fprintf fmt "lines markers %s" s
-    | `Markers s -> Format.fprintf fmt "markers %s" s
-  in
-  parse, print
 
 let graph_section = "GRAPH OPTIONS"
 
@@ -203,13 +224,14 @@ let graph_args =
   let docs = graph_section in
   let x_axis = axis_args "x" "Number of Solved Problems" in
   let y_axis = axis_args "y" "Cumulative Time (in Seconds)" in
-  let mark =
-    let doc = "Style to use for plotting" in
-    Arg.(value & opt style (`Markers "+") & info ["s"; "style"] ~doc ~docs)
+  let styles =
+    let doc = "Semi-colon separated list of styles to use for plotting. Each style should
+               be one of: 'lines' or 'markers,%s'" in
+    Arg.(value & opt (list ~sep:';' style_conv) [`Markers "+"] & info ["s"; "style"] ~doc ~docs)
   in
   let colors =
-    let doc = "List of colors to use while drawing the graphs" in
-    Arg.(value & opt (list color_conv) A.Color.([blue; red; green; magenta; cyan]) & info ["colors"] ~docv:"COLORS" ~doc ~docs)
+    let doc = "Semi-colon separated list of colors to use while drawing the graphs" in
+    Arg.(value & opt (list ~sep:';' color_conv) A.Color.([blue; red; green; magenta; cyan]) & info ["colors"] ~docv:"COLORS" ~doc ~docs)
   in
-  Term.(pure mk_graph_config $ x_axis $ y_axis $ mark $ colors)
+  Term.(pure mk_graph_config $ x_axis $ y_axis $ styles $ colors)
 
