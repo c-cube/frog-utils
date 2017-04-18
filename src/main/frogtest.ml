@@ -51,7 +51,7 @@ module Run = struct
        Lwt.return_unit)
 
   (* run provers on the given dir, return a list [prover, dir, results] *)
-  let test_dir ?dyn ~ipc ?j ?timeout ?memory ?caching ?provers ~config d
+  let test_dir ?dyn ?ipc ?j ?timeout ?memory ?caching ?provers ~config d
     : T.Top_result.t E.t =
     let open E.Infix in
     let dir = d.T.Config.directory in
@@ -69,15 +69,21 @@ module Run = struct
             (fun p -> List.mem (Prover.name p) l)
             config.T.Config.provers
       in
-      let%lwt () =
-        IPC_client.send ipc (IPC_message.Start_bench (len * List.length provers))
+      let%lwt () = match ipc with
+        | None -> Lwt.return_unit
+        | Some c ->
+          IPC_client.send c (IPC_message.Start_bench (len * List.length provers))
       in
       let on_solve =
         let prog = progress ?dyn (len * List.length provers) in
         fun r ->
           let%lwt () = prog r in
-          let msg = IPC_message.Event (Event.Prover_run r) in
-          IPC_client.send_noerr ipc msg
+          begin match ipc with
+            | None -> Lwt.return_unit
+            | Some ipc -> 
+              let msg = IPC_message.Event (Event.Prover_run r) in
+              IPC_client.send_noerr ipc msg
+          end
       in
       (* solve *)
       let main =
@@ -87,7 +93,10 @@ module Run = struct
       in
       main
       >>= fun results ->
-      let%lwt () = IPC_client.send_noerr ipc IPC_message.Finish_bench in
+      let%lwt () = match ipc with
+        | None -> Lwt.return_unit
+        | Some ipc -> IPC_client.send_noerr ipc IPC_message.Finish_bench
+      in
       Prover.Map_name.iter
         (fun p r ->
            Format.printf "@[<2>%s on `%s`:@ @[<hv>%a@]@]@."
@@ -130,15 +139,16 @@ module Run = struct
     (* build problem set (exclude config file!) *)
     let task_with_conn c =
       E.map_s
-        (test_dir ?dyn ~ipc:c ?j ?timeout ?memory ?caching ?provers ~config)
+        (test_dir ?dyn ?ipc:c ?j ?timeout ?memory ?caching ?provers ~config)
         problems
     in
     begin
       if with_lock
       then IPC_client.connect_and_acquire port
           ~info:"frogtest" ~tags:(CCOpt.to_list meta)
-          (fun (c,_) -> task_with_conn c)
-      else IPC_client.connect_or_spawn port task_with_conn
+          (fun (c,_) -> task_with_conn (Some c))
+      else (* IPC_client.connect_or_spawn port task_with_conn *)
+        task_with_conn None
     end
     >|=
     begin fun l ->
