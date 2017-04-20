@@ -38,14 +38,11 @@ let analyze_p t =
       Re.execp (Re_posix.compile_pat re) t.raw.stdout ||
       Re.execp (Re_posix.compile_pat re) t.raw.stderr
   in
-  if t.raw.errcode = 0 then
-    if find_opt_ prover.Prover.sat then Res.Sat
-    else if find_opt_ prover.Prover.unsat then Res.Unsat
-    else if find_opt_ prover.Prover.timeout then Res.Timeout
-    else Res.Unknown
+  if find_opt_ prover.Prover.sat then Res.Sat
+  else if find_opt_ prover.Prover.unsat then Res.Unsat
   else if find_opt_ prover.Prover.timeout then Res.Timeout
   else if find_opt_ prover.Prover.unknown then Res.Unknown
-  else Res.Error
+  else if t.raw.errcode = 0 then Res.Unknown else Res.Error
 
 type t =
   | Prover_run of prover result
