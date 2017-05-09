@@ -12,7 +12,7 @@ build: [
   ["./configure"
     "--bindir" "%{bin}%"
     "--sharedstatedir" "%{share}%"
-    "--%{opium+js_of_ocaml+react+reactiveData:enable}%-web"
+    "--%{opium+js_of_ocaml+react+lwt_react+reactiveData:enable}%-web"
     "--%{lwt+calculon:enable}%-irc"
     "--%{cairo2+archimedes:enable}%-plot"
     "--mandir" "%{man}%"]
@@ -55,6 +55,7 @@ depopts: [
     "reactiveData"
     "opium"
     "calculon"
+    "lwt_react"
 ]
 available: [
   "ocaml-version" >= "4.02.1"
