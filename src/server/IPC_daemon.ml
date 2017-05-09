@@ -466,7 +466,7 @@ let spawn ?(forever=false) (port:int): unit Lwt.t =
   (* ping clients regularly *)
   let ping_thread = run_ping_thread st in
   (* server that listens for incoming clients *)
-  let server = Lwt_io.establish_server addr
+  let%lwt server = Lwt_io.establish_server addr
     (fun (ic,oc) ->
       let c = {
         c_in=ic;
@@ -477,14 +477,10 @@ let spawn ?(forever=false) (port:int): unit Lwt.t =
         c_thread=Lwt.return_unit;
         c_active=Full_id_map.empty;
       } in
-      Lwt.async
-        (fun () ->
-           try%lwt
-             let th = handle_client st c in
-             State.add_client st c;
-             c.c_thread <- th;
-             th >>= fun () -> close_chans c
-           with _ -> close_chans c))
+      let th = handle_client st c in
+      State.add_client st c;
+      c.c_thread <- th;
+      th)
   in
   (* stop *)
   Lwt_log.ign_debug ~section "daemon started";
@@ -494,8 +490,7 @@ let spawn ?(forever=false) (port:int): unit Lwt.t =
         ping_thread;
       ] in
   Lwt_log.ign_debug ~section "daemon's server is stopping";
-  Lwt_io.shutdown_server server;
-  Lwt.return_unit
+  Lwt_io.shutdown_server server
 
 (* TODO: change log level through connection *)
 

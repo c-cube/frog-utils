@@ -62,6 +62,7 @@ available: [
 ]
 conflicts: [
   "opium" { < "0.15" }
+  "lwt" { < "3.0" }
 ]
 tags: ["lock" "batch" "benchmark" "tptp" "test"]
 post-messages: [
