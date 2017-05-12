@@ -7,6 +7,7 @@ let main_lwt ~port ~server ~irc_port ~nick ~chan () =
     [ Frog_irc.plugin ~port ();
       C.Plugin_factoids.plugin;
       C.Plugin_history.plugin ();
+      C.Plugin_social.plugin;
     ]
   and config =
     { C.Config.default with
