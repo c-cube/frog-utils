@@ -398,13 +398,13 @@ module ResultsComparison = struct
   let print_short out (t:t) =
     let module F = Misc.Fmt in
     fpf out "(@[<v2>comparison@ appeared: %d,@ disappeared: %d@ same: %d \
-             @ mismatch: %a@ improved: %a@ regressed: %a@])"
+             @ mismatch(%d): %a@ improved(%d): %a@ regressed(%d): %a@])"
       (List.length t.appeared)
       (List.length t.disappeared)
       (List.length t.same)
-      (pp_hvlist_ (pp_pb_res2 ~bold:true ~color:`Normal)) t.mismatch
-      (pp_hvlist_ (pp_pb_res2 ~bold:false ~color:`Green)) t.improved
-      (pp_hvlist_ (pp_pb_res2 ~bold:true ~color:`Yellow)) t.regressed
+      (List.length t.mismatch) (pp_hvlist_ (pp_pb_res2 ~bold:true ~color:`Normal)) t.mismatch
+      (List.length t.improved) (pp_hvlist_ (pp_pb_res2 ~bold:false ~color:`Green)) t.improved
+      (List.length t.regressed) (pp_hvlist_ (pp_pb_res2 ~bold:true ~color:`Yellow)) t.regressed
 
   let to_html _ _ = assert false (* TODO! *)
 end
