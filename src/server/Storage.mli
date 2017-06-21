@@ -9,41 +9,39 @@
 
 open Frog
 
-type key = string
-type json = Yojson.Safe.json
-type 'a or_error = 'a Misc.Err.t
+type t
+(** The type of storage connection. *)
 
-type t = private {
-  dirs: string list; (* absolute paths to directories *)
-} [@@deriving yojson]
+type id = string
+(** Most data stored in the database is identified by its hash, encoded
+    as a string. *)
 
-val make : ?conf:Config.t -> string list -> t
-(** [make dirs] creates a new storage on the given directories, from
-    command line, config, etc. + PWD *)
+val make : string -> t
+(** [make file] opens the database in [file] and returns a storage conenction. *)
 
-val find_files : ?filter:(key -> bool) -> t -> key list Lwt.t
-(** [iter storage] returns a list of files in the storage
-    @param filter filter on files' unique ID *)
 
-val save : t -> key -> string -> unit Lwt.t
-(** [save storage key content] saves [content] under a file named
-    after [key] *)
+(** {2 Database Getters} *)
 
-val save_json : t -> key -> json -> unit Lwt.t
-(** [save storage key content] saves [content] under a file named
-    after [key] *)
+(** {4 Basic getters} *)
 
-val find_file : t -> key -> key or_error Lwt.t
-(** [find_file storage name] finds the file in storage that corresponds
-    to the given key, or fails *)
+val get_blob : t -> 'a Misc.Blob.t -> 'a
+(** Get a stored typed blob.
+    @raise Not_found if the blob doesn't exist in the database. *)
 
-val find : t -> key -> string or_error Lwt.t
-(** [find storage uuid] returns the content associated with the given key,
-    or [Error] *)
+val get_snapshot  : t -> id -> Snapshot.t
+val get_prover    : t -> id -> Prover.t
+val get_problem   : t -> id -> Problem.t
+val get_result    : t -> id -> Prover.t Event.result
+(** Get stored data based on identifiers *)
 
-val delete : t -> key -> unit or_error Lwt.t
-(** Delete result *)
+val get_problem_contents : t -> id -> string
+(** Returns the stored contents of a problem (i.e the contents of the problem file). *)
 
-val find_json : t -> key -> json or_error Lwt.t
-(** [find storage uuid] returns the json content associated with the given key,
-    or [Error] *)
+val snapshot_event_list : t -> Snapshot.t -> string list
+(** Returns the list of ids of results associated with a snapshot. *)
+
+
+(** {2 Writing to the database} *)
+
+
+

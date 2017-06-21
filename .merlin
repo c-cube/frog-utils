@@ -19,7 +19,7 @@ B _build/test
 
 PKG lwt
 PKG lwt.ppx
-PKG lwt.react
+PKG lwt_react
 PKG lwt.unix
 PKG unix
 PKG yojson
@@ -51,4 +51,7 @@ PKG containers
 PKG printbox
 PKG ZMQ
 PKG lwt-zmq
+PKG sqlexpr
+PKG sqlexpr.ppx
+PKG sha
 #FLG -w +a-4-44-29-48

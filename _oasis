@@ -26,7 +26,7 @@ Flag "irc"
 Library "frog"
   Path:             src/lib
   Pack:             true
-  Modules:          Event, Html, Misc, Problem, Prover, Res, Test
+  Modules:          Event, Snapshot, Html, Misc, Problem, Prover, Res
   BuildDepends:     ppx_deriving_yojson, lwt, tyxml, lwt.ppx, toml, csv,
                     ppx_deriving.std, re.posix, containers,
                     result, olinq, uri, uuidm
@@ -36,13 +36,14 @@ Library "frog_server"
   Pack:             true
   FindlibParent:    frog
   FindlibName:      server
-  Modules:          Config, JUnit_wrapper, Lock_client, Lock_daemon,
+  Modules:          Config, Lock_client, Lock_daemon,
                     Lock_messages, Maki_wrapper, Plot,
                     Run, TPTP, Test_run, Misc_unix, Pub_sub,
-                    Storage, Event_storage, Problem_run, ProverSet
+                    Storage, ProblemSet, ProverSet
   BuildDepends:     frog, unix, lwt.unix, lwt.preemptive, cmdliner,
                     archimedes.cairo, junit, maki, printbox,
-                    ZMQ, lwt-zmq, maki.yojson, ISO8601, threads
+                    ZMQ, lwt-zmq, maki.yojson, ISO8601, threads,
+                    sqlexpr, sqlexpr.ppx, sha
 
 Executable frogweb
   Path:             src/web_server/
@@ -96,7 +97,7 @@ Executable frogwebclient
   CompiledObject:   byte
   MainIs:           frogwebclient.ml
   Build$:           flag(web)
-  BuildDepends:     frog, react, lwt.react, reactiveData,
+  BuildDepends:     frog, react, lwt_react, reactiveData,
                     js_of_ocaml, js_of_ocaml.tyxml,
                     js_of_ocaml.ppx, js_of_ocaml.weak, ISO8601
 

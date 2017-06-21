@@ -165,6 +165,23 @@ module LwtErr = struct
       Lwt.return (Err.seq_list l)
 end
 
+module Blob = struct
+
+  type 'a decoder = string -> 'a Err.t
+
+  type 'a t = 'a decoder * string
+
+  let custom f hash : _ t = (f, hash)
+
+  let string =
+    custom (fun s -> Err.return s)
+
+  let yojson f hash =
+    let f' s = f @@ Yojson.Safe.from_string s in
+    custom f' hash
+
+end
+
 module List = struct
   include List
   include CCList

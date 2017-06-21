@@ -50,6 +50,5 @@ end
 
 val maki_raw_res : Event.raw_result Maki.Value.ops
 val maki_result : Event.prover Event.result Maki.Value.ops
-val maki_storage : Storage.t Maki.Value.ops
-val maki_snapshot_meta : Event.snapshot_meta Maki.Value.ops
+val maki_snapshot_meta : Snapshot.Meta.t Maki.Value.ops
 

@@ -6,26 +6,29 @@ open Frog
 type t = Problem.t
 type path = string
 
+type expect =
+  | Auto
+  | Res of Res.t
+  | Program of Prover.t
+
 val find_expect :
-  expect:Test.Config.expect ->
-  path ->
-  Res.t Misc.Err.t Lwt.t
+  expect:expect ->
+  path -> Res.t Misc.Err.t Lwt.t
 (** FInd the expected result for this given problem *)
 
 val make :
   find_expect:(path -> Res.t Misc.Err.t Lwt.t) ->
-  path ->
-  Problem.t Misc.Err.t Lwt.t
+  path -> Problem.t Misc.Err.t Lwt.t
 (** [make ~find_expect file] tries to find the expected result of [file], and
     makes a problem if it finds the result
     @param find_expect the function to obtain the actual expected result *)
 
 val of_dir :
   filter:(string -> bool) ->
-  path ->
-  path list Lwt.t
+  path -> path list Lwt.t
 (** Traverse the directory and returns all files that match the given filter *)
 
+(*
 module Set : sig
   type t = Problem.problem_set
 
@@ -48,3 +51,4 @@ module Set : sig
 
   val print: Format.formatter -> t -> unit
 end
+*)

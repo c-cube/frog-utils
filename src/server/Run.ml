@@ -21,13 +21,9 @@ let (maki_result : Event.prover Event.result Maki.Value.ops) =
     ~to_yojson:(Event.result_to_yojson Event.prover_to_yojson)
     ~of_yojson
 
-let maki_storage =
-  Maki_yojson.make_str "storage_dirs"
-    ~to_yojson:Storage.to_yojson ~of_yojson:Storage.of_yojson
-
 let maki_snapshot_meta =
   Maki_yojson.make_str "snapshot_meta"
-    ~to_yojson:Event.Meta.to_yojson ~of_yojson:Event.Meta.of_yojson
+    ~to_yojson:Snapshot.Meta.to_yojson ~of_yojson:Snapshot.Meta.of_yojson
 
 (** {2 Main} *)
 

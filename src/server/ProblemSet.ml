@@ -4,10 +4,15 @@
 open Frog
 open Result
 
-type t = Problem.t
 type path = string
+type t = Problem.t
 
 module E = Misc.LwtErr
+
+type expect =
+  | Auto
+  | Res of Res.t
+  | Program of Prover.t
 
 (* regex + mark *)
 let m_unsat_, unsat_ = Re.(str "unsat" |> no_case |> mark)
@@ -42,9 +47,9 @@ let find_expected_ ?default file =
 
 let find_expect ~expect file : Res.t E.t =
   begin match expect with
-    | Test.Config.Auto -> find_expected_ ?default:None file
-    | Test.Config.Res r -> find_expected_ ~default:r file
-    | Test.Config.Program prover ->
+    | Auto -> find_expected_ ?default:None file
+    | Res r -> find_expected_ ~default:r file
+    | Program prover ->
       let pb = Problem.make file Res.Unknown in
       let%lwt event = Run.run_prover ~timeout:1 ~memory:1_000 ~prover ~pb () in
       E.return (Event.analyze_p event)
@@ -66,6 +71,7 @@ let of_dir ~filter d =
        | _ -> None)
   |> Lwt.return
 
+(*
 module Set = struct
   type t = Problem.problem_set
 
@@ -92,3 +98,4 @@ module Set = struct
   let print out set =
     Format.fprintf out "@[<hv>%a@]" (Format.pp_print_list Problem.print) set
 end
+*)

@@ -7,24 +7,32 @@ open Result
 open Frog
 open Lwt.Infix
 
-type 'a or_error = 'a Misc.Err.t
-type path = string
-
-module C = Test.Config
-module T = Test
 module E = Misc.LwtErr
 
+type dir = {
+  directory : string;
+  pattern : string;
+  expect : ProblemSet.expect;
+}
+
+type config = {
+  j : int;                       (* number of concurrent processes *)
+  memory : int;                  (* memory limit for each problem *)
+  timeout : int;                 (* timeout for each problem *)
+  provers : Prover.t list;
+  problems : dir list;
+}
+
 let expect_of_config config = function
-  | "" -> C.Auto
+  | "" -> ProblemSet.Auto
   | s ->
     begin match Misc.Str.split ~by:':' s with
-      | "program", p ->
-        C.Program (ProverSet.find_config config p)
-      | _ -> C.Res (Res.of_string s)
-      | exception Not_found -> C.Res (Res.of_string s)
+      | "program", p -> ProblemSet.Program (ProverSet.find_config config p)
+      | _ -> ProblemSet.Res (Res.of_string s)
+      | exception Not_found -> ProblemSet.Res (Res.of_string s)
     end
 
-let config_of_config config dirs =
+let mk_config config dirs =
   try
     let c = Config.get_table config "test" in
     let j = Config.get_int ~default:1 c "parallelism" in
@@ -44,24 +52,23 @@ let config_of_config config dirs =
           let pat = Config.get_string ~default:problem_pat t "problems" in
           let expect = expect_of_config config
               (Config.get_string ~default:default_expect t "expect") in
-          { C.directory = dir; pattern = pat; expect = expect; }
+          { directory = dir; pattern = pat; expect = expect; }
         | exception (Config.FieldNotFound _ | TomlTypes.Table.Key.Bad_key _) ->
-          { C.directory = s; pattern = problem_pat;
+          { directory = s; pattern = problem_pat;
             expect = expect_of_config config default_expect; }
       ) l in
     let provers = Config.get_string_list c "provers" in
     let provers = List.map (ProverSet.find_config config) provers in
-    Misc.Err.return { C.j; timeout; memory; provers; problems; }
+    Misc.Err.return { j; timeout; memory; provers; problems; }
   with
-  | Config.Error e ->
-    Misc.Err.fail e
+  | Config.Error e -> Misc.Err.fail e
   | e -> Misc.Err.fail (Printexc.to_string e)
 
 let config_of_file file =
   Lwt_log.ign_debug_f "parse config file `%s`..." file;
   try
     let main = Config.parse_files [file] Config.empty in
-    config_of_config main []
+    mk_config main []
   with
   | Config.Error e ->
     Misc.Err.fail e
@@ -73,8 +80,8 @@ let run_pb_ ~config prover pb =
     (Filename.basename prover.Prover.binary) pb.Problem.name;
   (* spawn process *)
   let%lwt result = Run.run_prover
-      ~timeout:config.C.timeout
-      ~memory:config.C.memory
+      ~timeout:config.timeout
+      ~memory:config.memory
       ~prover ~pb ()
   in
   Lwt_log.ign_debug_f "output for %s/%s: `%s`, `%s`, errcode %d"
@@ -90,8 +97,8 @@ let run_pb ?(caching=true) ?limit ~config prover pb : _ E.t =
     ?limit
     ~bypass:(not caching)
     ~lifetime:(`KeepFor Maki.Time.(days 2))
-    ~deps:[V.pack V.int config.C.timeout;
-           V.pack V.int config.C.memory;
+    ~deps:[V.pack V.int config.timeout;
+           V.pack V.int config.memory;
            V.pack Maki_wrapper.prover prover;
            V.pack Maki_wrapper.problem pb]
     ~op:Run.maki_result
@@ -101,73 +108,33 @@ let run_pb ?(caching=true) ?limit ~config prover pb : _ E.t =
 
 let nop_ _ = Lwt.return_unit
 
-let run ?(on_solve = nop_) ?(on_done = nop_)
-    ?(caching=true) ?j ?timeout ?memory ~provers ~expect ~config (set:path list)
-    : Test.top_result E.t =
+let run ?(on_solve = nop_) ?(caching=true) config =
   let open E.Infix in
-  let config = C.update ?j ?timeout ?memory config in
-  let limit = Maki.Limit.create config.C.j in
-  E.map_p
-    (fun pb_path ->
-       (* transform into problem *)
-       let%lwt pb =
-         Maki.Limit.acquire limit
-           (fun () ->
-              let find_expect = Problem_run.find_expect ~expect in
-              Problem_run.make ~find_expect pb_path)
-         |> Misc.LwtErr.to_exn
-       in
-       (* run provers *)
-       E.map_p
-         (fun prover ->
-            run_pb ~caching ~limit ~config prover pb >>= fun result ->
-            let%lwt () = on_solve result in (* callback *)
-            E.return result
-            |> E.add_ctxf "running `%a` on %a"
-              Prover.pp_name prover Problem.print pb)
-         provers)
-    set
-  >>= fun res ->
-  let res = List.flatten res in
-  let r = T.Top_result.make (List.map Event.mk_prover res) in
-  let%lwt () = on_done r in
-  E.return r
-
-let find_results ?storage str =
-  match storage with
-    | None -> T.Top_result.of_file str
-    | Some storage ->
-      let open E in
-      let%lwt res1 =
-        Event_storage.find_snapshot storage str
-        >|= T.Top_result.of_snapshot
-      in
-      match res1 with
-        | Ok x -> E.return x
-        | Error _ ->
-          T.Top_result.of_file str
-
-let all_results storage =
-  let open E in
-  Event_storage.list_snapshots storage >>= fun l ->
-  E.map_s (fun snap -> T.Top_result.of_snapshot snap |> E.return) l
-
-let last_result storage =
-  let open E in
-  all_results storage >>= function
-  | [] -> E.fail "last_result failed: no result found in storage"
-  | x :: l ->
-    let best =
-      List.fold_left
-        (fun best t -> if best.T.timestamp < t.T.timestamp then t else best)
-        x l
-    in
-    E.return best
-
-let find_or_last ?storage str_opt = match str_opt, storage with
-  | Some f, _ -> find_results ?storage f
-  | None, Some storage -> last_result storage
-  | None, None -> E.fail "cannot find last result"
+  let limit = Maki.Limit.create config.j in
+  E.map_p (fun dir ->
+      let expect = dir.expect in
+      let%lwt pbs = ProblemSet.of_dir dir.directory
+          ~filter:(Re.execp (Re_posix.compile_pat dir.pattern)) in
+      E.map_p
+        (fun pb_path ->
+           (* transform into problem *)
+           let%lwt pb =
+             Maki.Limit.acquire limit
+               (fun () ->
+                  let find_expect = ProblemSet.find_expect ~expect in
+                  ProblemSet.make ~find_expect pb_path)
+             |> Misc.LwtErr.to_exn
+           in
+           (* run provers *)
+           E.map_p (fun prover ->
+               run_pb ~caching ~limit ~config prover pb >>= fun result ->
+                let%lwt () = on_solve result in (* callback *)
+                E.return ()
+                |> E.add_ctxf "running `%a` on %a"
+                  Prover.pp_name prover Problem.print pb
+             ) config.provers
+        ) pbs
+    ) config.problems >>= fun _ -> E.return ()
 
 module Plot_res = struct
   type data =
@@ -191,6 +158,7 @@ module Plot_res = struct
     out_format : string;
   }
 
+  (*
   let draw params (r:Test.top_result): Plot.drawer =
     let lazy map = r.Test.analyze in
     let datas =
@@ -224,4 +192,5 @@ module Plot_res = struct
     let d = draw params r in
     Plot.draw_on_graph params.graph ~fmt:params.out_format
       ~file:params.out_file d
+  *)
 end

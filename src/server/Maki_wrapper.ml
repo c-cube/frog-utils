@@ -54,6 +54,7 @@ let prover : Prover.t Maki.Value.ops =
       )
   )
 
+(*
 let test_config : Test.Config.t Maki.Value.ops =
   let module V = Maki.Value in
   let open Test.Config in
@@ -63,6 +64,7 @@ let test_config : Test.Config.t Maki.Value.ops =
     (fun t -> t, t.provers)
     (fun (t,_) -> t)
     (V.pair json (V.set prover))
+*)
 
 let test_analyze : Test.Analyze.t Maki.Value.ops =
   let open Test.Analyze in
