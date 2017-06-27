@@ -12,8 +12,9 @@ build: [
   ["./configure"
     "--bindir" "%{bin}%"
     "--sharedstatedir" "%{share}%"
-    "--%{opium+js_of_ocaml+react+reactiveData:enable}%-web"
-    "--%{lwt-zmq+zmq+calculon:enable}%-irc"
+    "--%{opium+js_of_ocaml+react+lwt_react+reactiveData:enable}%-web"
+    "--%{lwt+calculon:enable}%-irc"
+    "--%{cairo2+archimedes:enable}%-plot"
     "--mandir" "%{man}%"]
   [make]
 ]
@@ -34,8 +35,6 @@ depends: [
     "re"
     "ppx_deriving"
     "ppx_deriving_yojson"
-    "cairo2"
-    "archimedes"
     "cmdliner"
     "result"
     "olinq" { >= "0.2" }
@@ -44,23 +43,26 @@ depends: [
     "maki"
     "ISO8601"
     "csv"
+    "uri"
     "containers"
     "printbox"
-    "zmq"
+    "js_of_ocaml"
 ]
 depopts: [
+    "cairo2"
+    "archimedes"
     "react"
     "reactiveData"
-    "js_of_ocaml"
     "opium"
     "calculon"
-    "lwt-zmq"
+    "lwt_react"
 ]
 available: [
   "ocaml-version" >= "4.02.1"
 ]
 conflicts: [
   "opium" { < "0.15" }
+  "lwt" { < "3.0" }
 ]
 tags: ["lock" "batch" "benchmark" "tptp" "test"]
 post-messages: [

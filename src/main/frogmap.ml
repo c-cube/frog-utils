@@ -260,7 +260,7 @@ let opts =
   in
   let port =
     let doc = "Connection port for the daemon (see froglock for more explanation)." in
-    Arg.(value & opt int 12000 & info ["p"; "port"] ~docv:"PORT" ~doc)
+    Arg.(value & opt int IPC_daemon.default_port & info ["p"; "port"] ~docv:"PORT" ~doc)
   in
   let prio =
     let doc = "Priority for the locked task (see froglock for more explanation)." in

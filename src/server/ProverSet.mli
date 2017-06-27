@@ -5,10 +5,11 @@ open Frog
 
 module StrMap = Misc.StrMap
 
-val of_config : Config.t -> Prover.t StrMap.t
+type 'a or_error = ('a, string) Result.result
+
+val of_config : Config.t -> Prover.t StrMap.t or_error
 (** Get a list of supported provers from a config file. *)
 
-val find_config : Config.t -> string -> Prover.t
+val find_config : Config.t -> string -> Prover.t or_error
 (** Parse prover description from config file, and check it is listed
-    in the "provers" list
-    @raise Failure if prover not found *)
+    in the "provers" list *)

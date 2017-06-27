@@ -14,7 +14,7 @@ type t = private {
   timestamp: float;
   meta: string; (* additional metadata *)
 }
-[@@deriving yojson]
+[@@deriving yojson, eq]
 
 (** Create a snapshot *)
 val make :
@@ -33,7 +33,7 @@ module Meta : sig
     s_provers: Prover.Set.t;
     s_len: int;
   }
-  [@@deriving yojson]
+  [@@deriving yojson, eq]
 
   val provers : t -> Prover.Set.t
   val timestamp : t -> float

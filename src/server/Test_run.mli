@@ -19,9 +19,17 @@ type config = {
   problems : dir list;
 }
 
-val mk_config : Config.t -> string list -> config Misc.Err.t
+val mk_config : ?profile:string -> Config.t -> string list -> config Misc.Err.t
+(** [config_of_config ?profile conf dirs] makes a test config out of the
+    raw configuration.
+    It will gather all problems present in one of the [dirs] that the
+    configuration matches.
+    @param profile if present, look for the test configuration named [profile]
+    instead of "test" *)
 
-val config_of_file : string -> config Misc.Err.t
+val config_of_file : ?profile:string -> string -> config Misc.Err.t
+
+val print_result : Event.prover Even.result -> unit
 
 val run :
   ?on_solve:(Event.prover Event.result -> unit Lwt.t) ->

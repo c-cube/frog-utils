@@ -38,37 +38,20 @@ module Run = struct
       let bar = String.init len_bar
           (fun i -> if i * len <= len_bar * !count then '#' else '-') in
       let percent = if len=0 then 100 else (!count * 100) / len in
-      Format.printf "\r... %5d/%d | %3d%% [%6s: %s]@?"
+      Format.printf "... %5d/%d | %3d%% [%6s: %s]@?"
         !count len percent (time_string time_elapsed) bar;
-      if !count = len then Format.printf "@.";
-      Lwt.return_unit
-
-  let progress_static res =
-    let module F = Misc.Fmt in
-    let p_res = Event.analyze_p res in
-    let pp_res out () =
-      let str, c = match Problem.compare_res res.Event.problem p_res with
-        | `Same -> "ok", `Green
-        | `Improvement -> "ok (improved)", `Blue
-        | `Disappoint -> "disappoint", `Yellow
-        | `Mismatch -> "bad", `Red
-      in
-      Format.fprintf out "%a" (F.in_bold_color c Format.pp_print_string) str
-    in
-    let prover = res.Event.program in
-    let prover_name = Filename.basename prover.Prover.name in
-    let pb_name = res.Event.problem.Problem.name in
-    Lwt_log.ign_debug_f "result for `%s` with %s: %s (%.1fs)"
-       prover_name pb_name (Res.to_string p_res) res.Event.raw.Event.rtime;
-    Format.printf "%-20s%-50s %a (%.1fs)@." prover_name (pb_name ^ " :")
-      pp_res () res.Event.raw.Event.rtime;
-    Lwt.return_unit
+      if !count = len then Format.printf "@."
 
   let progress ?(dyn=false) n =
-    if dyn then progress_dynamic n else progress_static
+    let pp_bar = progress_dynamic n in
+    (function res ->
+       if dyn then Format.printf "\r";
+       Test_run.print_result res;
+       if dyn then pp_bar res;
+       Lwt.return_unit)
 
   (* run provers on the given dir, return a list [prover, dir, results] *)
-  let test_dir ?dyn ?j ?timeout ?memory ?caching ?provers ~config d
+  let test_dir ?dyn ?ipc ?j ?timeout ?memory ?caching ?provers ~config d
     : T.Top_result.t E.t =
     let open E.Infix in
     let dir = d.T.Config.directory in
@@ -79,8 +62,6 @@ module Run = struct
       >>= fun pbs ->
       let len = List.length pbs in
       Format.printf "run %d tests in %s@." len dir;
-      Pub_sub.create () >>= fun pubsub ->
-      let%lwt () = Pub_sub.send pubsub (Pub_sub.M_start_bench len) in
       let provers = match provers with
         | None -> config.T.Config.provers
         | Some l ->
@@ -88,9 +69,21 @@ module Run = struct
             (fun p -> List.mem (Prover.name p) l)
             config.T.Config.provers
       in
-      let on_solve r =
-        let%lwt () = progress ?dyn (len * List.length provers) r in
-        Pub_sub.send pubsub (Pub_sub.M_event (Event.Prover_run r))
+      let%lwt () = match ipc with
+        | None -> Lwt.return_unit
+        | Some c ->
+          IPC_client.send c (IPC_message.Start_bench (len * List.length provers))
+      in
+      let on_solve =
+        let prog = progress ?dyn (len * List.length provers) in
+        fun r ->
+          let%lwt () = prog r in
+          begin match ipc with
+            | None -> Lwt.return_unit
+            | Some ipc -> 
+              let msg = IPC_message.Event (Event.Prover_run r) in
+              IPC_client.send_noerr ipc msg
+          end
       in
       (* solve *)
       let main =
@@ -100,7 +93,10 @@ module Run = struct
       in
       main
       >>= fun results ->
-      let%lwt () = Pub_sub.send pubsub Pub_sub.M_finish_bench in
+      let%lwt () = match ipc with
+        | None -> Lwt.return_unit
+        | Some ipc -> IPC_client.send_noerr ipc IPC_message.Finish_bench
+      in
       Prover.Map_name.iter
         (fun p r ->
            Format.printf "@[<2>%s on `%s`:@ @[<hv>%a@]@]@."
@@ -119,26 +115,51 @@ module Run = struct
             0)
 
   (* lwt main *)
-  let main ?dyn ~port ?j ?timeout ?memory ?caching ?junit ?provers ?meta ~save ~config dirs () =
+  let main ?dyn ~port ?j ?timeout ?memory ?caching ?junit ?provers ?meta ~with_lock ~save ~config ?profile ?dir_file dirs () =
     let open E.Infix in
+    (* parse list of files, if need be *)
+    let%lwt dirs = match dir_file with
+      | None -> Lwt.return dirs
+      | Some f ->
+        let%lwt f_lines =
+          Lwt_io.with_file ~mode:Lwt_io.input f
+            (fun ic -> Lwt_io.read_lines ic |> Lwt_stream.to_list)
+        in
+        Lwt.return (List.rev_append f_lines dirs)
+    in
     (* parse config *)
     begin
-      Lwt.return (Test_run.config_of_config config dirs)
-      |> E.add_ctxf "parsing config from [@[%a@]]" (Misc.Fmt.pp_list Format.pp_print_string) dirs
+      Lwt.return (Test_run.config_of_config ?profile config dirs)
+      |> E.add_ctxf "parsing config for files [@[%a@]]" (Misc.Fmt.pp_list Format.pp_print_string) dirs
     end
     >>= fun config ->
     (* pick default directory if needed *)
     let problems = config.T.Config.problems in
     let storage = Storage.make [] in
     (* build problem set (exclude config file!) *)
-    Lock_client.connect_and_acquire port
-      (fun _ ->
-         E.map_s
-           (test_dir ?dyn ?j ?timeout ?memory ?caching ?provers ~config) problems)
-    >|= T.Top_result.merge_l
+    let task_with_conn c =
+      E.map_s
+        (test_dir ?dyn ?ipc:c ?j ?timeout ?memory ?caching ?provers ~config)
+        problems
+    in
+    begin
+      if with_lock
+      then IPC_client.connect_and_acquire port
+          ~info:"frogtest" ~tags:(CCOpt.to_list meta)
+          (fun (c,_) -> task_with_conn (Some c))
+      else (* IPC_client.connect_or_spawn port task_with_conn *)
+        task_with_conn None
+    end
+    >|=
+    begin fun l ->
+      Lwt_log.ign_debug_f "merging %d top results…" (List.length l);
+      T.Top_result.merge_l l
+    end
     >>= fun (results:T.Top_result.t) ->
+    Lwt_log.ign_debug_f "saving top result…";
     begin match save with
-      | "none" -> E.return ()
+      | "none" ->
+        Lwt_io.printlf "not saving…" |> E.ok
       | "" ->
         (* default *)
         let snapshot = Event.Snapshot.make ?meta results.T.events in
@@ -165,10 +186,11 @@ end
 
 (** {2 Display Run} *)
 module Display = struct
-  let main (file:string option) =
+  let main (name:string option)(provers:string list option)(dir:string list) =
     let open E in
     let storage = Storage.make [] in
-    Test_run.find_or_last ~storage file >>= fun res ->
+    Test_run.find_or_last ~storage name >>= fun res ->
+    let res = T.Top_result.filter ~provers ~dir res in
     Format.printf "%a@." T.Top_result.pp res;
     E.return ()
 end
@@ -202,13 +224,44 @@ end
 
 (** {2 Display+ Compare} *)
 module Display_bench = struct
-  let main (file:string option) =
+  let main (name:string option)(provers:string list option)(dir:string list) =
     let open E in
     let storage = Storage.make [] in
-    Test_run.find_or_last ~storage file >>= fun res ->
+    Test_run.find_or_last ~storage name >>= fun res ->
+    let res = T.Top_result.filter ~provers ~dir res in
     let b = T.Bench.make res in
     Format.printf "%a@." T.Bench.pp b;
     E.return ()
+end
+
+(** {2 Sample} *)
+module Sample = struct
+  open E.Infix
+
+  let run ~n dirs =
+    Lwt_list.map_p
+      (fun d -> Problem_run.of_dir ~filter:(fun _ -> true) d)
+      dirs |> E.ok
+    >|= List.flatten
+    >|= Array.of_list
+    >>= fun files ->
+    let len = Array.length files in
+    begin
+      if len < n
+      then E.failf "not enough files (need %d, got %d)" n len
+      else E.return ()
+    end
+    >>= fun () ->
+    (* sample the list *)
+    let sample_idx =
+      CCRandom.sample_without_replacement
+        ~compare:CCInt.compare n (CCRandom.int len)
+      |> CCRandom.run ?st:None
+    in
+    let sample = List.map (Array.get files) sample_idx in
+    (* print sample *)
+    List.iter (Printf.printf "%s\n%!") sample;
+    Lwt.return (Ok ())
 end
 
 (** {2 List} *)
@@ -257,16 +310,6 @@ module Delete_run = struct
     E.map_s (fun file -> Storage.delete storage file) names >|= fun _ -> ()
 end
 
-module Plot_run = struct
-  (* Plot functions *)
-  let main ~config params (name:string option) : unit E.t =
-    let open E in
-    let storage = Storage.make [] in
-    Test_run.find_or_last ~storage name >>= fun main_res ->
-    Test_run.Plot_res.draw_file params main_res;
-    E.return ()
-end
-
 (** {2 Main: Parse CLI} *)
 
 let config_term =
@@ -277,10 +320,10 @@ let config_term =
       Lwt_log.add_rule "*" Lwt_log.Debug;
     );
     let config = Config.interpolate_home config in
-    try
-      `Ok (Config.parse_files [config] Config.empty)
-    with Config.Error msg ->
-      `Error (false, msg)
+    begin match Config.parse_file config with
+      | Ok x -> `Ok x
+      | Error e -> `Error (false, e)
+    end
   in
   let arg =
     Arg.(value & opt string "$home/.frogutils.toml" &
@@ -294,23 +337,30 @@ let config_term =
 (* sub-command for running tests *)
 let term_run =
   let open Cmdliner in
-  let aux dyn port dirs config j timeout memory nocaching meta save provers junit =
+  let aux dyn port dirs dir_file config profile j timeout memory
+      with_lock nocaching meta save provers junit =
     let caching = not nocaching in
     Lwt_main.run
-      (Run.main ~dyn ~port ?j ?timeout ?memory ?junit ?provers
-         ~caching ~meta ~save ~config dirs ())
+      (Run.main ~dyn ~port ?j ?timeout ?memory ?junit ?provers ~with_lock
+         ~caching ~meta ~save ?profile ~config ?dir_file dirs ())
   in
   let config = config_term
   and dyn =
     Arg.(value & flag & info ["progress"] ~doc:"print progress bar")
   and j =
     Arg.(value & opt (some int) None & info ["j"] ~doc:"parallelism level")
+  and dir_file =
+    Arg.(value & opt (some string) None & info ["F"] ~doc:"file containing a list of files")
+  and profile =
+    Arg.(value & opt (some string) None & info ["profile"] ~doc:"pick test profile (default 'test')")
   and timeout =
     Arg.(value & opt (some int) None & info ["t"; "timeout"] ~doc:"timeout (in s)")
   and memory =
     Arg.(value & opt (some int) None & info ["m"; "memory"] ~doc:"memory (in MB)")
   and meta =
     Arg.(value & opt string "" & info ["meta"] ~doc:"additional metadata to save")
+  and with_loc =
+    Arg.(value & opt bool true & info ["lock"] ~doc:"require a lock")
   and nocaching =
     Arg.(value & flag & info ["no-caching"] ~doc:"toggle caching")
   and doc =
@@ -324,11 +374,11 @@ let term_run =
          info [] ~docv:"DIR" ~doc:"target directories (containing tests)")
   and port =
     let doc = "Local port for the lock daemon" in
-    Arg.(value & opt int 12000 & info ["port"] ~docv:"PORT" ~doc)
+    Arg.(value & opt int IPC_daemon.default_port & info ["port"] ~docv:"PORT" ~doc)
   and provers =
     Arg.(value & opt (some (list string)) None & info ["p"; "provers"] ~doc:"select provers")
   in
-  Term.(pure aux $ dyn $ port $ dir $ config $ j $ timeout $ memory
+  Term.(pure aux $ dyn $ port $ dir $ dir_file $ config $ profile $ j $ timeout $ memory $ with_loc
     $ nocaching $ meta $ save $ provers $ junit),
   Term.info ~doc "run"
 
@@ -340,21 +390,44 @@ let snapshot_name_term : string option Cmdliner.Term.t =
 (* sub-command to display a file *)
 let term_display =
   let open Cmdliner in
-  let aux file = Lwt_main.run (Display.main file) in
-  let file =
-    Arg.(value & pos 0 (some string) None & info [] ~docv:"FILE" ~doc:"file containing results (default: last)")
+  let aux name provers dir = Lwt_main.run (Display.main name provers dir) in
+  let name_ =
+    Arg.(value & pos 0 (some string) None & info []
+           ~docv:"FILE" ~doc:"file containing results (default: last)")
+  and dir =
+    Arg.(value & pos_right 0 string [] &
+         info [] ~docv:"DIR" ~doc:"target directories (containing tests)")
+  and provers =
+    Arg.(value & opt (some (list string)) None & info ["p"; "provers"] ~doc:"select provers")
   and doc = "display test results from a file" in
-  Term.(pure aux $ file), Term.info ~doc "display"
+  Term.(pure aux $ name_ $ provers $ dir), Term.info ~doc "display"
 
 (* sub-command to display a file as a benchmark *)
 let term_bench =
   let open Cmdliner in
-  let aux file = Lwt_main.run (Display_bench.main file) in
-  let file =
+  let aux name provers dir = Lwt_main.run (Display_bench.main name provers dir) in
+  let provers =
+    Arg.(value & opt (some (list string)) None & info ["p"; "provers"] ~doc:"select provers")
+  and dir =
+    Arg.(value & pos_right 0 string [] &
+         info [] ~docv:"DIR" ~doc:"target directories (containing tests)")
+  and name_ =
     Arg.(value & pos 0 (some string) None & info [] ~docv:"FILE"
            ~doc:"file containing results (default: last)")
   and doc = "display test results from a file" in
-  Term.(pure aux $ file), Term.info ~doc "bench"
+  Term.(pure aux $ name_ $ provers $ dir), Term.info ~doc "bench"
+
+(* sub-command to sample a directory *)
+let term_sample =
+  let open Cmdliner in
+  let aux n dir = Lwt_main.run (Sample.run ~n dir) in
+  let dir =
+    Arg.(value & pos_all string [] &
+         info [] ~docv:"DIR" ~doc:"target directories (containing tests)")
+  and n =
+    Arg.(value & opt int 1 & info ["n"] ~docv:"N" ~doc:"number of files to sample")
+  and doc = "sample N files in the directories" in
+  Term.(pure aux $ n $ dir), Term.info ~doc "sample"
 
 (* sub-command to display a file *)
 let term_csv =
@@ -383,72 +456,6 @@ let term_list =
   let aux () = Lwt_main.run (List_run.main ()) in
   let doc = "compare two result files" in
   Term.(pure aux $ pure ()), Term.info ~doc "list snapshots"
-
-let drawer_term =
-  let open Cmdliner in
-  let open Test_run.Plot_res in
-  let aux cumul sort filter count =
-    if cumul then Cumul (sort, filter, count) else Simple sort
-  in
-  let cumul =
-    let doc = "Plots the cumulative sum of the data" in
-    Arg.(value & opt bool true & info ["cumul"] ~doc)
-  in
-  let sort =
-    let doc = "Should the data be sorted before being plotted" in
-    Arg.(value & opt bool true & info ["sort"] ~doc)
-  in
-  let filter =
-    let doc = "Plots one in every $(docv) data point
-              (ignored if not in cumulative plotting)" in
-    Arg.(value & opt int 3 & info ["pspace"] ~doc)
-  in
-  let count =
-    let doc = "Plots the last $(docv) data point in any case" in
-    Arg.(value & opt int 5 & info ["count"] ~doc)
-  in
-  Term.(pure aux $ cumul $ sort $ filter $ count)
-
-let plot_params_term =
-  let open Cmdliner in
-  let open Test_run.Plot_res in
-  let aux graph data legend drawer out_file out_format =
-    { graph; data; legend; drawer; out_file; out_format }
-  in
-  let to_cmd_arg l = Cmdliner.Arg.enum l, Cmdliner.Arg.doc_alts_enum l in
-  let data_conv, data_help = to_cmd_arg
-      [ "unsat_time", Unsat_time; "sat_time", Sat_time; "both_time", Both_time ] in
-  let legend_conv, legend_help = to_cmd_arg [ "prover", Prover ] in
-  let data =
-    let doc = Format.sprintf "Decides which value to plot. $(docv) must be %s" data_help in
-    Arg.(value & opt data_conv Both_time & info ["data"] ~doc)
-  and legend =
-    let doc = Format.sprintf
-        "What legend to attach to each curve. $(docv) must be %s" legend_help
-    in
-    Arg.(value & opt legend_conv Prover & info ["legend"] ~doc)
-  and out_file =
-    let doc = "Output file for the plot" in
-    Arg.(required & opt (some string) None & info ["o"; "out"] ~doc)
-  and out_format =
-    let doc = "Output format for the graph" in
-    Arg.(value & opt string "PDF" & info ["format"] ~doc)
-  in
-  Term.(pure aux $ Plot.graph_args $ data $ legend $ drawer_term $ out_file $ out_format)
-
-let term_plot =
-  let open Cmdliner in
-  let aux config params file = Lwt_main.run (Plot_run.main ~config params file) in
-  let doc = "Plot graphs of prover's statistics" in
-  let man = [
-    `S "DESCRIPTION";
-    `P "This tools takes results files from runs of '$(b,frogmap)' and plots graphs
-        about the prover's statistics.";
-    `S "OPTIONS";
-    `S Plot.graph_section;
-  ] in
-  Term.(pure aux $ config_term $ plot_params_term $ snapshot_name_term),
-  Term.info ~man ~doc "plot"
 
 (* sub-command to compare a snapshot to the others *)
 let term_summary =
@@ -483,7 +490,8 @@ let parse_opt () =
   in
   Cmdliner.Term.eval_choice
     help [ term_run; term_compare; term_display; term_csv; term_list;
-           term_summary; term_plot; term_bench; term_delete; ]
+           term_summary; term_bench; term_delete;
+           term_sample; ]
 
 let () =
   match parse_opt () with

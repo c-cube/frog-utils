@@ -9,6 +9,7 @@ type 'a printer = Format.formatter -> 'a -> unit
 type 'a or_error = 'a Misc.Err.t
 
 type uuid = Uuidm.t
+let equal_uuid = Uuidm.equal
 
 let uuid_to_yojson u = `String (Uuidm.to_string u)
 let uuid_of_yojson j = match j with
@@ -19,7 +20,7 @@ let uuid_of_yojson j = match j with
     end
   | _ -> E.fail "expected string for uuid"
 
-type timestamp = float
+type timestamp = float [@@deriving eq]
 let timestamp_to_yojson f = `String (string_of_float f)
 let timestamp_of_yojson = function
   | `String s -> (try E.return (float_of_string s) with _ -> E.fail "expected float")
@@ -29,7 +30,7 @@ type t = {
   uuid: uuid;
   timestamp: timestamp;
   meta: (string [@default ""]); (* additional metadata *)
-} [@@deriving yojson]
+} [@@deriving yojson, eq]
 
 let make
     ?(uuid=Uuidm.create `V4) ?(meta="")
@@ -58,9 +59,9 @@ module Meta = struct
     s_uuid: uuid [@key "uuid"];
     s_timestamp: float [@key "timestamp"];
     s_meta: (string [@default ""])[@key "meta"];
-    s_provers: prover_set [@key "provers"];
+    s_provers: prover_set [@key "provers"][@equal Prover.Set.equal];
     s_len: int [@key "length"];
-  } [@@deriving yojson]
+  } [@@deriving yojson, eq]
 
   let uuid s = s.s_uuid
   let timestamp s = s.s_timestamp
@@ -71,5 +72,6 @@ module Meta = struct
     Format.fprintf out
       "{@[<hv>timestamp:%.2f;@ uuid: %s;@ len %d@]}"
       r.s_timestamp (Uuidm.to_string r.s_uuid) r.s_len
+
 end
 

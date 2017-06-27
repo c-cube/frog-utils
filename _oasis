@@ -23,6 +23,10 @@ Flag "irc"
   Description:      build and install the IRC daemon for frogutils
   Default:          true
 
+Flag "plot"
+  Description:      build and install the frogplot tool
+  Default:          true
+
 Library "frog"
   Path:             src/lib
   Pack:             true
@@ -36,14 +40,14 @@ Library "frog_server"
   Pack:             true
   FindlibParent:    frog
   FindlibName:      server
-  Modules:          Config, Lock_client, Lock_daemon,
-                    Lock_messages, Maki_wrapper, Plot,
-                    Run, TPTP, Test_run, Misc_unix, Pub_sub,
-                    Storage, ProblemSet, ProverSet
+  Modules:          Config, JUnit_wrapper, IPC_client, IPC_daemon,
+                    IPC_message, Maki_wrapper, Signal,
+                    Run, TPTP, Test_run, Misc_unix,
+                    Storage, Event_storage, ProblemSet, ProverSet
   BuildDepends:     frog, unix, lwt.unix, lwt.preemptive, cmdliner,
-                    archimedes.cairo, junit, maki, printbox,
-                    ZMQ, lwt-zmq, maki.yojson, ISO8601, threads,
-                    sqlexpr, sqlexpr.ppx, sha
+                    junit, maki, printbox,
+                    maki.yojson, ISO8601, threads,
+                    sqlexpr, sqlexpr.ppx
 
 Executable frogweb
   Path:             src/web_server/
@@ -52,6 +56,14 @@ Executable frogweb
   CompiledObject:   best
   MainIs:           frogweb.ml
   BuildDepends:     frog, frog.server, opium.unix, threads
+
+Executable frogdaemon
+  Path:             src/main
+  Build:            true
+  Install:          true
+  CompiledObject:   best
+  MainIs:           frogdaemon.ml
+  BuildDepends:     frog, frog.server, threads
 
 Executable frogmonitor
   Path:             src/main
@@ -83,6 +95,14 @@ Executable frogtest
   CompiledObject:   best
   MainIs:           frogtest.ml
   BuildDepends:     frog, frog.server, threads
+
+Executable frogplot
+  Path:             src/plot
+  Build$:           flag(plot)
+  Install$:         flag(plot)
+  CompiledObject:   best
+  MainIs:           frogplot.ml
+  BuildDepends:     frog, frog.server, archimedes.cairo, cairo2, threads
 
 Executable froglock
   Path:             src/main

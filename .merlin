@@ -28,7 +28,6 @@ PKG ppx_deriving
 PKG ppx_deriving.std
 PKG ppx_deriving_yojson
 PKG toml
-PKG archimedes
 PKG cmdliner
 PKG oUnit
 PKG maki
@@ -49,8 +48,6 @@ PKG ISO8601
 PKG csv
 PKG containers
 PKG printbox
-PKG ZMQ
-PKG lwt-zmq
 PKG sqlexpr
 PKG sqlexpr.ppx
 PKG sha

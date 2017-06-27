@@ -18,16 +18,16 @@ type raw_result = {
   rtime : float;
   utime : float;
   stime : float;
-} [@@deriving yojson]
+} [@@deriving yojson,eq]
 
-type prover  = Prover.t [@@deriving yojson]
-type checker = unit [@@deriving yojson]
+type prover  = Prover.t [@@deriving yojson,eq]
+type checker = unit [@@deriving yojson,eq]
 
 type +'a result = {
   program : 'a;
   problem : Problem.t;
   raw : raw_result;
-} [@@deriving yojson]
+} [@@deriving yojson,eq]
 
 let analyze_p t =
   let prover = t.program in
@@ -38,24 +38,26 @@ let analyze_p t =
       Re.execp (Re_posix.compile_pat re) t.raw.stdout ||
       Re.execp (Re_posix.compile_pat re) t.raw.stderr
   in
-  if t.raw.errcode = 0 then
-    if find_opt_ prover.Prover.sat then Res.Sat
-    else if find_opt_ prover.Prover.unsat then Res.Unsat
-    else if find_opt_ prover.Prover.timeout then Res.Timeout
-    else Res.Unknown
+  if find_opt_ prover.Prover.sat then Res.Sat
+  else if find_opt_ prover.Prover.unsat then Res.Unsat
   else if find_opt_ prover.Prover.timeout then Res.Timeout
   else if find_opt_ prover.Prover.unknown then Res.Unknown
-  else Res.Error
+  else if t.raw.errcode = 0 then Res.Unknown else Res.Error
 
 type t =
   | Prover_run of prover result
   | Checker_run of checker result
-[@@deriving yojson]
+[@@deriving yojson,eq]
 
-type event = t [@@deriving yojson]
+type event = t [@@deriving yojson,eq]
+
+let program e = e.program
+let problem e = e.problem
+let raw e = e.raw
 
 let to_string r = to_yojson r |> Yojson.Safe.to_string
 let pp out r = Format.pp_print_string out (to_string r)
 
 let mk_prover r = Prover_run r
 let mk_checker r = Checker_run r
+

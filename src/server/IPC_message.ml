@@ -5,6 +5,8 @@ open Frog
 
 [@@@warning "-39"]
 
+type uid = int [@@deriving yojson,show,eq]
+
 (** Description of a froglock job.
 
     Some fields have default values for backward compatibility (old client, new server);
@@ -18,39 +20,43 @@ type job = {
   cwd         : string option [@key "cwd"]; (* working dir *)
   tags        : string list [@key "tags"];
   pid         : int [@key "pid"];
+  uid         : uid [@key "uid"]; (* unique ID of query *)
   cores       : int [@default 0] [@key "cores"];
 }
-[@@deriving yojson {strict=false},show]
+[@@deriving yojson {strict=false},show,eq]
 
 type current_job = {
-  current_id    : int [@key "id"];
   current_job   : job [@key "job"];
   current_start : float [@key "start"];  (* time at which task started *)
-} [@@deriving yojson,show]
+} [@@deriving yojson,show,eq]
 
 type waiting_job = {
   waiting_id    : int [@key "id"];
   waiting_job   : job [@key "job"];
-} [@@deriving yojson, show]
+} [@@deriving yojson, show,eq]
 
 type status_answer = {
   max_cores : int [@key "cores"];
   current : current_job list [@key "current"];
   waiting : waiting_job list [@key "waiting"];
-} [@@deriving yojson,show]
+} [@@deriving yojson,show,eq]
 
 type t =
   | Start [@name "start"]
   | End [@name "end"]
   | Acquire of job [@name "acquire"]
-  | Go [@name "go"]
-  | Release [@name "release"]
-  | Reject [@name "reject"]
+  | Go of uid [@name "go"]
+  | Release of uid [@name "release"]
+  | Reject of uid [@name "reject"]
   | Status [@name "status"]
   | StatusAnswer  of status_answer [@name "statusanswer"]
-  | StatusOk [@name "statusok"]
   | StopAccepting [@name "stopaccepting"] (* from now on, no more accepts *)
-  [@@deriving yojson, show]
+  | Start_bench of int [@name "start_bench"] (* number of files *)
+  | Finish_bench [@name "finish_bench"] (* *)
+  | Event of Event.t [@name "event"]
+  | Ping of int [@name "ping"]
+  | Pong of int [@name "pong"]
+  [@@deriving yojson, show,eq]
 
 [@@@warning "+39"]
 
@@ -80,5 +86,6 @@ let parse ic = expect ic (fun _ -> true)
 
 let print oc m =
   let s = Yojson.Safe.to_string (to_yojson m) in
-  Lwt_io.write_line oc s
+  let%lwt () = Lwt_io.write_line oc s in
+  Lwt_io.flush oc
 

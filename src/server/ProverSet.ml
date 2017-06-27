@@ -6,11 +6,9 @@ open Prover
 
 module StrMap = Misc.StrMap
 
-let get_str_ d x =
-  try Some (Config.get_string d x)
-  with Config.FieldNotFound _ -> None
-
 exception Subst_not_found of string
+
+type 'a or_error = ('a, string) Result.result
 
 (* Internal function, do NOT export ! *)
 let mk_cmd
@@ -57,64 +55,70 @@ let get_branch dir : string =
 
 (* recover description of prover from config file *)
 let build_from_config config name =
-  let d =
-    try Config.get_table config name
-    with Config.FieldNotFound _ ->
-      failwith ("could not find prover " ^ name ^ " in config")
+  let getter =
+    let open Config in
+    let prover_tbl = table name in
+    prover_tbl |>> string "cmd" >|= String.trim >>= fun cmd ->
+    begin
+      (prover_tbl |>> string "binary")
+      <|>
+        ( let b, _ = Misc.Str.split ~by:' ' cmd in
+          if b = "$binary" then
+            fail ("please provide $binary value for prover " ^ name)
+          else pure b)
+    end >>= fun binary ->
+    (prover_tbl |>> string_list "binary_deps" <|> pure [])
+    >>= fun binary_deps ->
+    begin
+      (prover_tbl |>> string "version"
+       >|= fun s ->
+       begin match Misc.Str.split ~by:':' s with
+         | "git", dir ->
+           Git (get_branch dir, get_commit dir)
+         | "cmd", cmd ->
+           begin try
+               Tag (get_cmd_out @@ mk_cmd ~binary cmd)
+             with Subst_not_found s ->
+               Tag (Printf.sprintf "command `%s` failed: cannot find field %s" cmd s)
+           end
+         | _ -> Tag s
+         | exception Not_found -> Tag s
+       end)
+      <|> pure (Tag "dev")
+    end >>= fun version ->
+    let get_stropt name =
+      some (prover_tbl |>> string name) <|> pure None
+    in
+    get_stropt "unsat" >>= fun unsat ->
+    get_stropt "sat" >>= fun sat ->
+    get_stropt "timeout" >>= fun timeout ->
+    get_stropt "unknown" >>= fun unknown ->
+    get_stropt "memory" >>= fun memory ->
+    pure {
+      name; version; cmd; binary; binary_deps; unsat; sat;
+      unknown; timeout; memory; }
   in
-  let cmd = Config.get_string d "cmd" |> String.trim in
-  let binary =
-    try Config.get_string d "binary"
-    with Config.FieldNotFound _ ->
-      let b, _ = Misc.Str.split ~by:' ' cmd in
-      if b = "$binary" then
-        failwith ("please provide $binary value for prover " ^ name)
-      else
-        b
-  in
-  let binary_deps =
-    try Config.get_string_list d "binary_deps"
-    with Config.FieldNotFound _ -> []
-  in
-  let version =
-    match Config.get_string d "version" with
-    | exception Config.FieldNotFound _ ->
-      Tag "dev"
-    | s ->
-      begin match Misc.Str.split ~by:':' s with
-        | "git", dir ->
-          Git (get_branch dir, get_commit dir)
-        | "cmd", cmd ->
-          begin try
-              Tag (get_cmd_out @@ mk_cmd ~binary cmd)
-            with Subst_not_found s ->
-              Tag (Printf.sprintf "command `%s` failed: cannot find field %s" cmd s)
-          end
-        | _ -> Tag s
-        | exception Not_found -> Tag s
-      end
-  in
-  let unsat = get_str_ d "unsat" in
-  let sat = get_str_ d "sat" in
-  let unknown = get_str_ d "unknown" in
-  let timeout = get_str_ d "timeout" in
-  let memory = get_str_ d "memory" in
-  { name; version; cmd; binary; binary_deps; unsat; sat;
-    unknown; timeout; memory; }
+  Config.get config getter
 
 let find_config config name =
   (* check that the prover is listed *)
-  let provers = Config.get_string_list ~default:[] config "provers" in
-  if not (List.mem name provers)
-  then failwith ("prover " ^ name ^ " not listed in config");
-  build_from_config config name
+  let provers =
+    Config.(get_or ~default:[] config @@ string_list "provers")
+  in
+  if not (List.mem name provers) then (
+    Error ("prover " ^ name ^ " not listed in config")
+  ) else build_from_config config name
 
 (* make a list of provers from the given config *)
 let of_config config =
-  let provers = Config.get_string_list ~default:[] config "provers" in
+  let open Misc.Err in
+  begin
+    Config.(get_or ~default:[] config @@ string_list "provers")
+    |> List.map (build_from_config config)
+    |> Misc.Err.seq_list
+  end
+  >|= fun l ->
   List.fold_left
-    (fun map p_name ->
-       let prover = build_from_config config p_name in
-       StrMap.add p_name prover map
-    ) StrMap.empty provers
+    (fun map prover -> StrMap.add (Prover.name prover) prover map)
+    StrMap.empty l
 

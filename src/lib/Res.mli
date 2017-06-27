@@ -7,7 +7,7 @@ type t =
   | Unknown
   | Timeout
   | Error
-  [@@deriving yojson]
+  [@@deriving yojson,eq]
 
 val compare: t -> t -> [`Same | `LeftBetter | `RightBetter | `Mismatch]
 (** [compare a b] compares results [a] and [b] (assuming they are results

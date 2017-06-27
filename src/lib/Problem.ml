@@ -9,7 +9,7 @@ module StrMap = Misc.StrMap
 type t = {
   name: string;  (* filename *)
   expected: Res.t; (* result expected *)
-} [@@deriving yojson]
+} [@@deriving yojson,eq]
 [@@@warning "+39"]
 
 type problem = t
@@ -18,6 +18,7 @@ type problem_set = t list
 let basename t = Filename.basename t.name
 
 let same_name t1 t2 = t1.name = t2.name
+let hash_name t = CCHash.string t.name
 let compare_name t1 t2 = Pervasives.compare t1.name t2.name
 
 let make name expected =
@@ -34,9 +35,9 @@ let compare_res pb res =
   | Res.Unknown, Res.Timeout
   | (Res.Sat | Res.Unsat | Res.Error), (Res.Unknown | Res.Timeout) -> `Disappoint
   | (Res.Unsat | Res.Error), Res.Sat
-  | (Res.Sat | Res.Error), Res.Unsat
+  | (Res.Sat | Res.Error), Res.Unsat -> `Mismatch
   | (Res.Sat | Res.Unknown | Res.Timeout | Res.Unsat), Res.Error ->
-    `Mismatch
+    `Error
   | (Res.Unknown | Res.Timeout), (Res.Sat | Res.Unsat) ->
     `Improvement
 

@@ -24,55 +24,63 @@ type config = {
 }
 
 let expect_of_config config = function
-  | "" -> ProblemSet.Auto
-  | s ->
+  | None -> Ok ProblemSet.Auto
+  | Some s ->
+    let open Misc.Err in
     begin match Misc.Str.split ~by:':' s with
-      | "program", p -> ProblemSet.Program (ProverSet.find_config config p)
-      | _ -> ProblemSet.Res (Res.of_string s)
-      | exception Not_found -> ProblemSet.Res (Res.of_string s)
+      | "program", p ->
+        ProverSet.find_config config p >|= fun p -> ProblemSet.Program p
+      | _ -> Ok (ProblemSet.Res (Res.of_string s))
+      | exception Not_found -> Ok (ProblemSet.Res (Res.of_string s))
     end
 
-let mk_config config dirs =
-  try
-    let c = Config.get_table config "test" in
-    let j = Config.get_int ~default:1 c "parallelism" in
-    let timeout = Config.get_int ~default:5 c "timeout" in
-    let memory = Config.get_int ~default:1000 c "memory" in
-    let problem_pat = Config.get_string ~default:"" c "problems" in
-    let default_expect = Config.get_string ~default:"" c "default_expect" in
-    let l =
-      match dirs with
-      | [] -> Config.get_string_list ~default:[] c "dir"
-      | _ -> dirs
+let mk_config ?(profile="test") config dirs =
+  let getter =
+    let open Config in
+    let tbl = table profile in
+    (try_tables [tbl; top] @@ int "parallelism" <|> pure 1) >>= fun j ->
+    (try_tables [tbl; top] @@ int "timeout" <|> pure 5) >>= fun timeout ->
+    (try_tables [tbl; top] @@ int "memory" <|> pure 1000) >>= fun memory ->
+    let problem_pat =
+      try_tables [tbl; top] @@ string "problems"
     in
-    let problems = List.map (fun s ->
-        match Config.get_table c s with
-        | t ->
-          let dir = Config.get_string t "directory" in
-          let pat = Config.get_string ~default:problem_pat t "problems" in
-          let expect = expect_of_config config
-              (Config.get_string ~default:default_expect t "expect") in
-          { directory = dir; pattern = pat; expect = expect; }
-        | exception (Config.FieldNotFound _ | TomlTypes.Table.Key.Bad_key _) ->
-          { directory = s; pattern = problem_pat;
-            expect = expect_of_config config default_expect; }
-      ) l in
-    let provers = Config.get_string_list c "provers" in
-    let provers = List.map (ProverSet.find_config config) provers in
-    Misc.Err.return { j; timeout; memory; provers; problems; }
-  with
-  | Config.Error e -> Misc.Err.fail e
-  | e -> Misc.Err.fail (Printexc.to_string e)
+    let default_expect =
+      (try_tables [tbl; top] @@ string "default_expect" >|= fun x-> Some x)
+      <|> pure None
+    in
+    begin match dirs with
+      | [] -> try_tables [tbl; top] @@ string_list ~default:[] "dir"
+      | _ -> pure dirs
+    end >>= fun l ->
+    map_l
+      (fun dir_name ->
+         let dir_tbl = tbl |>> table dir_name in
+         begin
+         (dir_tbl |>> string "directory" <|> pure dir_name) >>= fun dir ->
+         (dir_tbl |>> string "problems" <|> problem_pat) >>= fun pat ->
+         ( (( some @@ try_tables [dir_tbl; tbl; top] @@ string "expect")
+            <|> default_expect)
+           >>= fun e -> (expect_of_config config e |> pure_or_error) )
+         >|= fun expect ->
+         { directory = dir; pattern = pat; expect = expect; }
+         end |> add_ctxf "read config for directory `%s`" dir_name)
+      l
+    >>= fun problems ->
+    ((try_tables [tbl; top] @@ string_list "provers") |> add_ctxf "get provers")
+     >>= fun provers ->
+    map_l
+      (fun p -> ProverSet.find_config config p |> pure_or_error)
+      provers
+    >>= fun provers ->
+    return { j; timeout; memory; provers; problems; }
+  in
+  Config.get config getter
 
-let config_of_file file =
+let config_of_file ?profile file =
   Lwt_log.ign_debug_f "parse config file `%s`..." file;
-  try
-    let main = Config.parse_files [file] Config.empty in
-    mk_config main []
-  with
-  | Config.Error e ->
-    Misc.Err.fail e
-  | e -> Misc.Err.fail (Printexc.to_string e)
+  let open Misc.Err in
+  Config.parse_file file >>= fun c ->
+  mk_config ?profile c []
 
 (* run one particular test *)
 let run_pb_ ~config prover pb =
@@ -107,6 +115,28 @@ let run_pb ?(caching=true) ?limit ~config prover pb : _ E.t =
   |> E.of_exn
 
 let nop_ _ = Lwt.return_unit
+
+let print_result (res:Test.result): unit =
+  let module F = Misc.Fmt in
+  let p_res = Event.analyze_p res in
+  let pp_res out () =
+    let str, c = match Problem.compare_res res.Event.problem p_res with
+      | `Same -> "ok", `Green
+      | `Improvement -> "ok (improved)", `Blue
+      | `Disappoint -> "disappoint", `Cyan
+      | `Error -> "error", `Yellow
+      | `Mismatch -> "bad", `Red
+    in
+    Format.fprintf out "%a" (F.in_bold_color c Format.pp_print_string) str
+  in
+  let prover = res.Event.program in
+  let prover_name = Filename.basename prover.Prover.name in
+  let pb_name = res.Event.problem.Problem.name in
+  Lwt_log.ign_debug_f "result for `%s` with %s: %s (%.1fs)"
+    prover_name pb_name (Res.to_string p_res) res.Event.raw.Event.rtime;
+  Format.printf "%-20s%-50s %a (%.1fs)@." prover_name (pb_name ^ " :")
+    pp_res () res.Event.raw.Event.rtime;
+  ()
 
 let run ?(on_solve = nop_) ?(caching=true) config =
   let open E.Infix in

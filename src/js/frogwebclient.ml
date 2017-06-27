@@ -314,8 +314,14 @@ let get_snapshots (l:string list): Event.Snapshot.t list Lwt.t =
   set_status "done";
   Lwt.return res
 
+let date_to_string (t:float): string =
+  let module T = ISO8601.Permissive in
+  T.string_of_datetime t
+
 let cur_snapshots : Event.Snapshot.t list Lwt_react.signal Lwt.t =
-  React.S.map ~eq:(=) (List.map Uuidm.to_string) s_filter
+  s_filter
+  |> React.S.map ~eq:(CCList.equal CCString.equal)
+    (List.map (fun (u,_) -> Uuidm.to_string u))
   |> Lwt_react.S.map_s get_snapshots
 
 (****************************************************************************)
@@ -332,10 +338,6 @@ let split_events =
 let stats_of_snapshot_meta (s:Event.Meta.t) =
   let provers = Event.Meta.provers s |> Prover.Set.elements in
   Event.Meta.uuid s, Event.Meta.timestamp s, Event.Meta.length s, provers
-
-let date_to_string (t:float): string =
-  let module T = ISO8601.Permissive in
-  T.string_of_datetime t
 
 let mode_list () =
   (* list of snapshots, sorted by decreasing timestamps *)
@@ -357,7 +359,7 @@ let mode_list () =
           on_click (
             H.a ~a:[H.a_href "#table"; H.a_style "cursor:pointer" ]
               [ H.pcdata (Uuidm.to_string uuid) ])
-            (fun () -> set_s_filter [ uuid ]; Lwt.return_unit)
+            (fun () -> set_s_filter [ uuid, time ]; Lwt.return_unit)
           ] in
         H.tr [
           t;
@@ -375,8 +377,15 @@ let mode_list () =
 (* Interface: Full table *)
 
 let mode_table () =
-  (* Initialize uuidm list *)
-  let ulist = React.S.map (List.map Event.Meta.uuid) snapshots_meta in
+  (* Initialize uuidm list (sorted by timestamp) *)
+  let ulist =
+    React.S.map
+      (fun l ->
+         l
+         |> List.map (fun e -> Event.Meta.uuid e, Event.Meta.timestamp e)
+         |> List.sort (CCFun.compose_binop snd (CCOrd.opp CCFloat.compare)))
+      snapshots_meta
+  in
 
   let%lwt snap_list = cur_snapshots in
 
@@ -471,8 +480,11 @@ let mode_table () =
   in
   (* Buttons & co *)
   let input_snap = multi_choice
-    Uuidm.compare Uuidm.to_string
-    ulist (s_filter, (fun l -> set_s_filter l)) in
+      (CCPair.compare Uuidm.compare CCFloat.compare)
+      (fun (uuid,time) ->
+         Printf.sprintf "%s at %s" (Uuidm.to_string uuid) (date_to_string time))
+      ulist
+      (s_filter, (fun l -> set_s_filter l)) in
   let search_snap =
     H.div ~a:[H.a_class ["select"]] [
       H.h3 [ H.pcdata "Snapshots" ];

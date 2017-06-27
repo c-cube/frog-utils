@@ -20,6 +20,8 @@ let find_snapshot_exn storage str : Event.Snapshot.t Lwt.t =
 let list_snapshots storage : Event.Snapshot.t list Misc.LwtErr.t =
   let open Misc.LwtErr in
   let%lwt l = Storage.find_files storage in
+  (* only keep names that are uuid *)
+  let l = List.filter (fun file -> CCOpt.is_some (Uuidm.of_string file)) l in
   Misc.LwtErr.map_s
     (fun file -> Storage.find_json storage file >>?= Event.Snapshot.of_yojson)
     l

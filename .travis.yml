@@ -1,0 +1,27 @@
+language: c
+env:
+  - OCAML_VERSION=4.02.3
+  - OCAML_VERSION=4.03.0
+  - OCAML_VERSION=4.04.0
+addons:
+  apt:
+    sources:
+      - avsm
+    packages:
+      - opam
+      - time
+      - libgmp-dev
+cache:
+  directories:
+    - $HOME/.opam
+install:
+  - export OPAMYES=1
+  - export OPAMVERBOSE=1
+  - opam init
+  - opam switch ${OCAML_VERSION}
+  - eval `opam config env`
+  - opam update
+  - opam reinstall --yes ocamlfind ocamlbuild oasis lwt base-unix yojson toml re ppx_deriving ppx_deriving_yojson cairo2 archimedes cmdliner result olinq junit uuidm maki ISO8601 csv containers printbox react reactiveData js_of_ocaml opium calculon
+script:
+  - ./configure
+  - make

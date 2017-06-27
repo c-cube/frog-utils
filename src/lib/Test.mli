@@ -44,7 +44,8 @@ module Analyze : sig
     improved  : result list;
     ok        : result list;
     disappoint: result list;
-    bad       : result list;
+    errors    : result list;
+    bad       : result list; (* mismatch *)
   } [@@deriving yojson]
 
   val make : Raw.t -> t
@@ -151,6 +152,12 @@ module Top_result : sig
   val to_file : file:string -> t -> unit or_error Lwt.t
 
   val of_file : file:string -> t or_error Lwt.t
+
+  val filter :
+    provers:string list option ->
+    dir:string list ->
+    t -> t
+  (** Filter the results by problem and by prover *)
 
   type comparison_result = {
     both: ResultsComparison.t Prover.Map_name.t;

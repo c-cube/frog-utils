@@ -72,7 +72,8 @@ module Raw = struct
     total_time: float; (* for sat+unsat *)
   } [@@deriving yojson]
 
-  let stat_empty = {unsat=0; sat=0; errors=0; unknown=0; timeout=0; total_time=0.; }
+  let stat_empty =
+    {unsat=0; sat=0; errors=0; unknown=0; timeout=0; total_time=0.; }
 
   let add_sat_ t s = {s with sat=s.sat+1; total_time=s.total_time+. t; }
   let add_unsat_ t s = {s with unsat=s.unsat+1; total_time=s.total_time+. t; }
@@ -136,7 +137,8 @@ module Analyze = struct
     improved: result list;
     ok: result list;
     disappoint: result list;
-    bad: result list;
+    errors: result list;
+    bad: result list; (* mismatch *)
   } [@@deriving yojson]
   [@@@warning "+39"]
 
@@ -146,21 +148,21 @@ module Analyze = struct
       M.of_map raw
       |> OLinq.map snd
       |> OLinq.group_by
-        (fun r -> Problem.compare_res r.Event.problem
-            (Event.analyze_p r))
+        (fun r -> Problem.compare_res r.Event.problem (Event.analyze_p r))
       |> OLinq.run_list ?limit:None
     in
     let improved = assoc_or [] `Improvement l in
     let ok = assoc_or [] `Same l in
     let bad = assoc_or [] `Mismatch l in
     let disappoint = assoc_or [] `Disappoint l in
+    let errors = assoc_or [] `Error l in
     (* stats *)
     let stat = Raw.stat raw in
-    improved, ok, bad, disappoint, stat
+    improved, ok, bad, disappoint, errors, stat
 
   let make raw =
-    let improved, ok, bad, disappoint, stat = analyse_ raw in
-    { raw; stat; improved; ok; disappoint; bad; }
+    let improved, ok, bad, disappoint, errors, stat = analyse_ raw in
+    { raw; stat; improved; ok; disappoint; errors; bad; }
 
   let of_yojson j = match Raw.of_yojson j with
     | Result.Ok x -> Result.Ok (make x)
@@ -188,20 +190,34 @@ module Analyze = struct
   let pp_list_ p = Misc.Fmt.pp_list ~start:"" ~stop:"" p
 
   let pp_raw_res_ out r =
-    fpf out "@[<h>problem %s (expected: %a, result: %a)@]"
+    fpf out "@[<h>problem %s (expected: %a, result: %a in %.2f)@]"
       r.Event.problem.Problem.name
       Res.print r.Event.problem.Problem.expected
       Res.print (Event.analyze_p r)
+      r.Event.raw.Event.rtime
 
-  let print out { raw; stat; improved; ok; disappoint; bad } =
+  let pp_summary out t: unit =
+    Format.fprintf out
+      "(@[<hv>:ok %d@ :improved %d@ :disappoint %d@ :bad %d@ :errors %d@ :total %d@])"
+      (List.length t.ok)
+      (List.length t.improved)
+      (List.length t.disappoint)
+      (List.length t.bad)
+      (List.length t.errors)
+      (MStr.cardinal t.raw)
+
+  let print out ({ raw; stat; improved; ok; disappoint; bad; errors } as r) =
     let pp_l out = fpf out "[@[<hv>%a@]]" (pp_list_ pp_raw_res_) in
     fpf out
-      "@[<hv2>results: {@,stat:%a,@ %-15s: %a,@ %-15s: %a,@ %-15s: %a,@ %-15s: %a@]@,}"
+      "@[<hv2>results: {@,summary: %a@,stat:%a,@ %-15s: %a\
+       ,@ %-15s: %a,@ %-15s: %a,@ %-15s: %a,@ %-15s: %a@]@,}"
+      pp_summary  r
       Raw.pp_stat stat
       "ok" pp_l ok
       "improved" pp_l improved
       "disappoint" pp_l disappoint
       "bad" pp_l bad
+      "errors" pp_l errors
 
   let to_html_summary t =
     H.table
@@ -213,6 +229,7 @@ module Analyze = struct
            "improved", (List.length t.improved);
            "disappoint", (List.length t.disappoint);
            "bad", (List.length t.bad);
+           "errors", (List.length t.errors);
            "total", (MStr.cardinal t.raw);
          ])
 
@@ -232,6 +249,7 @@ module Analyze = struct
     |> R.add "ok" (lst_raw_res t.ok)
     |> R.add "disappoint" (lst_raw_res t.disappoint)
     |> R.add "bad" (lst_raw_res t.bad)
+    |> R.add "errors" (lst_raw_res t.errors)
     |> R.add "stats" (Raw.to_html_stats t.stat)
     |> R.add "raw" (to_html_raw uri_of_problem uri_of_raw_res t.raw)
     |> R.close
@@ -325,7 +343,7 @@ module ResultsComparison = struct
     let a = M.of_map a |> OLinq.map snd in
     let b = M.of_map b |> OLinq.map snd in
     let j =
-      OLinq.join ~eq:Problem.same_name
+      OLinq.join ~eq:Problem.same_name ~hash:(Problem.hash_name)
         (fun r -> r.problem) (fun r -> r.problem) a b
         ~merge:(fun pb r1 r2 ->
             assert (r1.problem.Problem.name = r2.problem.Problem.name);
@@ -339,11 +357,15 @@ module ResultsComparison = struct
     let mismatch = assoc_or [] `Mismatch j |> tup3 in
     let same = assoc_or [] `Same j |> List.rev_map (fun (pb,r,_,t1,t2) -> pb,r,t1,t2) in
     let disappeared =
-      OLinq.diff ~cmp:(fun r1 r2 -> Problem.compare_name r1.problem r2.problem) a b
+      OLinq.diff a b
+        ~eq:(CCFun.compose_binop Event.problem Problem.same_name)
+        ~hash:(CCFun.compose Event.problem Problem.hash_name)
       |> OLinq.map (fun r -> r.problem, analyze_p r)
       |> OLinq.run_list
     and appeared =
-      OLinq.diff ~cmp:(fun r1 r2 -> Problem.compare_name r1.problem r2.problem) b a
+      OLinq.diff b a
+        ~eq:(CCFun.compose_binop Event.problem Problem.same_name)
+        ~hash:(CCFun.compose Event.problem Problem.hash_name)
       |> OLinq.map (fun r -> r.problem, analyze_p r)
       |> OLinq.run_list
     in
@@ -376,13 +398,13 @@ module ResultsComparison = struct
   let print_short out (t:t) =
     let module F = Misc.Fmt in
     fpf out "(@[<v2>comparison@ appeared: %d,@ disappeared: %d@ same: %d \
-             @ mismatch: %a@ improved: %a@ regressed: %a@])"
+             @ mismatch(%d): %a@ improved(%d): %a@ regressed(%d): %a@])"
       (List.length t.appeared)
       (List.length t.disappeared)
       (List.length t.same)
-      (pp_hvlist_ (pp_pb_res2 ~bold:true ~color:`Normal)) t.mismatch
-      (pp_hvlist_ (pp_pb_res2 ~bold:false ~color:`Green)) t.improved
-      (pp_hvlist_ (pp_pb_res2 ~bold:true ~color:`Yellow)) t.regressed
+      (List.length t.mismatch) (pp_hvlist_ (pp_pb_res2 ~bold:true ~color:`Normal)) t.mismatch
+      (List.length t.improved) (pp_hvlist_ (pp_pb_res2 ~bold:false ~color:`Green)) t.improved
+      (List.length t.regressed) (pp_hvlist_ (pp_pb_res2 ~bold:true ~color:`Yellow)) t.regressed
 
   let to_html _ _ = assert false (* TODO! *)
 end
@@ -403,6 +425,12 @@ module Top_result = struct
 
   let same_uuid (a:t)(b:t): bool =
     Uuidm.equal (Lazy.force a.uuid) (Lazy.force b.uuid)
+
+  let compare_uuid a b: int =
+    Uuidm.compare (Lazy.force a.uuid) (Lazy.force b.uuid)
+
+  (* more recent first *)
+  let compare_date a b: int = CCFloat.compare b.timestamp a.timestamp
 
   let make ?uuid ?timestamp l =
     let uuid = match uuid with
@@ -430,6 +458,26 @@ module Top_result = struct
       Prover.Map_name.map Analyze.make (Lazy.force raw)
     ) in
     { uuid; timestamp; events=l; raw; analyze; }
+
+  let filter ~provers ~dir (t:t): t =
+    (* predicates on events *)
+    let prover_ok r: bool = match provers with
+      | None -> true
+      | Some l -> List.mem r.Event.program.Prover.name l
+    and dir_ok r: bool = match dir with
+      | [] -> true
+      | l ->
+        let path = r.Event.problem.Problem.name in
+        List.exists (fun d -> CCString.mem ~sub:d path) l
+    in
+    let events =
+      CCList.filter
+        (function
+          | Event.Prover_run r -> prover_ok r && dir_ok r
+          | Event.Checker_run _ -> true)
+        t.events
+    in
+    make ~uuid:(Lazy.force t.uuid) ~timestamp:t.timestamp events
 
   let of_snapshot s =
     make ~uuid:s.Event.uuid ~timestamp:s.Event.timestamp s.Event.events
@@ -467,6 +515,16 @@ module Top_result = struct
     left: Analyze.t Prover.Map_name.t;
     right: Analyze.t Prover.Map_name.t;
   }
+
+  (* any common problem? *)
+  let should_compare (a:t)(b:t): bool =
+    let {raw=lazy a; _} = a in
+    let {raw=lazy b; _} = b in
+    Prover.Map_name.exists
+      (fun p r1 -> match Prover.Map_name.get p b with
+         | Some r2 -> MStr.exists (fun k _ -> MStr.mem k r2) r1
+         | None -> false)
+      a
 
   let compare (a:t) (b:t): comparison_result =
     let {analyze=lazy a; _} = a in
@@ -657,6 +715,8 @@ module Summary = struct
     raw_comparison: ResultsComparison.t Prover.Map_name.t; (* not empty *)
   }
 
+  let cmp_ind_diff i1 i2 = Top_result.compare_date i1.wrt i2.wrt
+
   type regression_by_prover = {
     reg_prover: Prover.t;
     reg_res: (Problem.t * Res.t * Res.t) list;
@@ -668,6 +728,8 @@ module Summary = struct
     reg_by_prover: regression_by_prover list; (* not empty *)
   }
 
+  let cmp_reg r1 r2 = Top_result.compare_date r1.reg_wrt r2.reg_wrt
+
   type t = {
     main: Top_result.t;
     others: individual_diff list;
@@ -676,6 +738,7 @@ module Summary = struct
 
   let compare_to_ (a:top_result)(other:top_result): individual_diff option * regression option =
     if Top_result.same_uuid a other then None, None
+    else if not (Top_result.should_compare other a)  then None, None
     else (
       let r = Top_result.compare other a in
       if Prover.Map_name.is_empty r.Top_result.both
@@ -710,7 +773,9 @@ module Summary = struct
            others, regressions)
         ([], []) l
     in
-    { main=res; others=List.rev others; regressions=List.rev regressions; }
+    let others = List.sort cmp_ind_diff others in
+    let regressions = List.sort cmp_reg regressions in
+    { main=res; others; regressions; }
 
   let pp_list p = Misc.Fmt.pp_list p
 

@@ -6,12 +6,12 @@
 open Frog
 open Frog_server
 
-module M = Lock_messages
+module M = IPC_message
 
-let section = Lwt_log.Section.make "Lock"
+let section = Lwt_log.Section.make "froglock"
 
 let () =
-  Lock_messages.register_exn_printers();
+  M.register_exn_printers();
   Lwt.async_exception_hook :=
     (fun e ->
       Lwt_log.ign_error_f "async error: %s" (Printexc.to_string e);
@@ -48,9 +48,10 @@ let run_command params =
   let info = show_cmd params.cmd in
   let user = try Some(Sys.getenv "USER") with _ -> None in
   let cwd = Sys.getcwd () in
-  Lock_client.connect_or_spawn params.port
-    (fun daemon ->
-      Lock_client.acquire ~cwd ?user ~info ~cores:params.cores ~priority:params.priority ~tags:params.tags daemon
+  IPC_client.connect_or_spawn params.port
+    (fun c ->
+       IPC_client.acquire ~cwd ?user ~info ~cores:params.cores
+         ~priority:params.priority ~tags:params.tags c
         (function
         | true ->
           let cmd, cmd_string = match params.cmd with
@@ -61,7 +62,7 @@ let run_command params =
                 let cmd = prog, Array.of_list (prog::args) in
                 cmd, (String.concat " " (prog::args))
           in
-          Lwt_log.ign_debug_f "start command %s" cmd_string;
+          Lwt_log.ign_debug_f ~section "start command %s" cmd_string;
           let start = Unix.gettimeofday () in
           (* close stdin so that interactive commands fail *)
           Lwt_process.with_process_none ~stdin:`Close ~stdout:`Keep cmd
@@ -74,7 +75,7 @@ let run_command params =
               let res = {res_cmd=cmd_string; time; status; pid=process#pid; } in
               Lwt.return (Some res)
             )
-      | false ->
+        | false ->
           Lwt_log.ign_info_f "could not acquire lock";
           Lwt.return_none
       )
@@ -93,7 +94,7 @@ let print_status params =
   in
   let now = Unix.gettimeofday() in
   try%lwt
-    let%lwt res = Lock_client.get_status params.port in
+    let%lwt res = IPC_client.connect_and_get_status params.port in
     match res with
     | None ->
       Lwt_log.info_f ~section "daemon not running"
@@ -139,7 +140,7 @@ let main params =
         then Lwt_log.add_rule "*" Lwt_log.Debug;
       match params.cmd with
       | PrintStatus -> print_status params
-      | StopAccepting -> Lock_client.stop_accepting params.port
+      | StopAccepting -> IPC_client.stop_accepting_jobs params.port
       | Exec _
       | Shell _ ->
           let%lwt res = run_command params in
@@ -162,7 +163,7 @@ let common_opts =
   let aux port debug tags priority cores cmd = { port; debug; tags; priority; cores; cmd }  in
   let port =
     let doc = "Local port for the daemon" in
-    Arg.(value & opt int Lock_daemon.default_port & info ["p"; "port"] ~docv:"PORT" ~doc)
+    Arg.(value & opt int IPC_daemon.default_port & info ["p"; "port"] ~docv:"PORT" ~doc)
   in
   let debug =
     let doc = "Enable debug" in

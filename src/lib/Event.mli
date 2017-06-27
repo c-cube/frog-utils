@@ -16,7 +16,7 @@ type raw_result = {
   rtime : float;
   utime : float;
   stime : float;
-} [@@deriving yojson]
+} [@@deriving yojson,eq]
 
 type prover  = Prover.t [@@deriving yojson]
 type checker = unit [@@deriving yojson]
@@ -26,14 +26,18 @@ type +'a result = {
   problem : Problem.t;
   raw : raw_result;
 }
-[@@deriving yojson]
+[@@deriving yojson,eq]
+
+val program : 'a result -> 'a
+val problem : _ result -> Problem.t
+val raw : _ result -> raw_result
 
 val analyze_p : prover result -> Res.t
 
 type t =
   | Prover_run of prover result
   | Checker_run of checker result
-[@@deriving yojson]
+[@@deriving yojson,eq]
 
 type event = t
 

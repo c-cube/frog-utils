@@ -13,6 +13,7 @@ end
 
 (** Yay formatting! *)
 module Fmt = struct
+  type 'a printer = Format.formatter -> 'a -> unit
   let fpf = Format.fprintf
   let to_string f x = Format.asprintf "%a%!" f x
 
@@ -29,6 +30,7 @@ module Fmt = struct
     | `Green
     | `Blue
     | `Normal
+    | `Cyan
     ]
 
   let int_of_color_ = function
@@ -37,6 +39,7 @@ module Fmt = struct
     | `Green -> 2
     | `Yellow -> 3
     | `Blue -> 4
+    | `Cyan -> 6
 
   let pp_list ?(start="") ?(stop="") ?(sep=",") pp fmt l =
     let rec pp_list l = match l with
@@ -102,6 +105,8 @@ module Err = struct
       | Ok x :: l' -> aux (x :: acc) l'
     in
     aux [] l
+
+  let map_l f l = List.map f l |> seq_list
 end
 
 module LwtErr = struct
@@ -189,3 +194,4 @@ end
 
 module StrMap = CCMap.Make(String)
 module StrSet = CCSet.Make(String)
+module Int_map = CCMap.Make(CCInt)
