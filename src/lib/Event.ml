@@ -3,11 +3,6 @@
 
 (** {1 Event Stored on Disk or Transmitted on Network} *)
 
-module E = Misc.Err
-
-type 'a printer = Format.formatter -> 'a -> unit
-type 'a or_error = 'a Misc.Err.t
-
 type raw_result = {
   (* Raw output *)
   errcode: int;

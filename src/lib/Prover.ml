@@ -69,7 +69,7 @@ let mk_cmd
   add_str cmd;
   Buffer.contents buf
 
-let make_command ?env prover ~timeout ~memory ~file =
+let make_command ?env ~timeout ~memory ~file prover =
   let binary = prover.binary in
   try mk_cmd ?env ~binary ~timeout ~memory ~file prover.cmd
   with Subst_not_found s ->

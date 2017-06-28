@@ -7,8 +7,6 @@ open Result
 type path = string
 type t = Problem.t
 
-module E = Misc.LwtErr
-
 type expect =
   | Auto
   | Res of Res.t
@@ -31,37 +29,38 @@ let re_expect_ =
 
 (* what is expected? *)
 let find_expected_ ?default file =
-  let%lwt content = Misc_unix.File.with_in ~file Misc_unix.File.read_all in
+  let content = CCIO.with_in file CCIO.read_all in
   match Re.exec_opt re_expect_ content with
   | Some g ->
-    if Re.marked g m_unsat_ then E.return Res.Unsat
-    else if Re.marked g m_sat_ then E.return Res.Sat
-    else if Re.marked g m_unknown_ then E.return Res.Unknown
-    else if Re.marked g m_timeout_ then E.return Res.Timeout
-    else if Re.marked g m_error_ then E.return Res.Error
-    else E.fail "could not parse the content of the `expect:` field"
+    if Re.marked g m_unsat_ then CCResult.return Res.Unsat
+    else if Re.marked g m_sat_ then CCResult.return Res.Sat
+    else if Re.marked g m_unknown_ then CCResult.return Res.Unknown
+    else if Re.marked g m_timeout_ then CCResult.return Res.Timeout
+    else if Re.marked g m_error_ then CCResult.return Res.Error
+    else CCResult.fail "could not parse the content of the `expect:` field"
   | None ->
-    match default with
-      | Some r -> E.return r
-      | None -> E.fail "could not find the `expect:` field"
+    begin match default with
+      | Some r -> CCResult.return r
+      | None -> CCResult.fail "could not find the `expect:` field"
+    end
 
-let find_expect ~expect file : Res.t E.t =
+let find_expect ~expect file : (Res.t, string) result =
   begin match expect with
     | Auto -> find_expected_ ?default:None file
     | Res r -> find_expected_ ~default:r file
     | Program prover ->
       let pb = Problem.make file Res.Unknown in
-      let%lwt event = Run.run_prover ~timeout:1 ~memory:1_000 ~prover ~pb () in
-      E.return (Event.analyze_p event)
+      let event = Run.run_prover ~timeout:1 ~memory:1_000 ~prover ~pb () in
+      CCResult.return (Event.analyze_p event)
   end
 
 let make ~find_expect file =
-  let open E.Infix in
+  let open CCResult.Infix in
   Lwt_log.ign_debug_f "convert `%s` into problem..." file;
-  find_expect file |> E.add_ctxf "parsing expected result of `%s`" file
+  find_expect file |> CCResult.add_ctxf "parsing expected result of `%s`" file
   >>= fun res ->
   let pb = Problem.make file res in
-  E.return pb
+  CCResult.return pb
 
 let of_dir ~filter d =
   Misc_unix.File.walk d

@@ -54,7 +54,7 @@ let to_html s =
     | Error -> "red"
   in
   H.pcdata (to_string s)
-  |> Misc.List.return
+  |> CCList.return
   |> H.span ~a:[H.a_class ["result"]; H.a_style ("color:"^color)]
 
 

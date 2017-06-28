@@ -3,11 +3,6 @@
 
 (** {1 Snapshots, i.e lists of events} *)
 
-module E = Misc.Err
-
-type 'a printer = Format.formatter -> 'a -> unit
-type 'a or_error = 'a Misc.Err.t
-
 type uuid = Uuidm.t
 let equal_uuid = Uuidm.equal
 
@@ -15,16 +10,20 @@ let uuid_to_yojson u = `String (Uuidm.to_string u)
 let uuid_of_yojson j = match j with
   | `String s ->
     begin match Uuidm.of_string s with
-      | Some x-> E.return x
-      | None -> E.fail "invalid uuid"
+      | Some x-> CCResult.return x
+      | None -> CCResult.fail "invalid uuid"
     end
-  | _ -> E.fail "expected string for uuid"
+  | _ -> CCResult.fail "expected string for uuid"
 
 type timestamp = float [@@deriving eq]
 let timestamp_to_yojson f = `String (string_of_float f)
 let timestamp_of_yojson = function
-  | `String s -> (try E.return (float_of_string s) with _ -> E.fail "expected float")
-  | _ -> E.fail "expected float"
+  | `String s ->
+    begin
+      try CCResult.return (float_of_string s)
+      with _ -> CCResult.fail "expected float"
+    end
+  | _ -> CCResult.fail "expected float"
 
 type t = {
   uuid: uuid;
@@ -46,11 +45,8 @@ let pp out (r:t) =
 type prover_set = Prover.Set.t
 let prover_set_to_yojson s = `List (List.map Prover.to_yojson (Prover.Set.elements s))
 let prover_set_of_yojson = function
-  | `List l ->
-    let open Misc.Err in
-    let l = List.map Prover.of_yojson l in
-    seq_list l >|= Prover.Set.of_list
-  | _ -> Misc.Err.fail "invalid set of provers"
+  | `List l -> CCResult.(map_l Prover.of_yojson l >|= Prover.Set.of_list)
+  | _ -> CCResult.fail "invalid set of provers"
 
 
 module Meta = struct

@@ -13,16 +13,16 @@ let main storage_dirs port debug =
   Lwt_main.run web
 
 let term =
-  let storage_dirs =
-    let doc = "on-disk storage directories" in
-    Arg.(value & opt (list string) [] & info ["storage"] ~doc)
+  let db_path =
+    let doc = "on-disk storage database" in
+    Arg.(value & opt string "~/.frogutils/frog.db" & info ["db"] ~doc)
   and port =
     let doc = "Port on which to run the web server" in
     Arg.(value & opt int 8000 & info ["p"; "port"] ~doc)
   and debug =
     Arg.(value & flag & info ["debug"] ~doc:"enable debug messages")
   in
-  Term.(pure main $ storage_dirs $ port $ debug)
+  Term.(pure main $ db_path $ port $ debug)
 
 let parse_opt () =
   let help =

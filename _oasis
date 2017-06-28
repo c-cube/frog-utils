@@ -31,7 +31,7 @@ Library "frog"
   Path:             src/lib
   Pack:             true
   Modules:          Event, Snapshot, Html, Misc, Problem, Prover, Res
-  BuildDepends:     ppx_deriving_yojson, lwt, tyxml, lwt.ppx, toml, csv,
+  BuildDepends:     ppx_deriving_yojson, tyxml, toml, csv,
                     ppx_deriving.std, re.posix, containers,
                     result, olinq, uri, uuidm
 
@@ -40,11 +40,10 @@ Library "frog_server"
   Pack:             true
   FindlibParent:    frog
   FindlibName:      server
-  Modules:          Config, JUnit_wrapper, IPC_client, IPC_daemon,
-                    IPC_message, Maki_wrapper, Signal,
+  Modules:          Config, Maki_wrapper, Signal,
                     Run, TPTP, Test_run, Misc_unix,
-                    Storage, Event_storage, ProblemSet, ProverSet
-  BuildDepends:     frog, unix, lwt.unix, lwt.preemptive, cmdliner,
+                    Storage, ProblemSet, ProverSet
+  BuildDepends:     frog, unix, cmdliner,
                     junit, maki, printbox,
                     maki.yojson, ISO8601, threads,
                     sqlexpr, sqlexpr.ppx
@@ -117,7 +116,7 @@ Executable frogwebclient
   CompiledObject:   byte
   MainIs:           frogwebclient.ml
   Build$:           flag(web)
-  BuildDepends:     frog, react, lwt_react, reactiveData,
+  BuildDepends:     frog, react, reactiveData,
                     js_of_ocaml, js_of_ocaml.tyxml,
                     js_of_ocaml.ppx, js_of_ocaml.weak, ISO8601
 

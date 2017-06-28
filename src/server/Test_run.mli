@@ -29,45 +29,13 @@ val mk_config : ?profile:string -> Config.t -> string list -> config Misc.Err.t
 
 val config_of_file : ?profile:string -> string -> config Misc.Err.t
 
-val print_result : Event.prover Even.result -> unit
+val print_result : Event.prover Event.result -> unit
 
 val run :
+  ?on_dir:(dir -> string list -> unit Lwt.t) ->
   ?on_solve:(Event.prover Event.result -> unit Lwt.t) ->
-  ?caching:bool -> config ->
-  unit Misc.LwtErr.t
+  ?caching:bool -> config -> unit Misc.LwtErr.t
 (** Run the given configuration.
     @param caching if true, use Maki for caching results (default true)
     @param on_solve called whenever a single problem is solved *)
-
-module Plot_res : sig
-  type data =
-    | Unsat_time
-    | Sat_time
-    | Both_time
-
-  type legend =
-    | Prover
-
-  type drawer =
-    | Simple of bool (* should we sort the list ? *)
-    | Cumul of bool * int * int (* sort, filter, count *)
-
-  type params = {
-    graph : Plot.graph_config;
-    data : data;
-    legend : legend;
-    drawer : drawer;
-    out_file : string;
-    out_format : string;
-  }
-
-  (*
-  val draw : params -> Test.top_result -> Plot.drawer
-  (** Make a plot out of results *)
-
-  val draw_file : params -> Test.top_result -> unit
-  (** Make a plot out of results *)
-  *)
-
-end
 

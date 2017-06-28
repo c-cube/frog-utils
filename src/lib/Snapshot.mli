@@ -3,9 +3,6 @@
 
 (** {1 Snapshots, i.e collections of events} *)
 
-type 'a printer = Format.formatter -> 'a -> unit
-type 'a or_error = 'a Misc.Err.t
-
 (** A snapshot if a collection of events. As the collection is meant
     to be quite sizable, we avoid having the list of events in memory
     (as it would most probably exceed available RAM). *)
@@ -22,7 +19,7 @@ val make :
   ?timestamp:float -> unit -> t
 
 (** Print a snapshot *)
-val pp : t printer
+val pp : Format.formatter -> t -> unit
 
 (** Meta information about snapshots *)
 module Meta : sig
@@ -40,6 +37,6 @@ module Meta : sig
   val uuid : t -> Uuidm.t
   val length : t -> int
 
-  val pp : t printer
+  val pp : Format.formatter -> t -> unit
 end
 

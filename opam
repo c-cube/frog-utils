@@ -47,6 +47,7 @@ depends: [
     "containers"
     "printbox"
     "js_of_ocaml"
+    "sqlexpr"
 ]
 depopts: [
     "cairo2"

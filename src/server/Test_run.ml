@@ -7,8 +7,6 @@ open Result
 open Frog
 open Lwt.Infix
 
-module E = Misc.LwtErr
-
 type dir = {
   directory : string;
   pattern : string;
@@ -114,9 +112,7 @@ let run_pb ?(caching=true) ?limit ~config prover pb : _ E.t =
     (fun () -> run_pb_ ~config prover pb)
   |> E.of_exn
 
-let nop_ _ = Lwt.return_unit
-
-let print_result (res:Test.result): unit =
+let print_result (res : Event.prover Event.result): unit =
   let module F = Misc.Fmt in
   let p_res = Event.analyze_p res in
   let pp_res out () =
@@ -138,13 +134,17 @@ let print_result (res:Test.result): unit =
     pp_res () res.Event.raw.Event.rtime;
   ()
 
-let run ?(on_solve = nop_) ?(caching=true) config =
+let nop_ _ = Lwt.return_unit
+let nop2_ _ _ = Lwt.return_unit
+
+let run ?(on_dir = nop2_) ?(on_solve = nop_) ?(caching=true) config =
   let open E.Infix in
   let limit = Maki.Limit.create config.j in
   E.map_p (fun dir ->
       let expect = dir.expect in
       let%lwt pbs = ProblemSet.of_dir dir.directory
           ~filter:(Re.execp (Re_posix.compile_pat dir.pattern)) in
+      let%lwt () = on_dir dir pbs in
       E.map_p
         (fun pb_path ->
            (* transform into problem *)
@@ -166,61 +166,3 @@ let run ?(on_solve = nop_) ?(caching=true) config =
         ) pbs
     ) config.problems >>= fun _ -> E.return ()
 
-module Plot_res = struct
-  type data =
-    | Unsat_time
-    | Sat_time
-    | Both_time
-
-  type legend =
-    | Prover
-
-  type drawer =
-    | Simple of bool (* should we sort the list ? *)
-    | Cumul of bool * int * int (* sort, filter, count *)
-
-  type params = {
-    graph : Plot.graph_config;
-    data : data;
-    legend : legend;
-    drawer : drawer;
-    out_file : string;
-    out_format : string;
-  }
-
-  (*
-  let draw params (r:Test.top_result): Plot.drawer =
-    let lazy map = r.Test.analyze in
-    let datas =
-      Prover.Map_name.to_list map
-      |> List.map
-        (fun (prover,analyze) ->
-           let name = match params.legend with
-             | Prover -> Prover.name prover
-           and points =
-             T.MStr.to_list analyze.T.Analyze.raw
-             |> Misc.List.filter_map
-               (fun (_file,r) ->
-                  let res = Event.analyze_p r in
-                  let ok = match res, params.data with
-                    | Res.Unsat, (Unsat_time | Both_time) -> true
-                    | Res.Sat, (Sat_time | Both_time) -> true
-                    | _ -> false
-                  in
-                  if ok then Some r.Event.raw.Event.rtime else None)
-           in
-           points, name
-        )
-    in
-    let single_drawer = match params.drawer with
-      | Simple sort -> Plot.float_list ~sort
-      | Cumul (sort, filter, count) -> Plot.float_sum ~sort ~filter ~count
-    in
-    Plot.list @@ List.map single_drawer datas
-
-  let draw_file params r =
-    let d = draw params r in
-    Plot.draw_on_graph params.graph ~fmt:params.out_format
-      ~file:params.out_file d
-  *)
-end

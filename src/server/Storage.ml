@@ -267,7 +267,7 @@ let get_problem_contents db id =
 
 (* Open the db and create tables if they don't exists.
    The stadard db file should be ~/.frogutils/frog.db *)
-let make file =
+let make ?(file = "~/.frogutils/frog.db") () =
   (* TODO: adjust options ?mutex and ?cache of open_db *)
   let db = S.open_db file in
   (* Initialize tables & indexs *)

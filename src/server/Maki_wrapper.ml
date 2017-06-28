@@ -54,21 +54,3 @@ let prover : Prover.t Maki.Value.ops =
       )
   )
 
-(*
-let test_config : Test.Config.t Maki.Value.ops =
-  let module V = Maki.Value in
-  let open Test.Config in
-  let of_yojson x = E.to_exn (of_yojson x) in
-  let json =  Maki_yojson.make ~of_yojson ~to_yojson "config_json" in
-  V.map ~descr:"config"
-    (fun t -> t, t.provers)
-    (fun (t,_) -> t)
-    (V.pair json (V.set prover))
-*)
-
-let test_analyze : Test.Analyze.t Maki.Value.ops =
-  let open Test.Analyze in
-  let of_yojson x = E.to_exn (of_yojson x) in
-  Maki_yojson.make "results"
-    ~to_yojson
-    ~of_yojson

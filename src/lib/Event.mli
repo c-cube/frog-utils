@@ -3,9 +3,6 @@
 
 (** {1 Event Stored on Disk or Transmitted on Network} *)
 
-type 'a printer = Format.formatter -> 'a -> unit
-type 'a or_error = 'a Misc.Err.t
-
 type raw_result = {
   (* Raw output *)
   errcode: int;
@@ -44,5 +41,5 @@ type event = t
 val mk_prover : prover result -> t
 val mk_checker : checker result -> t
 
-val pp : t printer
+val pp : Format.formatter -> t -> unit
 

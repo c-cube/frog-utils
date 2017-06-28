@@ -3,15 +3,14 @@
 
 (** {1 Simple wrapper for HTML} *)
 
-include Tyxml.Html5
+include Tyxml.Html
 
 type t = Html_types.div_content_fun elt
 type html = t
 
 (** {2 Encoding Records in HTML} *)
 
-let to_string h =
-  Misc.Fmt.to_string (pp_elt()) h
+let to_string h = CCFormat.to_string (pp_elt()) h
 
 module Record = struct
   type t = (string * html) list
@@ -33,4 +32,3 @@ module Record = struct
          l)
 end
 
-(* TODO: same as record, but for full tables? *)

@@ -44,7 +44,7 @@ let compare_res pb res =
 let print out p =
   Format.fprintf out "@[<h>%s (expect: %a)@]" p.name Res.print p.expected
 
-let to_string p = Misc.Fmt.to_string print p
+let to_string p = CCFormat.to_string print p
 
 (* HTML server *)
 let to_html_name p = Html.div [Html.pcdata (Filename.basename p.name)]

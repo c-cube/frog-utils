@@ -4,10 +4,6 @@
 open Result
 open Frog
 
-module E = Misc.Err
-
-let fpf = Format.fprintf
-
 (** {2 Maki} *)
 
 let maki_raw_res =

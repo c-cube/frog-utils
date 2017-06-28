@@ -16,8 +16,9 @@ type id = string
 (** Most data stored in the database is identified by its hash, encoded
     as a string. *)
 
-val make : string -> t
-(** [make file] opens the database in [file] and returns a storage conenction. *)
+val make : ?file:string -> unit -> t
+(** [make ~file ()] opens the database in [file] and returns a storage conenction.
+    (default file: ["~/.frogutils/frog.db"]) *)
 
 
 (** {2 Database Getters} *)
@@ -37,7 +38,7 @@ val get_result    : t -> id -> Prover.t Event.result
 val get_problem_contents : t -> id -> string
 (** Returns the stored contents of a problem (i.e the contents of the problem file). *)
 
-val snapshot_event_list : t -> Snapshot.t -> string list
+val snapshot_event_list : t -> Snapshot.t -> id list
 (** Returns the list of ids of results associated with a snapshot. *)
 
 

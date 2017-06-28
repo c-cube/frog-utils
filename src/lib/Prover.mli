@@ -19,11 +19,10 @@ type t = {
   version : version;
 
   (* Pover execution *)
-  binary: string;       (* name of the program itself *)
+  binary: string;           (* name of the program itself *)
   binary_deps: string list; (* list of binaries this depends on *)
-  cmd: string;          (* the command line to run.
-                           possibly contains $binary, $file, $memory and $timeout *)
-
+  cmd: string;              (* the command line to run.
+                               possibly contains $binary, $file, $memory and $timeout *)
   (* Result analysis *)
   unsat   : string option;  (* regex for "unsat" *)
   sat     : string option;  (* regex for "sat" *)
@@ -43,11 +42,10 @@ val equal : t -> t -> bool
 
 val make_command :
   ?env:(string * string) array ->
-  t ->
   timeout:int ->
   memory:int ->
   file:string ->
-  string
+  t -> string
 
 (** Map by name *)
 module Map_name : CCMap.S with type key = t
