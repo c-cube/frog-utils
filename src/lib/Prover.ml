@@ -100,12 +100,12 @@ let to_html_fullname p =
   let module H = Html in
   match p.version with
   | Tag s ->
-    H.div [H.pcdata (Format.sprintf "%s %s" p.name s)]
+    H.div [H.txt (Format.sprintf "%s %s" p.name s)]
   | Git (branch, commit) ->
     H.ul [
-      H.li [H.pcdata (
+      H.li [H.txt (
           Format.sprintf "%s@@%s" p.name branch)];
-      H.li [H.pcdata (
+      H.li [H.txt (
         Format.sprintf "%s.." (String.sub commit 0 15))];
     ]
 

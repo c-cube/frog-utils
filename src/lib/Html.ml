@@ -3,7 +3,7 @@
 
 (** {1 Simple wrapper for HTML} *)
 
-include Tyxml.Html5
+include Tyxml.Html
 
 type t = Html_types.div_content_fun elt
 type html = t
@@ -18,7 +18,7 @@ module Record = struct
   let start = []
   let add s f l = (s, f) :: l
   let add_with_ fun_ ?(raw=false) s f l =
-    let body = pcdata (fun_ f) in
+    let body = txt (fun_ f) in
     add s (div [if raw then pre [body] else body]) l
   let add_int = add_with_ string_of_int
   let add_float = add_with_ string_of_float
@@ -29,7 +29,7 @@ module Record = struct
   let close l =
     table
       (List.rev_map
-         (fun (s,f) -> tr [td [pcdata s]; td [f]])
+         (fun (s,f) -> tr [td [txt s]; td [f]])
          l)
 end
 

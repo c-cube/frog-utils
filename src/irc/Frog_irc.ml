@@ -19,7 +19,6 @@ type state = {
 let default_port = IPC_daemon.default_port
 
 let connect port : state E.t Lwt.t =
-  let open EL.Infix in
   let stop, send_stop = Lwt.wait () in
   let res, send_res = Lwt.wait () in
   Lwt.async (fun () ->
@@ -53,7 +52,7 @@ let cmd_status (st:state): C.Command.t =
        end; `Continue);
   (* the command itself *)
   C.Command.make_simple
-    ~prefix:"status" ~descr:"status of query" ~prio:10
+    ~cmd:"status" ~descr:"status of query" ~prio:10
     (fun _ _ ->
        if !n_tot > 0 then (
          let s = Printf.sprintf "[%d/%d]" !n_cur !n_tot in
@@ -67,7 +66,7 @@ let maybe_str = function
 let cmd_froglock (st:state) : C.Command.t =
   let module M = IPC_message in
   C.Command.make_simple_l
-    ~prefix:"lock_status" ~descr:"status of froglock" ~prio:10
+    ~prefix:"lock_status" ~cmd:"status of froglock" ~prio:10
     (fun _ _ ->
        let%lwt res = IPC_client.get_status st.c in
        begin match res with
@@ -97,7 +96,7 @@ let cmd_froglock (st:state) : C.Command.t =
        end)
 
 let cmd_uptime: C.Command.t =
-  C.Command.make_simple ~descr:"uptime" ~prio:10 ~prefix:"uptime"
+  C.Command.make_simple ~cmd:"uptime" ~prio:10 ~prefix:"uptime"
     (fun _ _ ->
        let p = Lwt_process.open_process_in @@ Lwt_process.shell "uptime" in
        let%lwt out = Lwt_io.read p#stdout in
@@ -106,7 +105,7 @@ let cmd_uptime: C.Command.t =
 let plugin ?(port=default_port) () : C.Plugin.t =
   C.Plugin.stateful ~name:"frogirc"
     ~to_json:(fun _ -> None)
-    ~of_json:(fun actions _ -> connect port)
+    ~of_json:(fun _ _ -> connect port)
     ~commands:(fun st ->
       [ cmd_status st;
         cmd_froglock st;

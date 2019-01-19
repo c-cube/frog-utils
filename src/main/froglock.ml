@@ -3,7 +3,6 @@
 
 (** {1 Scheduling script} *)
 
-open Frog
 open Frog_server
 
 module M = IPC_message

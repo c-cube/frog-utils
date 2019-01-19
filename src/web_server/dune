@@ -1,0 +1,8 @@
+
+(executable
+  (name frogweb)
+  (public_name frogweb)
+  (package frog)
+  (libraries frog frog.server opium threads ppx_deriving_yojson.runtime)
+  (preprocess (pps lwt_ppx ppx_deriving_yojson))
+  (flags :standard -safe-string -warn-error -a -color always))

@@ -1,0 +1,12 @@
+
+;(executable
+;  (public_name frogmonitor)
+;  (libraries frog frog.server threads)
+;  (modules frogmonitor)
+;  (flags :standard -safe-string -warn-error -a -color always))
+
+(executables
+  (public_names frogtptp frogdaemon froglock)
+  (libraries frog frog.server threads)
+  (preprocess (pps ppx_deriving.std lwt_ppx))
+  (flags :standard -safe-string -warn-error -a -color always))

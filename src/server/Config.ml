@@ -64,9 +64,6 @@ let parse_or_empty file = match parse_file file with
     empty
   | Ok x -> x
 
-(* local exception *)
-exception Error_files of string * string
-
 let parse_files l: t or_error =
   let l = List.map parse_file l in
   begin match Misc.Err.seq_list l with
@@ -80,13 +77,11 @@ type error = error_msg * string list
 and error_msg =
   | Try of error list
   | Field_not_found of string list
-  | Wrong_type of string list * string
   | User_err of string
 
 module Fmt = CCFormat
 
 let pp_path = Fmt.(hbox @@ list ~sep:(return ".") string)
-let string_of_path = Fmt.to_string pp_path
 
 let rec pp_error out (e,l) =
   Fmt.fprintf out "@[<hv>%a%a@]" pp_error_msg e Fmt.(list string) l
@@ -97,8 +92,6 @@ and pp_error_msg out = function
       Fmt.(list ~sep:(return "@ | ") pp_error) l
   | Field_not_found path ->
     Fmt.fprintf out "field not found: %a" pp_path path
-  | Wrong_type (path, msg) ->
-    Fmt.fprintf out "field %a has wrong type: %s" pp_path path msg
   | User_err s -> Fmt.string out s
 
 let string_of_error = Fmt.to_string pp_error
@@ -140,7 +133,7 @@ let top : table getter =
   {path=[]; call=fun ~path:_ tbl -> Ok tbl}
 
 (* one-step getter *)
-let field_ ?default name (f:TomlTypes.value -> 'a option) : 'a getter =
+let field_ ?default:_ name (f:TomlTypes.value -> 'a option) : 'a getter =
   {path=[name];
    call=fun ~path tbl ->
      let path = path @ [name] in
@@ -275,4 +268,4 @@ let get (c:t) (g:'a getter) : 'a or_error =
 
 let get_or ~default c g = match get c g with
   | Ok x -> x
-  | Error e -> default
+  | Error _ -> default

@@ -1,0 +1,9 @@
+
+(library
+  (name frog_server)
+  (public_name frog.server)
+  (libraries frog unix lwt.unix lwt_log cmdliner
+             ppx_deriving.runtime ppx_deriving_yojson.runtime
+             junit maki printbox maki.yojson ISO8601 threads)
+  (preprocess (pps lwt_ppx ppx_deriving.std ppx_deriving_yojson))
+  (flags :standard -safe-string -w -4-32-33 -warn-error -a -color always))

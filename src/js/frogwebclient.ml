@@ -167,7 +167,7 @@ let multi_choice cmp to_string list (get, set) =
                 let b = Js.to_bool ((Tyxml_js.To_dom.of_input input)##.checked) in
                 if b then add x else rm x;
                 Lwt.return_unit));
-      (x, input), H.li [ H.label [ input; H.pcdata (to_string x) ] ]
+      (x, input), H.li [ H.label [ input; H.txt (to_string x) ] ]
     )) list
   in
   let s = React.S.l2 (fun l inputs ->
@@ -193,7 +193,7 @@ let on_click h k =
 let pb_to_html pb =
   on_click
     (H.a ~a:[H.a_href "#problem"]
-       [ H.pcdata (Problem.basename pb) ])
+       [ H.txt (Problem.basename pb) ])
     (function () -> set_problem (Some pb); Lwt.return_unit)
 
 let version_to_string = function
@@ -205,7 +205,7 @@ let pv_to_line p =
   let open Prover in
   [ on_click
       (H.a ~a:[H.a_href "#prover"]
-         [ H.pcdata (Format.sprintf "%s%s" p.name (version_to_string p.version)) ])
+         [ H.txt (Format.sprintf "%s%s" p.name (version_to_string p.version)) ])
       (fun () -> set_prover (Some p); Lwt.return_unit);
   ]
 
@@ -222,7 +222,7 @@ let res_to_html r =
   in
   H.span ~a:[H.a_class ["result"];
              H.a_style ("color:"^color)]
-    [ H.pcdata (to_string r) ]
+    [ H.txt (to_string r) ]
 
 let prover_run_to_html r =
   H.span [
@@ -234,16 +234,16 @@ let prover_run_to_html r =
   ]
 
 let int_to_html i =
-  H.pcdata (Format.sprintf "%d" i)
+  H.txt (Format.sprintf "%d" i)
 
 let float_to_html f =
-  H.pcdata (Format.sprintf "%.2f" f)
+  H.txt (Format.sprintf "%.2f" f)
 
 let pre s =
-  H.pre ~a:[H.a_class [ "raw" ] ] [ H.pcdata s ]
+  H.pre ~a:[H.a_class [ "raw" ] ] [ H.txt s ]
 
 let pre_opt default = function
-  | None -> H.pcdata default
+  | None -> H.txt default
   | Some s -> pre s
 
 (****************************************************************************)
@@ -348,23 +348,23 @@ let mode_list () =
   let table =
     let th, _ = L.create @@ [
         H.tr [
-          H.td [ H.pcdata "Snapshot" ];
-          H.td [ H.pcdata "Timestamp" ];
-          H.td [ H.pcdata "#Problems" ];
-          H.td [ H.pcdata "Provers" ];
+          H.td [ H.txt "Snapshot" ];
+          H.td [ H.txt "Timestamp" ];
+          H.td [ H.txt "#Problems" ];
+          H.td [ H.txt "Provers" ];
         ]]
     in
     let trs = L.map (fun (uuid, time, n, pvs) ->
         let t = H.td [
           on_click (
             H.a ~a:[H.a_href "#table"; H.a_style "cursor:pointer" ]
-              [ H.pcdata (Uuidm.to_string uuid) ])
+              [ H.txt (Uuidm.to_string uuid) ])
             (fun () -> set_s_filter [ uuid, time ]; Lwt.return_unit)
           ] in
         H.tr [
           t;
-          H.td [ H.pcdata (date_to_string time) ];
-          H.td [ H.pcdata (Format.sprintf "%d" n) ];
+          H.td [ H.txt (date_to_string time) ];
+          H.td [ H.txt (Format.sprintf "%d" n) ];
           H.td (List.flatten @@ List.map (fun pv -> pv_to_line pv @ [ H.br () ]) pvs);
         ]
       ) (L.from_signal slist)
@@ -455,7 +455,7 @@ let mode_table () =
   let table =
     (* Compute the headers of the table *)
     let pvs = L.from_signal pv_list in
-    let t, _ = L.create [ [ H.pcdata "" ] ] in
+    let t, _ = L.create [ [ H.txt "" ] ] in
     let th, _ = L.create @@ [
         R.Html.tr (
           L.map H.th @@
@@ -470,7 +470,7 @@ let mode_table () =
           H.td [ pb_to_html pb ] ::
           List.map (
             function
-            | [] -> H.td [ H.pcdata "." ]
+            | [] -> H.td [ H.txt "." ]
             | l -> H.td (List.map prover_run_to_html l)
           ) l)
       ) pbs
@@ -487,9 +487,9 @@ let mode_table () =
       (s_filter, (fun l -> set_s_filter l)) in
   let search_snap =
     H.div ~a:[H.a_class ["select"]] [
-      H.h3 [ H.pcdata "Snapshots" ];
+      H.h3 [ H.txt "Snapshots" ];
       H.div~a:[H.a_class ["searchbox"]] [
-        H.h5 [ H.pcdata "List" ];
+        H.h5 [ H.txt "List" ];
         input_snap;
       ];
     ]
@@ -513,19 +513,19 @@ let mode_table () =
   in
   let filter =
     H.div ~a:[H.a_class ["search"]] [
-      H.h3 [ H.pcdata "Filter" ];
+      H.h3 [ H.txt "Filter" ];
       H.form ~a:[H.a_class ["searchbox"]] [
-        H.h5 [ H.pcdata "Prover&Problem" ];
+        H.h5 [ H.txt "Prover&Problem" ];
         input_pv;
         H.br ();
         input_pb;
       ];
       H.div ~a:[H.a_class ["searchbox"]] [
-        H.h5 [ H.pcdata "Result" ];
+        H.h5 [ H.txt "Result" ];
         input_res;
       ];
       H.div ~a:[H.a_class ["searchbox"]] [
-        H.h5 [ H.pcdata "Expect" ];
+        H.h5 [ H.txt "Expect" ];
         input_expect;
       ];
     ] in
@@ -541,28 +541,28 @@ let mode_table () =
 let mode_event () =
   let l = React.S.map (function
       | None ->
-        [ H.pcdata "Please select an event to print " ]
+        [ H.txt "Please select an event to print " ]
       | Some Event.Checker_run _ ->
-        [ H.pcdata "TODO (checker events)" ]
+        [ H.txt "TODO (checker events)" ]
       | Some Event.Prover_run r ->
         [ H.table
-            [ H.tr [ H.td [ H.pcdata "Prover" ];
+            [ H.tr [ H.td [ H.txt "Prover" ];
                      H.td (pv_to_html r.Event.program) ];
-              H.tr [ H.td [ H.pcdata "Problem" ];
+              H.tr [ H.td [ H.txt "Problem" ];
                      H.td [ pb_to_html r.Event.problem ] ];
-              H.tr [ H.td [ H.pcdata "Result" ];
+              H.tr [ H.td [ H.txt "Result" ];
                      H.td [ res_to_html (Event.analyze_p r) ] ];
-              H.tr [ H.td [ H.pcdata "Errcode" ];
+              H.tr [ H.td [ H.txt "Errcode" ];
                      H.td [ int_to_html r.Event.raw.Event.errcode ] ];
-              H.tr [ H.td [ H.pcdata "real time" ];
+              H.tr [ H.td [ H.txt "real time" ];
                      H.td [ float_to_html r.Event.raw.Event.rtime ] ];
-              H.tr [ H.td [ H.pcdata "user time" ];
+              H.tr [ H.td [ H.txt "user time" ];
                      H.td [ float_to_html r.Event.raw.Event.utime ] ];
-              H.tr [ H.td [ H.pcdata "system time" ];
+              H.tr [ H.td [ H.txt "system time" ];
                      H.td [ float_to_html r.Event.raw.Event.stime ] ];
-              H.tr [ H.td [ H.pcdata "stdout" ];
+              H.tr [ H.td [ H.txt "stdout" ];
                      H.td [ pre r.Event.raw.Event.stdout ] ];
-              H.tr [ H.td [ H.pcdata "stderr" ];
+              H.tr [ H.td [ H.txt "stderr" ];
                      H.td [ pre r.Event.raw.Event.stderr ] ];
             ]
         ]
@@ -576,25 +576,25 @@ let mode_event () =
 let mode_prover () =
   let l = React.S.map (function
       | None ->
-        [ H.pcdata "Please select a prover to print" ]
+        [ H.txt "Please select a prover to print" ]
       | Some p ->
         [ H.h3 (pv_to_line p);
           H.table
-            [ H.tr [ H.td [ H.pcdata "version" ];
-                     H.td [ H.pcdata (version_to_string p.Prover.version) ] ];
-              H.tr [ H.td [ H.pcdata "binary" ];
-                     H.td [ H.pcdata p.Prover.binary ] ];
-              H.tr [ H.td [ H.pcdata "cmd" ];
+            [ H.tr [ H.td [ H.txt "version" ];
+                     H.td [ H.txt (version_to_string p.Prover.version) ] ];
+              H.tr [ H.td [ H.txt "binary" ];
+                     H.td [ H.txt p.Prover.binary ] ];
+              H.tr [ H.td [ H.txt "cmd" ];
                      H.td [ pre p.Prover.cmd ] ];
-              H.tr [ H.td [ H.pcdata "sat" ];
+              H.tr [ H.td [ H.txt "sat" ];
                      H.td [ pre_opt "<none>" p.Prover.sat ] ];
-              H.tr [ H.td [ H.pcdata "unsat" ];
+              H.tr [ H.td [ H.txt "unsat" ];
                      H.td [ pre_opt "<none>" p.Prover.unsat ] ];
-              H.tr [ H.td [ H.pcdata "unknown" ];
+              H.tr [ H.td [ H.txt "unknown" ];
                      H.td [ pre_opt "<none>" p.Prover.unknown ] ];
-              H.tr [ H.td [ H.pcdata "timeout" ];
+              H.tr [ H.td [ H.txt "timeout" ];
                      H.td [ pre_opt "<none>" p.Prover.timeout ] ];
-              H.tr [ H.td [ H.pcdata "out of space" ];
+              H.tr [ H.td [ H.txt "out of space" ];
                      H.td [ pre_opt "<none>" p.Prover.memory ] ];
             ]
         ]
@@ -609,15 +609,15 @@ let mode_problem () =
   let l = React.S.l2 (fun opt contents ->
       match opt with
       | None ->
-        [ H.pcdata "Please select a problem to be printed" ];
+        [ H.txt "Please select a problem to be printed" ];
       | Some pb ->
-        [ H.h3 [ H.pcdata (Problem.basename pb) ];
+        [ H.h3 [ H.txt (Problem.basename pb) ];
           H.table
-            [ H.tr [ H.td [ H.pcdata "Path" ];
-                     H.td [ H.pcdata pb.Problem.name ] ];
-              H.tr [ H.td [ H.pcdata "Expected" ];
+            [ H.tr [ H.td [ H.txt "Path" ];
+                     H.td [ H.txt pb.Problem.name ] ];
+              H.tr [ H.td [ H.txt "Expected" ];
                      H.td [ res_to_html pb.Problem.expected ] ];
-              H.tr [ H.td [ H.pcdata "Contents" ];
+              H.tr [ H.td [ H.txt "Contents" ];
                      H.td [ pre_opt "fetching data..." contents ] ];
             ]
         ]) problem pb_contents in
@@ -681,29 +681,29 @@ let update_state () =
 
 let st_bar =
   H.div ~a:[H.a_class ["status"]]
-    [ R.Html.pcdata status ]
+    [ R.Html.txt status ]
 
 let () =
   let nav =
     H.nav [
       H.ul [
         H.li ~a:[H.a_id "list"] [
-          H.a ~a:[H.a_href "#list"] [ H.pcdata "List" ]];
+          H.a ~a:[H.a_href "#list"] [ H.txt "List" ]];
         H.li ~a:[H.a_id "table"] [
-          H.a ~a:[H.a_href "#table"] [ H.pcdata "Table" ]];
+          H.a ~a:[H.a_href "#table"] [ H.txt "Table" ]];
         H.li ~a:[H.a_id "event"] [
-          H.a ~a:[H.a_href "#event"] [ H.pcdata "Event" ]];
+          H.a ~a:[H.a_href "#event"] [ H.txt "Event" ]];
         H.li ~a:[H.a_id "prover"] [
-          H.a ~a:[H.a_href "#prover"] [ H.pcdata "Prover" ]];
+          H.a ~a:[H.a_href "#prover"] [ H.txt "Prover" ]];
         H.li ~a:[H.a_id "problem"] [
-          H.a ~a:[H.a_href "#problem"] [ H.pcdata "Problem" ]];
+          H.a ~a:[H.a_href "#problem"] [ H.txt "Problem" ]];
         on_click (
           H.li ~a:[H.a_style "float:right"] [
-            H.a ~a:[] [ H.pcdata "Refresh" ]])
+            H.a ~a:[] [ H.txt "Refresh" ]])
           get_snapshots_meta;
         on_click (
           H.li ~a:[H.a_style "float:right"] [
-            H.a ~a:[] [ H.pcdata "Clear Selection" ]])
+            H.a ~a:[] [ H.txt "Clear Selection" ]])
           clear_snapshots;
       ]]
   in

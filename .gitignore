@@ -12,3 +12,5 @@ setup.exe
 qtest*
 static/
 js/
+.merlin
+*.install

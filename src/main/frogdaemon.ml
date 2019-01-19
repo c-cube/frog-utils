@@ -3,6 +3,8 @@
 
 (** {1 Main daemon for IPC} *)
 
+open Frog_server
+
 let section = Lwt_log.Section.make "frogdaemon"
 
 let main_config_file = "/etc/froglock.conf"

@@ -120,7 +120,7 @@ module Raw = struct
 
   let to_html_raw_tbl uri_of_problem uri_of_raw_res l =
     H.table
-      (H.tr [H.th [H.pcdata "problem"]; H.th [H.pcdata "result"]]
+      (H.tr [H.th [H.txt "problem"]; H.th [H.txt "result"]]
        ::
          (List.rev_map
             (fun r ->
@@ -223,7 +223,7 @@ module Analyze = struct
     H.table
       (List.map
          (fun (s, i) ->
-            H.tr [H.td [H.pcdata s]; H.td [H.pcdata (string_of_int i)]])
+            H.tr [H.td [H.txt s]; H.td [H.txt (string_of_int i)]])
          [
            "ok", (List.length t.ok);
            "improved", (List.length t.improved);
@@ -235,12 +235,12 @@ module Analyze = struct
 
   let to_html_raw uri_of_problem uri_of_raw_res r =
     let l = MStr.fold (fun _ r acc -> r::acc) r [] in
-    if l = [] then H.pcdata "ø"
+    if l = [] then H.txt "ø"
     else Raw.to_html_raw_tbl uri_of_problem uri_of_raw_res l
 
   let to_html uri_of_problem uri_of_raw_res t =
     let lst_raw_res ?cls l =
-      if l=[] then H.pcdata "ø"
+      if l=[] then H.txt "ø"
       else Raw.to_html_raw_tbl uri_of_problem uri_of_raw_res l
     in
     R.start
@@ -288,7 +288,7 @@ module Config = struct
     { c with j; timeout; memory; }
 
   let to_html_expect uri_of_prover = function
-    | Auto -> H.pcdata "auto"
+    | Auto -> H.txt "auto"
     | Res r -> Res.to_html r
     | Program p ->
       H.a

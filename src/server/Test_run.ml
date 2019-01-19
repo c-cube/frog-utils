@@ -88,22 +88,22 @@ let run_pb_ ~config prover pb =
     result.Event.raw.Event.stdout
     result.Event.raw.Event.stderr
     result.Event.raw.Event.errcode;
-  Lwt.return result
+  Lwt.return @@ Ok result
 
 let run_pb ?(caching=true) ?limit ~config prover pb : _ E.t =
-  let module V = Maki.Value in
   Maki.call
     ?limit
     ~bypass:(not caching)
-    ~lifetime:(`KeepFor Maki.Time.(days 2))
-    ~deps:[V.pack V.int config.C.timeout;
-           V.pack V.int config.C.memory;
-           V.pack Maki_wrapper.prover prover;
-           V.pack Maki_wrapper.problem pb]
-    ~op:Run.maki_result
+    ~lifetime:Maki.(Lifetime.keep_for Time.(days 2))
     ~name:"frogtest.run_pb"
+    ~returning:Run.maki_result
+    ~args:[
+      Maki.(Arg.make Hash.int config.C.timeout);
+      Maki.(Arg.make Hash.int config.C.memory);
+      Maki.Arg.of_codec Maki_wrapper.prover prover;
+      Maki.Arg.of_codec Maki_wrapper.problem pb;
+      ]
     (fun () -> run_pb_ ~config prover pb)
-  |> E.of_exn
 
 let nop_ _ = Lwt.return_unit
 
@@ -164,7 +164,7 @@ let run ?(on_solve = nop_) ?(on_done = nop_)
 
 let find_results ?storage str =
   match storage with
-    | None -> T.Top_result.of_file str
+    | None -> T.Top_result.of_file ~file:str
     | Some storage ->
       let open E in
       let%lwt res1 =
@@ -174,7 +174,7 @@ let find_results ?storage str =
       match res1 with
         | Ok x -> E.return x
         | Error _ ->
-          T.Top_result.of_file str
+          T.Top_result.of_file ~file:str
 
 let all_results storage =
   let open E in

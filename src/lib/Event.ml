@@ -35,8 +35,8 @@ let analyze_p t =
   let find_opt_ re = match re with
     | None -> false
     | Some re ->
-      Re.execp (Re_posix.compile_pat re) t.raw.stdout ||
-      Re.execp (Re_posix.compile_pat re) t.raw.stderr
+      Re.execp (Re.Posix.compile_pat re) t.raw.stdout ||
+      Re.execp (Re.Posix.compile_pat re) t.raw.stderr
   in
   if find_opt_ prover.Prover.sat then Res.Sat
   else if find_opt_ prover.Prover.unsat then Res.Unsat

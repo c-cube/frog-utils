@@ -18,6 +18,8 @@ depends: [
     "ocaml" { >= "4.03" }
     "odoc" {with-doc}
     "lwt" { >= "3.0" }
+    "lwt_log"
+    "lwt_ppx"
     "base-unix"
     "yojson"
     "toml" { >= "4.0" & <= "5.0" }

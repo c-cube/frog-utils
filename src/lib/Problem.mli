@@ -7,7 +7,7 @@ type t = {
 } [@@deriving yojson,eq]
 
 type problem = t
-type problem_set = t list
+type problem_set = t list [@@deriving yojson]
 
 val make : string -> Res.t -> t
 (** Make a problem. *)

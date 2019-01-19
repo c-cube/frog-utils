@@ -26,10 +26,10 @@ module Server : sig
   val create: ?port:int -> storage:Storage.t -> unit -> t
   val storage : t -> Storage.t
   val return_html :
-    ?title:string -> ?code:Cohttp.Code.status_code -> html -> Opium.Response.t Lwt.t
-  val return_json : ?code:Cohttp.Code.status_code -> json -> Opium.Response.t Lwt.t
-  val return_string : ?code:Cohttp.Code.status_code -> string -> Opium.Response.t Lwt.t
-  val return_404 : string -> Opium.Response.t Lwt.t
+    ?title:string -> ?code:Cohttp.Code.status_code -> html -> Opium.Std.Response.t Lwt.t
+  val return_json : ?code:Cohttp.Code.status_code -> json -> Opium.Std.Response.t Lwt.t
+  val return_string : ?code:Cohttp.Code.status_code -> string -> Opium.Std.Response.t Lwt.t
+  val return_404 : string -> Opium.Std.Response.t Lwt.t
   val set_port : t -> int -> unit
   val run : t -> unit Lwt.t
 end

@@ -15,7 +15,7 @@ let debug fmt = Lwt_log.ign_debug_f fmt
 
 let compile_re ~msg re =
   try
-    Some (Re.compile (Re.no_case (Re_posix.re re)))
+    Some (Re.compile (Re.no_case (Re.Posix.re re)))
   with e ->
     Printf.eprintf "could not compile regex %s: %s"
       msg (Printexc.to_string e);
@@ -78,7 +78,7 @@ let config_term =
   let aux config debug =
     let config = Config.interpolate_home config in
     if debug then (
-      Maki_log.set_level 5;
+      Maki.Log.set_level 5;
       Lwt_log.add_rule "*" Lwt_log.Debug;
     );
     begin match Config.parse_file config with

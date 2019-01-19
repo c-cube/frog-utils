@@ -12,10 +12,10 @@ let find_snapshot storage str : Event.Snapshot.t or_error Lwt.t =
   Storage.find_json storage str >>?=
   Event.Snapshot.of_yojson
 
-let find_snapshot_exn storage str : Event.Snapshot.t Lwt.t =
+let find_snapshot_exn storage str : Event.Snapshot.t Misc.LwtErr.t =
   let open Misc.LwtErr in
   Storage.find_json storage str >>?=
-  Event.Snapshot.of_yojson |> to_exn
+  Event.Snapshot.of_yojson
 
 let list_snapshots storage : Event.Snapshot.t list Misc.LwtErr.t =
   let open Misc.LwtErr in
@@ -27,16 +27,15 @@ let list_snapshots storage : Event.Snapshot.t list Misc.LwtErr.t =
     l
 
 let find_meta storage (str:string) : Event.snapshot_meta or_error Lwt.t =
-  let open Lwt.Infix in
-  let module V = Maki.Value in
-  Maki.call
-    ~lifetime:(`KeepFor Maki.Time.(days 60))
-    ~deps:[V.pack V.string str]
-    ~op:Run.maki_snapshot_meta
+  let open Misc.LwtErr.Infix in
+  Maki.mk1
+    ~lifetime:Maki.(Lifetime.keep_for Time.(days 60))
     ~name:"event_storage.find_meta"
-    (fun () ->
+    Maki.Hash.string
+    Run.maki_snapshot_meta
+    ~f:(fun str ->
        find_snapshot_exn storage str >|= Event.meta)
-  >|= Misc.Err.of_exn
+    str
 
 let list_meta storage : Event.snapshot_meta list Misc.LwtErr.t =
   let open Misc.LwtErr in

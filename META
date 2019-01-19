@@ -1,9 +1,0 @@
-version = "0.1"
-description = "Scheduling and running jobs on a shared computer, then analyse their output"
-requires = "unix lwt lwt.unix lwt.preemptive re yojson ppx_deriving_yojson.runtime toml cmdliner archimedes"
-archive(byte) = "frogutils.cma"
-archive(byte, plugin) = "frogutils.cma"
-archive(native) = "frogutils.cmxa"
-archive(native, plugin) = "frogutils.cmxs"
-exists_if = "frogutils.cma"
-# vim:syntax=conf:

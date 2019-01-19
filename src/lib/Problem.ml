@@ -13,7 +13,7 @@ type t = {
 [@@@warning "+39"]
 
 type problem = t
-type problem_set = t list
+type problem_set = t list [@@deriving yojson]
 
 let basename t = Filename.basename t.name
 
@@ -47,7 +47,7 @@ let print out p =
 let to_string p = Misc.Fmt.to_string print p
 
 (* HTML server *)
-let to_html_name p = Html.div [Html.pcdata (Filename.basename p.name)]
+let to_html_name p = Html.div [Html.txt (Filename.basename p.name)]
 
 let uri_of_problem pb =
   Uri.make ~path:"/problem/" ~query:["file", [pb.name]] ()

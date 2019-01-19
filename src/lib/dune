@@ -1,0 +1,10 @@
+
+(library
+  (name frog)
+  (public_name frog)
+  (libraries ppx_deriving_yojson.runtime lwt tyxml toml csv
+             ppx_deriving.runtime re.posix containers
+             result olinq uri uuidm)
+  (flags :standard -safe-string -w -4-32-44 -warn-error -a -color always)
+  (preprocess (pps ppx_deriving_yojson ppx_deriving.std lwt_ppx))
+)

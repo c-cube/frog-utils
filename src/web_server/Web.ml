@@ -178,14 +178,14 @@ module Server = struct
     let wrap_ ?(title="frog-utils") h =
       let hd =
         H.head
-          (H.title (H.pcdata title))
+          (H.title (H.txt title))
           [ meta_;
             H.style [H.cdata_style css_];
           ]
       in
       H.html hd (H.body [
           H.div ~a:[H.a_id "main"] [h];
-          H.script ~a:[H.a_src "/js/frogwebclient.js"] (H.pcdata "");
+          H.script ~a:[H.a_src "/js/frogwebclient.js"] (H.txt "");
         ])
       |> H.to_string
     in
@@ -198,11 +198,11 @@ module Server = struct
 
   let return_404 msg =
     let code = Cohttp.Code.status_of_code 404 in
-    let h = Html.pcdata msg in
+    let h = Html.txt msg in
     return_html ~code h
 
   (* toplevel handler *)
-  let main t _req = return_html (H.pcdata "")
+  let main _t _req = return_html (H.txt "")
 
   (* list all the snapshots *)
   let list_snapshots t _req =
@@ -232,7 +232,7 @@ module Server = struct
 
   (* lookup problems by their path
      NOTE: could be a security issue if open to the net! *)
-  let serve_problem t req =
+  let serve_problem _t req =
     let uri = Request.uri req in
     match Uri.get_query_param uri "file" with
       | None -> return_404 "missing `file` parameter"
@@ -252,7 +252,7 @@ module Server = struct
     Lwt_io.printlf "serve website on http://localhost:%d" t.port >>= fun () ->
     t.app
     |> App.middleware
-      (Middleware.static ~local_path:"js" ~uri_prefix:"/js/")
+      (Middleware.static ~local_path:"js" ~uri_prefix:"/js/" ())
     |> App.get "/" (main t) (* main page *)
     |> App.get "/snapshots/" (list_snapshots t)
     |> App.get "/snapshot/:uuid" (serve_snapshot t)

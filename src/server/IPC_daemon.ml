@@ -9,6 +9,8 @@ open Lwt.Infix
 module M = IPC_message
 module Int_map = Misc.Int_map
 
+[@@@ocaml.warning "-32"]
+
 type 'a or_error = ('a, string) Result.result
 
 let main_config_file = "/etc/froglock.conf"
@@ -466,8 +468,8 @@ let spawn ?(forever=false) (port:int): unit Lwt.t =
   (* ping clients regularly *)
   let ping_thread = run_ping_thread st in
   (* server that listens for incoming clients *)
-  let%lwt server = Lwt_io.Versioned.establish_server_2 addr
-    (fun (ic,oc) ->
+  let%lwt server = Lwt_io.establish_server_with_client_address addr
+    (fun _ (ic,oc) ->
       let c = {
         c_in=ic;
         c_out=oc;
@@ -490,7 +492,7 @@ let spawn ?(forever=false) (port:int): unit Lwt.t =
         ping_thread;
       ] in
   Lwt_log.ign_debug ~section "daemon's server is stopping";
-  Lwt_io.Versioned.shutdown_server_2 server
+  Lwt_io.shutdown_server server
 
 (* TODO: change log level through connection *)
 

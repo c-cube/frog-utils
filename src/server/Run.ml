@@ -6,27 +6,25 @@ open Frog
 
 module E = Misc.Err
 
-let fpf = Format.fprintf
-
 (** {2 Maki} *)
 
 let maki_raw_res =
-  Maki_yojson.make_str "raw_res"
+  Maki_yojson.make "raw_res"
     ~to_yojson:Event.raw_result_to_yojson
     ~of_yojson:Event.raw_result_of_yojson
 
-let (maki_result : Event.prover Event.result Maki.Value.ops) =
+let (maki_result : Event.prover Event.result Maki.Codec.t) =
   let of_yojson x = Event.result_of_yojson Event.prover_of_yojson x in
-  Maki_yojson.make_str "result"
+  Maki_yojson.make "result"
     ~to_yojson:(Event.result_to_yojson Event.prover_to_yojson)
     ~of_yojson
 
 let maki_storage =
-  Maki_yojson.make_str "storage_dirs"
+  Maki_yojson.make "storage_dirs"
     ~to_yojson:Storage.to_yojson ~of_yojson:Storage.of_yojson
 
 let maki_snapshot_meta =
-  Maki_yojson.make_str "snapshot_meta"
+  Maki_yojson.make "snapshot_meta"
     ~to_yojson:Event.Meta.to_yojson ~of_yojson:Event.Meta.of_yojson
 
 (** {2 Main} *)

@@ -1,0 +1,8 @@
+
+(executable
+  (name frogirc)
+  (public_name frogirc)
+  (package frog)
+  (libraries frog frog.server threads calculon)
+  (preprocess (pps lwt_ppx))
+  (flags :standard -safe-string -warn-error -a -color always))

@@ -53,6 +53,7 @@ let test_analyze (t:Test.Analyze.t) : Junit.Testsuite.t =
       ?system_out:None
       ?system_err:None
       ~name:"frogtest"
+      ()
   in
   J.Testsuite.add_testcases l suite
 

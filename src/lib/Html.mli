@@ -3,12 +3,12 @@
 
 (** {1 Simple wrapper for HTML} *)
 
-include module type of Tyxml.Html5
+include module type of Tyxml.Html
 
 type t = Html_types.div_content_fun elt
 type html = t
 
-val to_string : _ Tyxml.Html5.elt -> string
+val to_string : _ Tyxml.Html.elt -> string
 
 (** {2 Encoding Records in HTML} *)
 

@@ -45,7 +45,7 @@ type run_params = {
 
 let compile_re ~msg re =
   try
-    Some (Re.compile (Re.no_case (Re_posix.re re)))
+    Some (Re.compile (Re.no_case (Re.Posix.re re)))
   with e ->
     Printf.eprintf "could not compile regex %s: %s"
       msg (Printexc.to_string e);
