@@ -1,0 +1,52 @@
+opam-version: "2.0"
+synopsis: "Collection of tools for running benchmarks, tests, and analysins their results"
+version: "dev"
+maintainer: "Simon Cruanes <simon.cruanes.2007@m4x.org>"
+authors: [ "Simon Cruanes <simon.cruanes.2007@m4x.org>"
+           "Guillaume Bury <guillaume.bury@gmail.com>" ]
+homepage: "https://github.com/c-cube/frog-utils"
+dev-repo: "git+https://github.com/c-cube/frog-utils.git"
+bug-reports: "https://github.com/c-cube/frog-utils/issues"
+license: "BSD-2-clause"
+build: [
+  ["dune" "build" "@install" "-p" name "-j" jobs]
+  ["dune" "build" "@doc" "-p" name "-j" jobs] {with-doc}
+  ["dune" "runtest" "-p" name "-j" jobs] {with-test}
+]
+depends: [
+    "dune" {build}
+    "ocaml" { >= "4.03" }
+    "odoc" {with-doc}
+    "lwt" { >= "3.0" }
+    "base-unix"
+    "yojson"
+    "toml" { >= "4.0" & <= "5.0" }
+    "re"
+    "ppx_deriving"
+    "ppx_deriving_yojson"
+    "cmdliner"
+    "result"
+    "olinq" { >= "0.2" }
+    "junit"
+    "uuidm"
+    "maki"
+    "ISO8601"
+    "csv"
+    "uri"
+    "containers"
+    "printbox"
+    "js_of_ocaml"
+]
+depopts: [
+    "cairo2"
+    "archimedes"
+    "react"
+    "reactiveData"
+    "opium" { >= "0.15" }
+    "calculon"
+    "lwt_react"
+]
+tags: ["lock" "batch" "benchmark" "tptp" "test"]
+post-messages: [
+    "Config files can be found in %{share}%/frogutils/. Tools provide a --help option as well as man pages."
+]

@@ -1,34 +1,24 @@
-opam-version: "1.2"
+opam-version: "2.0"
 name: "frogutils"
+synopsis: "Collection of tools for running benchmarks, tests, and analysins their results"
 version: "dev"
 maintainer: "Simon Cruanes <simon.cruanes.2007@m4x.org>"
 authors: [ "Simon Cruanes <simon.cruanes.2007@m4x.org>"
            "Guillaume Bury <guillaume.bury@gmail.com>" ]
 homepage: "https://github.com/c-cube/frog-utils"
-dev-repo: "https://github.com/c-cube/frog-utils.git"
+dev-repo: "git+https://github.com/c-cube/frog-utils.git"
 bug-reports: "https://github.com/c-cube/frog-utils/issues"
 license: "BSD-2-clause"
 build: [
-  ["./configure"
-    "--bindir" "%{bin}%"
-    "--sharedstatedir" "%{share}%"
-    "--%{opium+js_of_ocaml+react+lwt_react+reactiveData:enable}%-web"
-    "--%{lwt+calculon:enable}%-irc"
-    "--%{cairo2+archimedes:enable}%-plot"
-    "--mandir" "%{man}%"]
-  [make]
-]
-install: [
-  make "install"
-]
-remove: [
-  ["ocamlfind" "remove" "frog"]
-  [make "uninstall"]
+  ["dune" "build" "@install" "-p" name "-j" jobs]
+  ["dune" "build" "@doc" "-p" name "-j" jobs] {with-doc}
+  ["dune" "runtest" "-p" name "-j" jobs] {with-test}
 ]
 depends: [
-    "ocamlfind" {build}
-    "oasis" {build}
-    "lwt"
+    "dune" {build}
+    "ocaml" { >= "4.03" }
+    "odoc" {with-doc}
+    "lwt" { >= "3.0" }
     "base-unix"
     "yojson"
     "toml" { >= "4.0" & <= "5.0" }
@@ -53,16 +43,9 @@ depopts: [
     "archimedes"
     "react"
     "reactiveData"
-    "opium"
+    "opium" { >= "0.15" }
     "calculon"
     "lwt_react"
-]
-available: [
-  "ocaml-version" >= "4.02.1"
-]
-conflicts: [
-  "opium" { < "0.15" }
-  "lwt" { < "3.0" }
 ]
 tags: ["lock" "batch" "benchmark" "tptp" "test"]
 post-messages: [
